@@ -1,6 +1,9 @@
 package com.frezzybuilds.devnotch.service
 
 import android.content.ComponentName
+import android.graphics.Bitmap
+import androidx.core.graphics.scale
+import androidx.palette.graphics.Palette
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSession
@@ -28,6 +31,10 @@ class MediaNotificationListener : NotificationListenerService() {
     /** Alle aktiven Sessions in System-Priorität, jeweils mit registriertem Callback. */
     private var controllers: List<MediaController> = emptyList()
     private val callbacks = mutableMapOf<MediaSession.Token, MediaController.Callback>()
+
+    /** Cover + Farben werden nur bei Titelwechsel neu berechnet, nicht bei jedem Play/Pause. */
+    private var artworkKey: String? = null
+    private var artwork: Pair<Bitmap, ArtworkAccent>? = null
 
     private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { active ->
         onSessionsChanged(active.orEmpty())
@@ -84,8 +91,45 @@ class MediaNotificationListener : NotificationListenerService() {
     private fun publish() {
         val snapshots = controllers.map { it.snapshot() }
         val index = NowPlayingSelector.select(snapshots)
-        activeController = index?.let(controllers::get)
-        _nowPlaying.value = index?.let { NowPlayingSelector.toNowPlaying(snapshots[it]) }
+        val controller = index?.let(controllers::get)
+        activeController = controller
+        _nowPlaying.value = index?.let {
+            val art = controller?.let(::artworkFor)
+            NowPlayingSelector.toNowPlaying(snapshots[it])
+                .copy(artwork = art?.first, accent = art?.second)
+        }
+    }
+
+    /**
+     * Cover des Titels, auf max. 160 px verkleinert (große Bitmaps nicht im StateFlow halten),
+     * plus zwei Akzentfarben per Palette – wie bei Edge-Music-Playern, die sich ans Album anpassen.
+     */
+    private fun artworkFor(controller: MediaController): Pair<Bitmap, ArtworkAccent>? {
+        val metadata = controller.metadata ?: return null
+        val key = listOf(
+            controller.packageName,
+            metadata.getString(MediaMetadata.METADATA_KEY_TITLE),
+            metadata.getString(MediaMetadata.METADATA_KEY_ARTIST)
+        ).joinToString("|")
+        if (key == artworkKey) return artwork
+
+        val source = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+            ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_ART)
+            ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+        artworkKey = key
+        artwork = source?.let { bitmap ->
+            val factor = ARTWORK_MAX_PX.toFloat() / maxOf(bitmap.width, bitmap.height)
+            val small = if (factor < 1f) {
+                bitmap.scale((bitmap.width * factor).toInt(), (bitmap.height * factor).toInt())
+            } else {
+                bitmap
+            }
+            val palette = Palette.from(small).generate()
+            val top = palette.getVibrantColor(palette.getDominantColor(DEFAULT_ACCENT_TOP))
+            val bottom = palette.getDarkVibrantColor(palette.getDarkMutedColor(DEFAULT_ACCENT_BOTTOM))
+            small to ArtworkAccent(top, bottom)
+        }
+        return artwork
     }
 
     private fun MediaController.snapshot() = SessionSnapshot(
@@ -99,6 +143,10 @@ class MediaNotificationListener : NotificationListenerService() {
     )
 
     companion object {
+        private const val ARTWORK_MAX_PX = 160
+        private const val DEFAULT_ACCENT_TOP = 0xFFE040FB.toInt()
+        private const val DEFAULT_ACCENT_BOTTOM = 0xFF4A148C.toInt()
+
         private val _nowPlaying = MutableStateFlow<NowPlaying?>(null)
 
         /** Titel, Künstler und Play/Pause-Status der aktuellen Session; null = nichts läuft. */

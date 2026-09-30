@@ -1,5 +1,6 @@
 package com.frezzybuilds.devnotch.service
 
+import android.graphics.Bitmap
 import android.media.session.PlaybackState
 
 /** Was gerade läuft – das, was die Notch anzeigt. */
@@ -7,8 +8,15 @@ data class NowPlaying(
     val title: String,
     val artist: String?,
     val isPlaying: Boolean,
-    val packageName: String
+    val packageName: String,
+    /** Verkleinertes Cover (max. 160 px), falls der Player eins liefert. */
+    val artwork: Bitmap? = null,
+    /** Aus dem Cover abgeleitete Akzentfarben (ARGB) für den Edge-Verlauf; null = Standardverlauf. */
+    val accent: ArtworkAccent? = null
 )
+
+/** Zwei Verlaufsfarben (oben → unten) aus dem Albumcover. */
+data class ArtworkAccent(val top: Int, val bottom: Int)
 
 /** Momentaufnahme einer Media-Session, unabhängig von MediaController (testbar ohne Android). */
 data class SessionSnapshot(

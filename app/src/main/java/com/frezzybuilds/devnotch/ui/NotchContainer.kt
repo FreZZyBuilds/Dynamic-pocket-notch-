@@ -44,6 +44,8 @@ import com.frezzybuilds.devnotch.service.NotchLayout
 import com.frezzybuilds.devnotch.service.MediaNotificationListener
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
 import com.frezzybuilds.devnotch.service.NowPlaying
+import com.frezzybuilds.devnotch.ui.media.EdgeHandle
+import com.frezzybuilds.devnotch.ui.media.EdgeMusicBar
 import com.frezzybuilds.devnotch.ui.media.MarqueeTitle
 import com.frezzybuilds.devnotch.ui.media.MediaHeader
 import com.frezzybuilds.devnotch.ui.clipboard.ClipboardContent
@@ -56,6 +58,8 @@ private val PillWidth = 120.dp
 private val DashboardWidth = 360.dp
 private val DashboardHeight = 280.dp
 private val EdgeHandleWidth = 20.dp
+private val EdgeBarWidth = 60.dp
+private val EdgeBarHeight = 340.dp
 
 private enum class NotchTab(val title: String) {
     DEV("Dev"),
@@ -92,7 +96,7 @@ fun NotchContainer(
         onExpandRequest(expanded)
     }
 
-    val (collapsedWidth, collapsedHeight) = collapsedSize(layout)
+    val (collapsedWidth, collapsedHeight) = collapsedSize(layout, hasMedia = nowPlaying != null)
     val cornerRadius by animateDpAsState(
         targetValue = if (isExpanded) 24.dp else minOf(collapsedWidth, collapsedHeight) / 2,
         animationSpec = notchSpring(),
@@ -144,6 +148,19 @@ fun NotchContainer(
                         else -> null
                     }
                 )
+            } else {
+                // Edge-Dock: mit Musik die farbige Player-Leiste, sonst der schlanke Griff.
+                val media = nowPlaying
+                if (media != null) {
+                    EdgeMusicBar(
+                        nowPlaying = media,
+                        onPrevious = MediaNotificationListener::skipToPrevious,
+                        onPlayPause = MediaNotificationListener::togglePlayPause,
+                        onNext = MediaNotificationListener::skipToNext
+                    )
+                } else {
+                    EdgeHandle()
+                }
             }
         }
     }
@@ -253,16 +270,18 @@ private fun lensGap(layout: NotchLayout): Dp {
 
 /**
  * Oben: exakt die vom Service berechnete Pillengröße (120×35 dp oder größer, symmetrisch um
- * die Kameralinse), damit Fensterposition und Inhalt übereinstimmen. Am Rand ein schmaler Griff.
+ * die Kameralinse), damit Fensterposition und Inhalt übereinstimmen. Am Rand ein schmaler Griff,
+ * der sich bei Musik per Feder zur 60×340-dp-Player-Leiste aufzieht.
  */
 @Composable
-private fun collapsedSize(layout: NotchLayout): Pair<Dp, Dp> {
+private fun collapsedSize(layout: NotchLayout, hasMedia: Boolean): Pair<Dp, Dp> {
     val density = LocalDensity.current
     return when (layout.mode) {
         NotchLayoutMode.NOTCH_TOP -> with(density) {
             layout.pill.width.toDp() to layout.pill.height.toDp()
         }
-        NotchLayoutMode.EDGE_SIDE -> EdgeHandleWidth to PillWidth
+        NotchLayoutMode.EDGE_SIDE ->
+            if (hasMedia) EdgeBarWidth to EdgeBarHeight else EdgeHandleWidth to PillWidth
     }
 }
 
