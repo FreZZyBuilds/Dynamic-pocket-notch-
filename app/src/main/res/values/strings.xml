@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">DevNotch</string>
+    <string name="overlay_channel_name">Notch-Overlay</string>
+    <string name="overlay_notification_text">Dynamic Notch ist aktiv</string>
+</resources>

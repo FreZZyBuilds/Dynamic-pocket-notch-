@@ -1,0 +1,4 @@
+<resources>
+    <!-- Compose übernimmt das eigentliche Theming (Material3 in ui/theme). -->
+    <style name="Theme.DevNotch" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
