@@ -25,7 +25,7 @@ class AppContainer(context: Context) {
 
     val notchSettings = NotchSettings(context)
 
-    val clipboardRepository = ClipboardRepository(context, database.clipDao())
+    val clipboardRepository = ClipboardRepository(context, database.clipboardDao())
 
     val gitHubTokenStore = GitHubTokenStore(context)
     val gitHubRepository = GitHubRepository(

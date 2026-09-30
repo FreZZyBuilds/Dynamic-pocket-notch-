@@ -8,14 +8,14 @@ import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
-abstract class ClipDao {
+abstract class ClipboardDao {
 
     @Query("SELECT * FROM clips ORDER BY createdAt DESC")
-    abstract fun observeAll(): Flow<List<ClipEntry>>
+    abstract fun observeAll(): Flow<List<ClipboardItem>>
 
     /** REPLACE + Unique-Index auf `text`: Erneut kopierter Text wird neu (oben) eingefügt. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    protected abstract suspend fun insert(entry: ClipEntry)
+    protected abstract suspend fun insert(entry: ClipboardItem)
 
     @Query(
         "DELETE FROM clips WHERE id NOT IN " +
@@ -24,7 +24,7 @@ abstract class ClipDao {
     protected abstract suspend fun trimTo(keep: Int)
 
     @Transaction
-    open suspend fun insertAndTrim(entry: ClipEntry, keep: Int) {
+    open suspend fun insertAndTrim(entry: ClipboardItem, keep: Int) {
         insert(entry)
         trimTo(keep)
     }

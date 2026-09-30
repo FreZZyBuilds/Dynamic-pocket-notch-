@@ -39,7 +39,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frezzybuilds.devnotch.service.NotchLayout
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
-import com.frezzybuilds.devnotch.ui.clipboard.ClipboardHistoryContent
+import com.frezzybuilds.devnotch.ui.clipboard.ClipboardContent
 import com.frezzybuilds.devnotch.ui.focus.FocusTimerTab
 import com.frezzybuilds.devnotch.ui.focus.formatMmSs
 import com.frezzybuilds.devnotch.ui.focus.FocusTimerViewModel
@@ -188,7 +188,7 @@ private fun Dashboard(
             when (selectedTab) {
                 NotchTab.OVERVIEW -> OverviewTabContent(focusTimer)
                 NotchTab.TIMER -> FocusTimerTab(focusTimer)
-                NotchTab.CLIP -> ClipboardHistoryContent()
+                NotchTab.CLIP -> ClipboardContent()
                 NotchTab.DEV -> GitHubContent()
             }
         }

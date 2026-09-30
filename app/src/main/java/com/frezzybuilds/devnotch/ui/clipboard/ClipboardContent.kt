@@ -1,5 +1,10 @@
 package com.frezzybuilds.devnotch.ui.clipboard
 
+import android.content.Context
+import android.os.Build
+import android.view.HapticFeedbackConstants
+import android.view.View
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,18 +28,34 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frezzybuilds.devnotch.appContainer
+import com.frezzybuilds.devnotch.data.clipboard.ClipboardItem
+import kotlinx.coroutines.delay
 
+private val ItemBackground = Color(0xFF1E1E1E)
+private val CopiedBackground = Color(0xFF123524)
+
+/** Die letzten 10 kopierten Texte; Tippen legt einen Eintrag zurück in die Zwischenablage. */
 @Composable
-fun ClipboardHistoryContent() {
+fun ClipboardContent() {
     val context = LocalContext.current
+    val view = LocalView.current
     val viewModel = viewModel { ClipboardViewModel(context.appContainer.clipboardRepository) }
     val history by viewModel.history.collectAsStateWithLifecycle()
+
+    // Kurzes „✓ Kopiert“ direkt am Eintrag, verschwindet nach 1,5 s wieder.
     var copiedText by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(copiedText) {
+        if (copiedText != null) {
+            delay(1_500)
+            copiedText = null
+        }
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -62,24 +84,50 @@ fun ClipboardHistoryContent() {
             )
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            items(history, key = { it.id }) { entry ->
-                Text(
-                    text = if (entry.text == copiedText) "✓ Kopiert" else entry.text,
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF1E1E1E))
-                        .clickable {
-                            viewModel.copy(entry)
-                            copiedText = entry.text
-                        }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
+            // Key = Text: Beim Zurückkopieren bekommt der Eintrag eine neue id (REPLACE),
+            // der Text bleibt gleich – so animiert/merkt sich die Liste das richtige Element.
+            items(history, key = { it.text }) { item ->
+                ClipboardRow(
+                    item = item,
+                    copied = item.text == copiedText,
+                    onClick = {
+                        viewModel.copy(item)
+                        copiedText = item.text
+                        confirmCopy(context, view)
+                    }
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ClipboardRow(item: ClipboardItem, copied: Boolean, onClick: () -> Unit) {
+    Text(
+        text = if (copied) "✓ Kopiert" else item.text,
+        color = Color.White,
+        style = MaterialTheme.typography.bodySmall,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (copied) CopiedBackground else ItemBackground)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    )
+}
+
+/**
+ * Haptik immer; Toast nur bis Android 12L. Ab Android 13 blendet das System beim Kopieren
+ * selbst eine Bestätigung ein – ein eigener Toast wäre doppelt.
+ */
+private fun confirmCopy(context: Context, view: View) {
+    view.performHapticFeedback(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HapticFeedbackConstants.CONFIRM
+        else HapticFeedbackConstants.VIRTUAL_KEY
+    )
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        Toast.makeText(context, "In die Zwischenablage kopiert", Toast.LENGTH_SHORT).show()
     }
 }
