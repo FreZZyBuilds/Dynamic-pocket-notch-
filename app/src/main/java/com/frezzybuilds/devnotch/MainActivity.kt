@@ -144,6 +144,23 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 supportingContent = { Text(displayMode.label) },
                 modifier = Modifier.clickable { showModeDialog = true }
             )
+            if (displayMode == NotchLayoutMode.EDGE_SIDE) {
+                HorizontalDivider()
+                var autoMinimize by remember { mutableStateOf(settings.edgeAutoMinimize) }
+                ListItem(
+                    headlineContent = { Text("Edge-Player einklappen") },
+                    supportingContent = { Text("Nach 5 s nur noch das runde Cover zeigen – Tippen öffnet den Player wieder") },
+                    trailingContent = {
+                        Switch(
+                            checked = autoMinimize,
+                            onCheckedChange = {
+                                autoMinimize = it
+                                settings.edgeAutoMinimize = it
+                            }
+                        )
+                    }
+                )
+            }
             HorizontalDivider()
             ListItem(
                 headlineContent = { Text("Benachrichtigungszugriff") },

@@ -43,7 +43,7 @@ import java.io.File
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w400dp-h460dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "w560dp-h460dp-xxhdpi")
 class EdgeMusicBarScreenshotTest {
 
     @get:Rule
@@ -98,6 +98,8 @@ class EdgeMusicBarScreenshotTest {
                     Docked { EdgeMusicBar(defaultTheme, {}, {}, {}) }
                     Docked { EdgeMusicBar(blueArtwork, {}, {}, {}) }
                     Docked { EdgeMusicBar(yellowArtwork, {}, {}, {}) }
+                    Box(Modifier.size(56.dp)) { EdgeMiniBubble(yellowArtwork, {}) }
+                    Box(Modifier.size(56.dp)) { EdgeMiniBubble(blueArtwork, {}) }
                     Box(
                         Modifier
                             .size(20.dp, 120.dp)

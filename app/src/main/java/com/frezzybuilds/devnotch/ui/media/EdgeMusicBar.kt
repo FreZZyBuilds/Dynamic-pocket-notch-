@@ -1,6 +1,7 @@
 package com.frezzybuilds.devnotch.ui.media
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -35,12 +36,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -158,6 +161,63 @@ fun EdgeMusicBar(
         PlayPauseButton(nowPlaying.isPlaying, colors, onPlayPause)
         Spacer(Modifier.height(6.dp))
         EdgeIconButton(MediaIcons.SkipPrevious, "Vorheriger Titel", colors.content, onPrevious)
+    }
+}
+
+/**
+ * Eingeklappter Edge-Player: nur noch das runde Cover. Ein Ring im Albumverlauf zeigt, dass
+ * Musik läuft, und dreht sich dabei langsam. Tippen holt die volle Leiste zurück.
+ */
+@Composable
+fun EdgeMiniBubble(
+    nowPlaying: NowPlaying,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = rememberEdgeColors(nowPlaying)
+    val ringAngle = if (LocalInspectionMode.current || !nowPlaying.isPlaying) {
+        0f
+    } else {
+        val transition = rememberInfiniteTransition(label = "bubbleRing")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(tween(4_000, easing = LinearEasing)),
+            label = "ringAngle"
+        ).value
+    }
+    val ringColors = colors.gradient + colors.gradient.first()
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clip(CircleShape)
+            .clickable(onClickLabel = "Edge-Player öffnen", onClick = onClick)
+            .drawBehind {
+                rotate(ringAngle) { drawCircle(Brush.sweepGradient(ringColors)) }
+            }
+            .padding(3.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        val art = nowPlaying.artwork
+        val inner = Modifier.fillMaxSize().clip(CircleShape)
+        if (art != null) {
+            val image = remember(art) { art.asImageBitmap() }
+            Image(image, contentDescription = "Albumcover – tippen zum Öffnen", contentScale = ContentScale.Crop, modifier = inner)
+        } else {
+            Box(inner.background(Brush.verticalGradient(colors.gradient)), contentAlignment = Alignment.Center) {
+                Text("♪", color = colors.content, style = MaterialTheme.typography.titleLarge)
+            }
+        }
+        // Pausiert: dezentes Pause-Symbol über dem Cover, damit der Zustand erkennbar bleibt.
+        if (!nowPlaying.isPlaying) {
+            Box(
+                Modifier.fillMaxSize().clip(CircleShape).background(Color.Black.copy(alpha = 0.35f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(MediaIcons.Pause, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+            }
+        }
     }
 }
 

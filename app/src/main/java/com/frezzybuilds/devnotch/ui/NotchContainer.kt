@@ -45,6 +45,16 @@ import com.frezzybuilds.devnotch.service.MediaNotificationListener
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
 import com.frezzybuilds.devnotch.service.NowPlaying
 import com.frezzybuilds.devnotch.ui.media.EdgeHandle
+import com.frezzybuilds.devnotch.ui.media.EdgeMiniBubble
+import com.frezzybuilds.devnotch.ui.media.rememberEdgePlayerState
+import com.frezzybuilds.devnotch.appContainer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import com.frezzybuilds.devnotch.ui.media.EdgeMusicBar
 import com.frezzybuilds.devnotch.ui.media.MarqueeTitle
 import com.frezzybuilds.devnotch.ui.media.MediaHeader
@@ -60,6 +70,7 @@ private val DashboardHeight = 280.dp
 private val EdgeHandleWidth = 20.dp
 private val EdgeBarWidth = 60.dp
 private val EdgeBarHeight = 340.dp
+private val EdgeBubbleSize = 56.dp
 
 private enum class NotchTab(val title: String) {
     DEV("Dev"),
@@ -96,7 +107,20 @@ fun NotchContainer(
         onExpandRequest(expanded)
     }
 
-    val (collapsedWidth, collapsedHeight) = collapsedSize(layout, hasMedia = nowPlaying != null)
+    // Edge-Player: nach 5 s ohne Interaktion zur Cover-Bubble einklappen (abschaltbar).
+    val settings = LocalContext.current.appContainer.notchSettings
+    val autoMinimize by remember { settings.edgeAutoMinimizeFlow() }
+        .collectAsStateWithLifecycle(initialValue = settings.edgeAutoMinimize)
+    val edgeMedia = nowPlaying?.takeIf { layout.mode == NotchLayoutMode.EDGE_SIDE }
+    val edgePlayer = rememberEdgePlayerState(
+        trackKey = nowPlaying?.let { it.packageName + "|" + it.title },
+        autoMinimize = autoMinimize,
+        active = edgeMedia != null && !isExpanded
+    )
+    val edgeMini = edgeMedia != null && edgePlayer.minimized && !isExpanded
+
+    val (collapsedWidth, collapsedHeight) =
+        collapsedSize(layout, hasMedia = nowPlaying != null, minimized = edgeMini)
     val cornerRadius by animateDpAsState(
         targetValue = if (isExpanded) 24.dp else minOf(collapsedWidth, collapsedHeight) / 2,
         animationSpec = notchSpring(),
@@ -111,7 +135,7 @@ fun NotchContainer(
                     if (isExpanded) Modifier.size(DashboardWidth, DashboardHeight)
                     else Modifier.size(collapsedWidth, collapsedHeight)
                 )
-                .clip(notchShape(layout, cornerRadius))
+                .clip(notchShape(layout, cornerRadius, circle = edgeMini))
                 .background(NotchBlack)
                 // Nur eingeklappt klickbar, sonst schluckt die Box Taps im Dashboard.
                 .clickable(enabled = !isExpanded) { setExpanded(true) },
@@ -149,15 +173,40 @@ fun NotchContainer(
                     }
                 )
             } else {
-                // Edge-Dock: mit Musik die farbige Player-Leiste, sonst der schlanke Griff.
-                val media = nowPlaying
+                // Edge-Dock: mit Musik die farbige Player-Leiste (oder eingeklappt die Cover-Bubble),
+                // sonst der schlanke Griff. Die Größe federt über animateContentSize, der Inhalt
+                // blendet über – so „zieht sich“ die Leiste zur Bubble zusammen.
+                val media = edgeMedia
                 if (media != null) {
-                    EdgeMusicBar(
-                        nowPlaying = media,
-                        onPrevious = MediaNotificationListener::skipToPrevious,
-                        onPlayPause = MediaNotificationListener::togglePlayPause,
-                        onNext = MediaNotificationListener::skipToNext
-                    )
+                    AnimatedContent(
+                        targetState = edgeMini,
+                        modifier = Modifier.fillMaxSize(),
+                        transitionSpec = {
+                            fadeIn(tween(220, delayMillis = 120)) togetherWith fadeOut(tween(120)) using
+                                SizeTransform(clip = false)
+                        },
+                        label = "edgePlayer"
+                    ) { mini ->
+                        if (mini) {
+                            EdgeMiniBubble(nowPlaying = media, onClick = edgePlayer::restore)
+                        } else {
+                            EdgeMusicBar(
+                                nowPlaying = media,
+                                onPrevious = {
+                                    edgePlayer.onInteraction()
+                                    MediaNotificationListener.skipToPrevious()
+                                },
+                                onPlayPause = {
+                                    edgePlayer.onInteraction()
+                                    MediaNotificationListener.togglePlayPause()
+                                },
+                                onNext = {
+                                    edgePlayer.onInteraction()
+                                    MediaNotificationListener.skipToNext()
+                                }
+                            )
+                        }
+                    }
                 } else {
                     EdgeHandle()
                 }
@@ -274,14 +323,17 @@ private fun lensGap(layout: NotchLayout): Dp {
  * der sich bei Musik per Feder zur 60×340-dp-Player-Leiste aufzieht.
  */
 @Composable
-private fun collapsedSize(layout: NotchLayout, hasMedia: Boolean): Pair<Dp, Dp> {
+private fun collapsedSize(layout: NotchLayout, hasMedia: Boolean, minimized: Boolean): Pair<Dp, Dp> {
     val density = LocalDensity.current
     return when (layout.mode) {
         NotchLayoutMode.NOTCH_TOP -> with(density) {
             layout.pill.width.toDp() to layout.pill.height.toDp()
         }
-        NotchLayoutMode.EDGE_SIDE ->
-            if (hasMedia) EdgeBarWidth to EdgeBarHeight else EdgeHandleWidth to PillWidth
+        NotchLayoutMode.EDGE_SIDE -> when {
+            minimized -> EdgeBubbleSize to EdgeBubbleSize
+            hasMedia -> EdgeBarWidth to EdgeBarHeight
+            else -> EdgeHandleWidth to PillWidth
+        }
     }
 }
 
@@ -289,8 +341,9 @@ private fun collapsedSize(layout: NotchLayout, hasMedia: Boolean): Pair<Dp, Dp> 
  * Oben rundum abgerundet. Die Edge Bar klebt per Gravity.END am Rand, daher wird nur die
  * Start-Seite (zur Bildschirmmitte) abgerundet – das passt auch bei RTL automatisch.
  */
-private fun notchShape(layout: NotchLayout, radius: Dp): RoundedCornerShape =
-    when (layout.mode) {
-        NotchLayoutMode.NOTCH_TOP -> RoundedCornerShape(radius)
-        NotchLayoutMode.EDGE_SIDE -> RoundedCornerShape(topStart = radius, bottomStart = radius)
+private fun notchShape(layout: NotchLayout, radius: Dp, circle: Boolean): RoundedCornerShape =
+    when {
+        // Eingeklappte Cover-Bubble: rundum rund.
+        circle || layout.mode == NotchLayoutMode.NOTCH_TOP -> RoundedCornerShape(radius)
+        else -> RoundedCornerShape(topStart = radius, bottomStart = radius)
     }
