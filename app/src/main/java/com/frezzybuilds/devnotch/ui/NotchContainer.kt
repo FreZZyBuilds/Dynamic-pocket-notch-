@@ -7,6 +7,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,7 +41,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frezzybuilds.devnotch.feature.github.DevTabContent
 import com.frezzybuilds.devnotch.service.NotchLayout
+import com.frezzybuilds.devnotch.service.MediaNotificationListener
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
+import com.frezzybuilds.devnotch.service.NowPlaying
+import com.frezzybuilds.devnotch.ui.media.MarqueeTitle
+import com.frezzybuilds.devnotch.ui.media.MediaHeader
 import com.frezzybuilds.devnotch.ui.clipboard.ClipboardContent
 import com.frezzybuilds.devnotch.ui.focus.FocusTimerTab
 import com.frezzybuilds.devnotch.ui.focus.formatMmSs
@@ -78,6 +85,7 @@ fun NotchContainer(
     val timerRunning by focusTimer.isRunning.collectAsStateWithLifecycle()
     // Eingeklappt nur anzeigen, wenn der Timer läuft oder angebrochen pausiert ist.
     val showTimerInPill = timerRunning || timerRemaining != timerTotal
+    val nowPlaying by MediaNotificationListener.nowPlaying.collectAsStateWithLifecycle()
 
     fun setExpanded(expanded: Boolean) {
         isExpanded = expanded
@@ -112,20 +120,29 @@ fun NotchContainer(
                     selectedTab = selectedTab,
                     onSelectTab = { selectedTab = it },
                     focusTimer = focusTimer,
+                    nowPlaying = nowPlaying,
                     onClose = { setExpanded(false) },
                     modifier = Modifier
                         .wrapContentSize(Alignment.TopCenter, unbounded = true)
                         .size(DashboardWidth, DashboardHeight)
                 )
-            } else if (showTimerInPill && layout.mode == NotchLayoutMode.NOTCH_TOP) {
-                // Rechts neben dem Punch-Hole, damit die Kamera frei bleibt.
-                Text(
-                    text = "⏱ ${formatMmSs(timerRemaining)}",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 12.dp)
+            } else if (layout.mode == NotchLayoutMode.NOTCH_TOP) {
+                val playing = nowPlaying?.takeIf { it.isPlaying }
+                val timerText = if (showTimerInPill) "⏱ ${formatMmSs(timerRemaining)}" else null
+                CollapsedPillContent(
+                    lensGap = lensGap(layout),
+                    // Links: Timer, sonst ♪ als Hinweis auf laufende Musik.
+                    start = when {
+                        playing != null && timerText != null -> { { PillLabel(timerText) } }
+                        playing != null -> { { PillLabel("♪") } }
+                        else -> null
+                    },
+                    // Rechts: Songtitel als Lauftext, sonst der Timer.
+                    end = when {
+                        playing != null -> { { MarqueeTitle(playing) } }
+                        timerText != null -> { { PillLabel(timerText) } }
+                        else -> null
+                    }
                 )
             }
         }
@@ -137,6 +154,7 @@ private fun Dashboard(
     selectedTab: NotchTab,
     onSelectTab: (NotchTab) -> Unit,
     focusTimer: FocusTimerViewModel,
+    nowPlaying: NowPlaying?,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -145,12 +163,18 @@ private fun Dashboard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "DevNotch",
-                color = Color.White,
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.weight(1f)
-            )
+            // Läuft (oder pausiert) Musik, wird die Kopfzeile zur Mediensteuerung – ohne
+            // zusätzliche Höhe im 280-dp-Dashboard.
+            if (nowPlaying != null) {
+                MediaHeader(nowPlaying, Modifier.weight(1f))
+            } else {
+                Text(
+                    "DevNotch",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f)
+                )
+            }
             TextButton(onClick = onClose) {
                 Text("✕", color = Color.Gray)
             }
@@ -191,6 +215,40 @@ private fun Dashboard(
             }
         }
     }
+}
+
+/**
+ * Eingeklappter Inhalt in zwei Hälften links/rechts der Kameralinse, damit Text nie über die
+ * Linse läuft. Ohne Linse bleibt nur ein schmaler Mittelsteg.
+ */
+@Composable
+private fun CollapsedPillContent(
+    lensGap: Dp,
+    start: (@Composable () -> Unit)?,
+    end: (@Composable () -> Unit)?
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) { start?.invoke() }
+        Spacer(Modifier.width(lensGap))
+        Box(Modifier.weight(1f).clipToBounds(), contentAlignment = Alignment.CenterStart) { end?.invoke() }
+    }
+}
+
+@Composable
+private fun PillLabel(text: String) {
+    Text(text, color = Color.White, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+}
+
+/** Breite der Linse plus etwas Luft; ohne Linse 8 dp. */
+@Composable
+private fun lensGap(layout: NotchLayout): Dp {
+    val lens = layout.lens ?: return 8.dp
+    return with(LocalDensity.current) { lens.diameter.toDp() } + 12.dp
 }
 
 /**
