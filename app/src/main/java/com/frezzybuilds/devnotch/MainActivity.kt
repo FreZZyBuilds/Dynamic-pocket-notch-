@@ -24,8 +24,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationManagerCompat
+import com.frezzybuilds.devnotch.service.EdgeSide
+import com.frezzybuilds.devnotch.service.NotchLayoutMode
 import com.frezzybuilds.devnotch.service.NotchOverlayService
 import com.frezzybuilds.devnotch.ui.theme.DevNotchTheme
 
@@ -53,6 +54,7 @@ class MainActivity : ComponentActivity() {
                         onRequestListener = ::openNotificationListenerSettings,
                         onStart = ::startNotch,
                         onStop = ::stopNotch,
+                        onSetMode = { mode, side -> NotchOverlayService.setMode(this, mode, side) },
                         modifier = Modifier.padding(padding)
                     )
                 }
@@ -81,7 +83,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startNotch() {
-        ContextCompat.startForegroundService(this, Intent(this, NotchOverlayService::class.java))
+        NotchOverlayService.start(this)
     }
 
     private fun stopNotch() {
@@ -97,6 +99,7 @@ private fun SetupScreen(
     onRequestListener: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    onSetMode: (NotchLayoutMode, EdgeSide) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -117,6 +120,16 @@ private fun SetupScreen(
         }
         OutlinedButton(onClick = onStop) {
             Text("Notch stoppen")
+        }
+        Text("Layout-Modus")
+        OutlinedButton(onClick = { onSetMode(NotchLayoutMode.NOTCH_TOP, EdgeSide.RIGHT) }, enabled = overlayGranted) {
+            Text("Oben (Kamera)")
+        }
+        OutlinedButton(onClick = { onSetMode(NotchLayoutMode.EDGE_SIDE, EdgeSide.LEFT) }, enabled = overlayGranted) {
+            Text("Rand links")
+        }
+        OutlinedButton(onClick = { onSetMode(NotchLayoutMode.EDGE_SIDE, EdgeSide.RIGHT) }, enabled = overlayGranted) {
+            Text("Rand rechts")
         }
     }
 }
