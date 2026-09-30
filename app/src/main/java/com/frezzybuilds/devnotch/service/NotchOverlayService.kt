@@ -11,6 +11,7 @@ import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.graphics.Point
+import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.IBinder
@@ -67,7 +68,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private lateinit var displayModeListener: SharedPreferences.OnSharedPreferenceChangeListener
 
     /** Compose-State: Änderungen lösen automatisch eine Recomposition der Notch aus. */
-    private var notchLayout by mutableStateOf(NotchLayout(NotchLayoutMode.NOTCH_TOP))
+    private var notchLayout by mutableStateOf(
+        NotchLayout(NotchLayoutMode.NOTCH_TOP, pill = PillGeometry(0, 0, 0, 0))
+    )
     private var expanded = false
 
     override fun onCreate() {
@@ -79,7 +82,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val settings = appContainer.notchSettings
-        notchLayout = NotchLayout(mode = settings.displayMode, cutout = readCameraCutout())
+        // Vor dem ersten Layout gibt es noch keine Window-Insets: detectCutoutBounds() nutzt
+        // dann die Display-Aussparung (API 29+) und korrigiert sich, sobald Insets ankommen.
+        notchLayout = layoutFor(settings.displayMode, detectCutoutBounds()?.toLens())
         // Umschalten in den Einstellungen wirkt sofort, ohne den Service neu zu starten.
         displayModeListener = settings.addDisplayModeListener { mode ->
             notchLayout = notchLayout.copy(mode = mode)
@@ -106,8 +111,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // Bei Rotation wandert die Kamera-Aussparung mit.
-        notchLayout = notchLayout.copy(cutout = readCameraCutout())
+        // Bei Rotation wandern Aussparung und Bildschirmmitte mit.
+        notchLayout = layoutFor(notchLayout.mode, detectCutoutBounds()?.toLens())
         applyLayout()
     }
 
@@ -159,6 +164,12 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         view.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
             if (hasFocus) clipboardListener.captureCurrentClip()
         }
+        // Insets (inkl. displayCutout) kommen erst nach dem Anhängen des Fensters und bei jeder
+        // Änderung (Rotation, Verschieben). Danach die Position am Punch-Hole nachjustieren.
+        view.setOnApplyWindowInsetsListener { v, insets ->
+            v.post(::refreshCutout)
+            insets
+        }
         windowManager.addView(view, layoutParams)
         composeView = view
 
@@ -177,16 +188,27 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         layoutParams.apply {
             when (notchLayout.mode) {
                 NotchLayoutMode.NOTCH_TOP -> {
+                    val pill = notchLayout.pill
+                    // CENTER_HORIZONTAL + x: Das Fenster bleibt bei jeder Breite (Pille wie
+                    // aufgeklapptes Dashboard) horizontal auf die Linse zentriert.
                     gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                    // Bei CENTER_HORIZONTAL ist x der Versatz zur Bildschirmmitte.
-                    x = notchLayout.cutout?.let { it.centerX - screenWidth() / 2 } ?: 0
-                    y = 0
+                    x = pill.x
+                    if (expanded) {
+                        // Dashboard nie über die Oberkante schieben, System hält es im Bildschirm.
+                        y = maxOf(pill.y, 0)
+                        flags = flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS.inv()
+                    } else {
+                        // Eingeklappt exakt symmetrisch um die Linse, auch wenn y leicht negativ ist.
+                        y = pill.y
+                        flags = flags or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                    }
                 }
                 NotchLayoutMode.EDGE_SIDE -> {
                     // Dockt wie das Samsung Edge-Panel am rechten Rand an (bei RTL-Sprachen links).
                     gravity = Gravity.END or Gravity.CENTER_VERTICAL
                     x = 0
                     y = 0
+                    flags = flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS.inv()
                 }
             }
             // Aufgeklappt: fokussierbar (z. B. für Eingaben), eingeklappt: Fokus bleibt bei der App.
@@ -198,26 +220,68 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         }
     }
 
-    /**
-     * Liest die obere Kamera-Aussparung in Bildschirmkoordinaten aus.
-     * Display.getCutout() gibt es erst ab API 29; darunter wird ohne Cutout zentriert.
-     */
-    private fun readCameraCutout(): CameraCutout? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
-        val cutout = defaultDisplay()?.cutout ?: return null
-        val rect = cutout.boundingRectTop
-        if (rect.isEmpty) return null
-        return CameraCutout(rect.left, rect.top, rect.right, rect.bottom)
+    /** Liest die Aussparung erneut und verschiebt die Pille nur, wenn sich die Linse bewegt hat. */
+    private fun refreshCutout() {
+        if (composeView == null || notchLayout.mode != NotchLayoutMode.NOTCH_TOP) return
+        val lens = detectCutoutBounds()?.toLens()
+        // Verschieben löst neue Insets aus; die Linse in Bildschirmkoordinaten bleibt aber gleich,
+        // daher endet die Schleife hier.
+        if (lens == notchLayout.lens) return
+        notchLayout = layoutFor(notchLayout.mode, lens)
+        applyLayout()
     }
 
-    private fun screenWidth(): Int =
+    /**
+     * Ermittelt die obere Kamera-Aussparung in Bildschirmkoordinaten.
+     *
+     * 1. `composeView.rootWindowInsets.displayCutout` (API 28+): Die Rects sind relativ zum
+     *    Overlay-Fenster und nur vorhanden, wenn das Fenster die Aussparung überlappt. Sie werden
+     *    mit der Fensterposition in Bildschirmkoordinaten umgerechnet.
+     * 2. Fallback `Display.cutout` (API 29+): gilt für den ganzen Bildschirm, z. B. vor dem ersten
+     *    Layout oder wenn die Kamera außerhalb des Fensters liegt.
+     *
+     * Berücksichtigt nur Aussparungen im oberen Viertel (im Querformat liegt die Kamera seitlich).
+     */
+    private fun detectCutoutBounds(): Rect? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
+        val maxTop = screenHeight() / 4
+
+        composeView?.rootWindowInsets?.displayCutout?.let { cutout ->
+            val window = IntArray(2).also { composeView?.getLocationOnScreen(it) }
+            cutout.boundingRects
+                .map { Rect(it).apply { offset(window[0], window[1]) } }
+                .topmost(maxTop)
+                ?.let { return it }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            defaultDisplay()?.cutout?.boundingRects?.topmost(maxTop)?.let { return it }
+        }
+        return null
+    }
+
+    private fun List<Rect>.topmost(maxTop: Int): Rect? =
+        filter { !it.isEmpty && it.top <= maxTop }.minByOrNull { it.top }
+
+    private fun Rect.toLens() = CameraLens.fromBounds(left, top, right, bottom)
+
+    private fun layoutFor(mode: NotchLayoutMode, lens: CameraLens?) = NotchLayout(
+        mode = mode,
+        lens = lens,
+        pill = NotchGeometry.collapsedPill(lens, screenWidth(), resources.displayMetrics.density)
+    )
+
+    private fun screenWidth(): Int = screenSize().x
+
+    private fun screenHeight(): Int = screenSize().y
+
+    private fun screenSize(): Point =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            windowManager.maximumWindowMetrics.bounds.width()
+            windowManager.maximumWindowMetrics.bounds.let { Point(it.width(), it.height()) }
         } else {
             Point().also { size ->
                 @Suppress("DEPRECATION")
                 defaultDisplay()?.getRealSize(size)
-            }.x
+            }
         }
 
     private fun defaultDisplay(): Display? =

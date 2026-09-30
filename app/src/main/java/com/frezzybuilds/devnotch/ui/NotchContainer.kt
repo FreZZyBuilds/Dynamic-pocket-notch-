@@ -34,7 +34,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.max
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frezzybuilds.devnotch.feature.github.DevTabContent
@@ -47,7 +46,6 @@ import com.frezzybuilds.devnotch.ui.focus.FocusTimerViewModel
 
 private val NotchBlack = Color(0xFF000000)
 private val PillWidth = 120.dp
-private val PillHeight = 35.dp
 private val DashboardWidth = 360.dp
 private val DashboardHeight = 280.dp
 private val EdgeHandleWidth = 20.dp
@@ -195,17 +193,16 @@ private fun Dashboard(
     }
 }
 
-/** 120×35 dp; oben so breit/hoch, dass das Punch-Hole umschlossen wird. Am Rand ein schmaler Griff. */
+/**
+ * Oben: exakt die vom Service berechnete Pillengröße (120×35 dp oder größer, symmetrisch um
+ * die Kameralinse), damit Fensterposition und Inhalt übereinstimmen. Am Rand ein schmaler Griff.
+ */
 @Composable
 private fun collapsedSize(layout: NotchLayout): Pair<Dp, Dp> {
     val density = LocalDensity.current
     return when (layout.mode) {
-        NotchLayoutMode.NOTCH_TOP -> {
-            val cutout = layout.cutout
-            val holeWidth = with(density) { (cutout?.width ?: 0).toDp() }
-            // Oberkante liegt bei y = 0, daher top + bottom für symmetrischen Abstand ums Loch.
-            val holeSpan = with(density) { ((cutout?.top ?: 0) + (cutout?.bottom ?: 0)).toDp() }
-            max(PillWidth, holeWidth + 48.dp) to max(PillHeight, holeSpan)
+        NotchLayoutMode.NOTCH_TOP -> with(density) {
+            layout.pill.width.toDp() to layout.pill.height.toDp()
         }
         NotchLayoutMode.EDGE_SIDE -> EdgeHandleWidth to PillWidth
     }
