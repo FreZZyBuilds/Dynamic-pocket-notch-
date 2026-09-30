@@ -30,6 +30,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
@@ -37,6 +38,8 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.frezzybuilds.devnotch.R
+import com.frezzybuilds.devnotch.appContainer
+import com.frezzybuilds.devnotch.data.clipboard.ClipboardListener
 import com.frezzybuilds.devnotch.ui.NotchContainer
 
 /**
@@ -57,6 +60,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private lateinit var windowManager: WindowManager
     private lateinit var layoutParams: WindowManager.LayoutParams
     private var composeView: ComposeView? = null
+    private lateinit var clipboardListener: ClipboardListener
 
     /** Compose-State: Änderungen lösen automatisch eine Recomposition der Notch aus. */
     private var notchLayout by mutableStateOf(NotchLayout(NotchLayoutMode.NOTCH_TOP))
@@ -70,6 +74,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         notchLayout = NotchLayout(mode = defaultMode(), cutout = readCameraCutout())
+
+        clipboardListener = ClipboardListener(this, appContainer.clipboardRepository, lifecycleScope)
+        clipboardListener.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -95,6 +102,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     }
 
     override fun onDestroy() {
+        clipboardListener.stop()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         composeView?.let { windowManager.removeView(it) }
         composeView = null
@@ -133,6 +141,11 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                     }
                 )
             }
+        }
+        // Ab Android 10 ist die Zwischenablage nur mit Fokus lesbar: Sobald die aufgeklappte
+        // Notch Fokus bekommt, den aktuellen Inhalt nachträglich in die Historie übernehmen.
+        view.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
+            if (hasFocus) clipboardListener.captureCurrentClip()
         }
         windowManager.addView(view, layoutParams)
         composeView = view

@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- GitHub GraphQL API -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Berechtigung, über anderen Apps zu zeichnen (Notch-Overlay) -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
@@ -19,7 +22,8 @@
     -->
 
     <application
-        android:allowBackup="true"
+        android:name=".DevNotchApp"
+        android:allowBackup="false"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.DevNotch">

@@ -14,15 +14,20 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import com.frezzybuilds.devnotch.service.EdgeSide
@@ -54,6 +59,8 @@ class MainActivity : ComponentActivity() {
                         onRequestListener = ::openNotificationListenerSettings,
                         onStart = ::startNotch,
                         onStop = ::stopNotch,
+                        initialGitHubToken = appContainer.gitHubTokenStore.token.orEmpty(),
+                        onSaveGitHubToken = { appContainer.gitHubTokenStore.token = it },
                         onSetMode = { mode, side -> NotchOverlayService.setMode(this, mode, side) },
                         modifier = Modifier.padding(padding)
                     )
@@ -99,12 +106,15 @@ private fun SetupScreen(
     onRequestListener: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    initialGitHubToken: String,
+    onSaveGitHubToken: (String) -> Unit,
     onSetMode: (NotchLayoutMode, EdgeSide) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -130,6 +140,22 @@ private fun SetupScreen(
         }
         OutlinedButton(onClick = { onSetMode(NotchLayoutMode.EDGE_SIDE, EdgeSide.RIGHT) }, enabled = overlayGranted) {
             Text("Rand rechts")
+        }
+        Text("GitHub")
+        var token by remember { mutableStateOf(initialGitHubToken) }
+        var savedToken by remember { mutableStateOf(initialGitHubToken) }
+        OutlinedTextField(
+            value = token,
+            onValueChange = { token = it },
+            label = { Text("Personal Access Token") },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true
+        )
+        OutlinedButton(onClick = {
+            onSaveGitHubToken(token)
+            savedToken = token
+        }) {
+            Text(if (token == savedToken && token.isNotBlank()) "Token gespeichert ✓" else "Token speichern")
         }
     }
 }

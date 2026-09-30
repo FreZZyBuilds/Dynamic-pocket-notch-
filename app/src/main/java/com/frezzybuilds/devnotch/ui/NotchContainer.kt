@@ -22,9 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,10 +35,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frezzybuilds.devnotch.service.EdgeSide
 import com.frezzybuilds.devnotch.service.NotchLayout
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
-import kotlinx.coroutines.delay
+import com.frezzybuilds.devnotch.ui.clipboard.ClipboardHistoryContent
+import com.frezzybuilds.devnotch.ui.focus.FocusTimerContent
+import com.frezzybuilds.devnotch.ui.focus.FocusTimerState
+import com.frezzybuilds.devnotch.ui.focus.FocusTimerViewModel
+import com.frezzybuilds.devnotch.ui.github.GitHubContent
 
 private val NotchBlack = Color(0xFF000000)
 private val PillWidth = 120.dp
@@ -69,14 +73,9 @@ fun NotchContainer(
     var isExpanded by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(NotchTab.OVERVIEW) }
 
-    // Timer-State liegt hier (nicht im Tab), damit er auch eingeklappt weiterläuft.
-    val pomodoro = remember { PomodoroState() }
-    LaunchedEffect(pomodoro.isRunning) {
-        while (pomodoro.isRunning) {
-            delay(1_000)
-            pomodoro.tick()
-        }
-    }
+    // ViewModel hängt am ViewModelStore des Service: Der Timer läuft auch eingeklappt weiter.
+    val focusTimer: FocusTimerViewModel = viewModel { FocusTimerViewModel() }
+    val timer by focusTimer.state.collectAsStateWithLifecycle()
 
     fun setExpanded(expanded: Boolean) {
         isExpanded = expanded
@@ -110,16 +109,17 @@ fun NotchContainer(
                 Dashboard(
                     selectedTab = selectedTab,
                     onSelectTab = { selectedTab = it },
-                    pomodoro = pomodoro,
+                    timer = timer,
+                    focusTimer = focusTimer,
                     onClose = { setExpanded(false) },
                     modifier = Modifier
                         .wrapContentSize(Alignment.TopCenter, unbounded = true)
                         .size(DashboardWidth, DashboardHeight)
                 )
-            } else if (pomodoro.isRunning && layout.mode == NotchLayoutMode.NOTCH_TOP) {
+            } else if (!timer.isIdle && layout.mode == NotchLayoutMode.NOTCH_TOP) {
                 // Rechts neben dem Punch-Hole, damit die Kamera frei bleibt.
                 Text(
-                    text = pomodoro.formatted,
+                    text = "${timer.phase.emoji} ${timer.formatted}",
                     color = Color.White,
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier
@@ -135,7 +135,8 @@ fun NotchContainer(
 private fun Dashboard(
     selectedTab: NotchTab,
     onSelectTab: (NotchTab) -> Unit,
-    pomodoro: PomodoroState,
+    timer: FocusTimerState,
+    focusTimer: FocusTimerViewModel,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -183,10 +184,15 @@ private fun Dashboard(
                 .padding(top = 8.dp)
         ) {
             when (selectedTab) {
-                NotchTab.OVERVIEW -> OverviewTabContent(pomodoro)
-                NotchTab.POMODORO -> PomodoroTabContent(pomodoro)
-                NotchTab.CLIPBOARD -> ClipboardTabContent()
-                NotchTab.DEV -> DevTabContent()
+                NotchTab.OVERVIEW -> OverviewTabContent(timer)
+                NotchTab.POMODORO -> FocusTimerContent(
+                    state = timer,
+                    onToggle = focusTimer::toggle,
+                    onReset = focusTimer::reset,
+                    onSkip = focusTimer::skip
+                )
+                NotchTab.CLIPBOARD -> ClipboardHistoryContent()
+                NotchTab.DEV -> GitHubContent()
             }
         }
     }
@@ -215,32 +221,3 @@ private fun notchShape(layout: NotchLayout, radius: Dp): RoundedCornerShape =
         layout.side == EdgeSide.RIGHT -> RoundedCornerShape(topStart = radius, bottomStart = radius)
         else -> RoundedCornerShape(topEnd = radius, bottomEnd = radius)
     }
-
-/** Einfacher Pomodoro-Timer (25 min Fokus). */
-class PomodoroState(private val durationSeconds: Int = 25 * 60) {
-    var remainingSeconds by mutableIntStateOf(durationSeconds)
-        private set
-    var isRunning by mutableStateOf(false)
-        private set
-
-    val formatted: String
-        get() = "%02d:%02d".format(remainingSeconds / 60, remainingSeconds % 60)
-
-    val progress: Float
-        get() = 1f - remainingSeconds.toFloat() / durationSeconds
-
-    fun toggle() {
-        if (remainingSeconds == 0) remainingSeconds = durationSeconds
-        isRunning = !isRunning
-    }
-
-    fun reset() {
-        isRunning = false
-        remainingSeconds = durationSeconds
-    }
-
-    fun tick() {
-        if (remainingSeconds > 0) remainingSeconds--
-        if (remainingSeconds == 0) isRunning = false
-    }
-}
