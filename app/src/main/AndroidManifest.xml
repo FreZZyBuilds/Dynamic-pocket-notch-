@@ -21,6 +21,12 @@
         Einstellungen > Benachrichtigungszugriff.
     -->
 
+    <!-- Paketsichtbarkeit (Android 11+) für die Dev-Shortcuts: Termux und GitHub Mobile starten. -->
+    <queries>
+        <package android:name="com.termux" />
+        <package android:name="com.github.android" />
+    </queries>
+
     <application
         android:name=".DevNotchApp"
         android:allowBackup="false"

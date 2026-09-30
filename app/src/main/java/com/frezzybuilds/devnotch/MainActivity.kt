@@ -160,7 +160,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        GitHubTokenCard()
+        GitHubCard()
     }
 
     if (showModeDialog) {
@@ -226,10 +226,12 @@ private fun DisplayModeDialog(
 }
 
 @Composable
-private fun GitHubTokenCard() {
-    val tokenStore = LocalContext.current.appContainer.gitHubTokenStore
-    var token by remember { mutableStateOf(tokenStore.token.orEmpty()) }
-    var savedToken by remember { mutableStateOf(token) }
+private fun GitHubCard() {
+    val settings = LocalContext.current.appContainer.gitHubSettings
+    var token by remember { mutableStateOf(settings.token.orEmpty()) }
+    var username by remember { mutableStateOf(settings.username.orEmpty()) }
+    var saved by remember { mutableStateOf(token to username) }
+    val isSaved = saved == (token to username) && token.isNotBlank()
 
     Card(Modifier.fillMaxWidth()) {
         Column(
@@ -238,18 +240,28 @@ private fun GitHubTokenCard() {
         ) {
             Text("GitHub", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text("Benutzername") },
+                placeholder = { Text("leer = Inhaber des Tokens") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
                 value = token,
                 onValueChange = { token = it },
                 label = { Text("Personal Access Token") },
+                supportingText = { Text("Die GraphQL-API verlangt einen Token, auch für öffentliche Profile.") },
                 visualTransformation = PasswordVisualTransformation(),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
             OutlinedButton(onClick = {
-                tokenStore.token = token
-                savedToken = token
+                settings.token = token
+                settings.username = username
+                saved = token to username
             }) {
-                Text(if (token == savedToken && token.isNotBlank()) "Token gespeichert ✓" else "Token speichern")
+                Text(if (isSaved) "Gespeichert ✓" else "Speichern")
             }
         }
     }

@@ -5,10 +5,10 @@ import android.content.Context
 import androidx.room.Room
 import com.frezzybuilds.devnotch.data.DevNotchDatabase
 import com.frezzybuilds.devnotch.data.clipboard.ClipboardRepository
-import com.frezzybuilds.devnotch.data.github.GitHubRepository
-import com.frezzybuilds.devnotch.data.github.GitHubTokenStore
-import com.frezzybuilds.devnotch.data.github.createGitHubHttpClient
 import com.frezzybuilds.devnotch.data.settings.NotchSettings
+import com.frezzybuilds.devnotch.feature.github.GitHubService
+import com.frezzybuilds.devnotch.feature.github.GitHubSettings
+import com.frezzybuilds.devnotch.feature.github.createGitHubHttpClient
 import io.ktor.client.engine.android.Android
 
 class DevNotchApp : Application() {
@@ -27,10 +27,10 @@ class AppContainer(context: Context) {
 
     val clipboardRepository = ClipboardRepository(context, database.clipboardDao())
 
-    val gitHubTokenStore = GitHubTokenStore(context)
-    val gitHubRepository = GitHubRepository(
+    val gitHubSettings = GitHubSettings(context)
+    val gitHubService = GitHubService(
         client = createGitHubHttpClient(Android.create()),
-        tokenStore = gitHubTokenStore::token
+        token = gitHubSettings::token
     )
 }
 

@@ -1,11 +1,8 @@
-package com.frezzybuilds.devnotch.ui.github
+package com.frezzybuilds.devnotch.feature.github
 
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.frezzybuilds.devnotch.data.github.GitHubDashboard
-import com.frezzybuilds.devnotch.data.github.GitHubRepository
-import com.frezzybuilds.devnotch.data.github.MissingTokenException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,20 +14,28 @@ sealed interface GitHubUiState {
     data object Loading : GitHubUiState
     data object NoToken : GitHubUiState
     data class Error(val message: String) : GitHubUiState
-    data class Success(val dashboard: GitHubDashboard) : GitHubUiState
+    data class Success(val profile: GitHubProfile) : GitHubUiState
 }
 
-class GitHubViewModel(private val repository: GitHubRepository) : ViewModel() {
+class GitHubViewModel(
+    private val service: GitHubService,
+    private val settings: GitHubSettings
+) : ViewModel() {
 
     private val _state = MutableStateFlow<GitHubUiState>(GitHubUiState.Loading)
     val state: StateFlow<GitHubUiState> = _state.asStateFlow()
 
     private var lastSuccessAt = 0L
+    private var loadedUsername: String? = null
     private var loading = false
 
-    /** Beim Öffnen des Tabs: nur neu laden, wenn nichts da ist oder die Daten älter als 10 min sind. */
+    /**
+     * Beim Öffnen des Tabs: neu laden, wenn nichts da ist, die Daten älter als 10 min sind
+     * oder in den Einstellungen inzwischen ein anderer Benutzer eingetragen wurde.
+     */
     fun refreshIfStale() {
         val fresh = _state.value is GitHubUiState.Success &&
+            loadedUsername == settings.username &&
             SystemClock.elapsedRealtime() - lastSuccessAt < STALE_AFTER_MILLIS
         if (!fresh) refresh()
     }
@@ -38,12 +43,16 @@ class GitHubViewModel(private val repository: GitHubRepository) : ViewModel() {
     fun refresh() {
         if (loading) return
         loading = true
-        // Vorhandene Daten beim Aktualisieren stehen lassen statt zu flackern.
-        if (_state.value !is GitHubUiState.Success) _state.value = GitHubUiState.Loading
+        val username = settings.username
+        // Beim Wechsel des Benutzers nicht kurz das alte Profil zeigen.
+        if (_state.value !is GitHubUiState.Success || username != loadedUsername) {
+            _state.value = GitHubUiState.Loading
+        }
         viewModelScope.launch {
             _state.value = try {
-                GitHubUiState.Success(repository.fetchDashboard()).also {
+                GitHubUiState.Success(service.fetchProfile(username)).also {
                     lastSuccessAt = SystemClock.elapsedRealtime()
+                    loadedUsername = username
                 }
             } catch (e: CancellationException) {
                 throw e

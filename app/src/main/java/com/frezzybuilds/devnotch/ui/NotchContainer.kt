@@ -37,13 +37,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.frezzybuilds.devnotch.feature.github.DevTabContent
 import com.frezzybuilds.devnotch.service.NotchLayout
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
 import com.frezzybuilds.devnotch.ui.clipboard.ClipboardContent
 import com.frezzybuilds.devnotch.ui.focus.FocusTimerTab
 import com.frezzybuilds.devnotch.ui.focus.formatMmSs
 import com.frezzybuilds.devnotch.ui.focus.FocusTimerViewModel
-import com.frezzybuilds.devnotch.ui.github.GitHubContent
 
 private val NotchBlack = Color(0xFF000000)
 private val PillWidth = 120.dp
@@ -53,10 +53,10 @@ private val DashboardHeight = 280.dp
 private val EdgeHandleWidth = 20.dp
 
 private enum class NotchTab(val title: String) {
+    DEV("Dev"),
     OVERVIEW("Overview"),
     TIMER("Timer"),
-    CLIP("Clip"),
-    DEV("Dev")
+    CLIP("Clip")
 }
 
 /** Eine Feder für Größe und Eckenradius, damit beides synchron „nachfedert“. */
@@ -71,7 +71,7 @@ fun NotchContainer(
     onExpandRequest: (Boolean) -> Unit
 ) {
     var isExpanded by remember { mutableStateOf(false) }
-    var selectedTab by remember { mutableStateOf(NotchTab.OVERVIEW) }
+    var selectedTab by remember { mutableStateOf(NotchTab.DEV) }
 
     // ViewModel hängt am ViewModelStore des Service: Der Timer läuft auch eingeklappt weiter.
     val focusTimer: FocusTimerViewModel = viewModel { FocusTimerViewModel() }
@@ -189,7 +189,7 @@ private fun Dashboard(
                 NotchTab.OVERVIEW -> OverviewTabContent(focusTimer)
                 NotchTab.TIMER -> FocusTimerTab(focusTimer)
                 NotchTab.CLIP -> ClipboardContent()
-                NotchTab.DEV -> GitHubContent()
+                NotchTab.DEV -> DevTabContent()
             }
         }
     }

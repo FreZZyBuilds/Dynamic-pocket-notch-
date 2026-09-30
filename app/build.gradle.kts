@@ -65,6 +65,7 @@ dependencies {
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.coil.compose)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
