@@ -41,6 +41,9 @@ import com.frezzybuilds.devnotch.R
 import com.frezzybuilds.devnotch.appContainer
 import com.frezzybuilds.devnotch.data.clipboard.ClipboardListener
 import com.frezzybuilds.devnotch.ui.NotchContainer
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Foreground-Service, der die Dynamic Notch als System-Overlay zeichnet.
@@ -69,6 +72,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
 
     override fun onCreate() {
         super.onCreate()
+        running.value = true
         savedStateRegistryController.performAttach()
         savedStateRegistryController.performRestore(null)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
@@ -114,6 +118,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         composeView?.let { windowManager.removeView(it) }
         composeView = null
         viewModelStore.clear()
+        running.value = false
         super.onDestroy()
     }
 
@@ -246,6 +251,11 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         private const val CHANNEL_ID = "notch_overlay"
         private const val NOTIFICATION_ID = 1
 
+        private val running = MutableStateFlow(false)
+
+        /** Ob der Service gerade läuft – auch nach Neustart der Activity korrekt. */
+        val isRunning: StateFlow<Boolean> = running.asStateFlow()
+
         fun start(context: Context) {
             ContextCompat.startForegroundService(
                 context,
@@ -253,5 +263,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             )
         }
 
+        fun stop(context: Context) {
+            context.stopService(Intent(context, NotchOverlayService::class.java))
+        }
     }
 }
