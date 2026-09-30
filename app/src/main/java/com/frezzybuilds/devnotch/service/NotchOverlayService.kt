@@ -1,12 +1,12 @@
 package com.frezzybuilds.devnotch.service
 
-import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.graphics.PixelFormat
@@ -61,6 +61,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private lateinit var layoutParams: WindowManager.LayoutParams
     private var composeView: ComposeView? = null
     private lateinit var clipboardListener: ClipboardListener
+    private lateinit var displayModeListener: SharedPreferences.OnSharedPreferenceChangeListener
 
     /** Compose-State: Änderungen lösen automatisch eine Recomposition der Notch aus. */
     private var notchLayout by mutableStateOf(NotchLayout(NotchLayoutMode.NOTCH_TOP))
@@ -73,7 +74,13 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        notchLayout = NotchLayout(mode = defaultMode(), cutout = readCameraCutout())
+        val settings = appContainer.notchSettings
+        notchLayout = NotchLayout(mode = settings.displayMode, cutout = readCameraCutout())
+        // Umschalten in den Einstellungen wirkt sofort, ohne den Service neu zu starten.
+        displayModeListener = settings.addDisplayModeListener { mode ->
+            notchLayout = notchLayout.copy(mode = mode)
+            applyLayout()
+        }
 
         clipboardListener = ClipboardListener(this, appContainer.clipboardRepository, lifecycleScope)
         clipboardListener.start()
@@ -87,7 +94,6 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             stopSelf()
             return START_NOT_STICKY
         }
-        if (intent?.action == ACTION_SET_MODE) handleSetMode(intent)
         if (composeView == null) setupOverlay() else applyLayout()
         return START_STICKY
     }
@@ -103,6 +109,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
 
     override fun onDestroy() {
         clipboardListener.stop()
+        appContainer.notchSettings.removeListener(displayModeListener)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         composeView?.let { windowManager.removeView(it) }
         composeView = null
@@ -161,8 +168,6 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         windowManager.updateViewLayout(view, layoutParams)
     }
 
-    // LEFT/RIGHT statt START/END: gemeint ist der physische Bildschirmrand, unabhängig von RTL.
-    @SuppressLint("RtlHardcoded")
     private fun updatePosition() {
         layoutParams.apply {
             when (notchLayout.mode) {
@@ -173,8 +178,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                     y = 0
                 }
                 NotchLayoutMode.EDGE_SIDE -> {
-                    val edge = if (notchLayout.side == EdgeSide.LEFT) Gravity.LEFT else Gravity.RIGHT
-                    gravity = edge or Gravity.CENTER_VERTICAL
+                    // Dockt wie das Samsung Edge-Panel am rechten Rand an (bei RTL-Sprachen links).
+                    gravity = Gravity.END or Gravity.CENTER_VERTICAL
                     x = 0
                     y = 0
                 }
@@ -187,24 +192,6 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             }
         }
     }
-
-    private fun handleSetMode(intent: Intent) {
-        val mode = intent.getStringExtra(EXTRA_MODE)
-            ?.let { runCatching { NotchLayoutMode.valueOf(it) }.getOrNull() }
-            ?: notchLayout.mode
-        val side = intent.getStringExtra(EXTRA_SIDE)
-            ?.let { runCatching { EdgeSide.valueOf(it) }.getOrNull() }
-            ?: notchLayout.side
-        notchLayout = notchLayout.copy(mode = mode, side = side)
-    }
-
-    /** Tablets (smallestWidth >= 600dp) starten am Rand, Smartphones oben an der Kamera. */
-    private fun defaultMode(): NotchLayoutMode =
-        if (resources.configuration.smallestScreenWidthDp >= 600) {
-            NotchLayoutMode.EDGE_SIDE
-        } else {
-            NotchLayoutMode.NOTCH_TOP
-        }
 
     /**
      * Liest die obere Kamera-Aussparung in Bildschirmkoordinaten aus.
@@ -256,10 +243,6 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     }
 
     companion object {
-        const val ACTION_SET_MODE = "com.frezzybuilds.devnotch.action.SET_MODE"
-        const val EXTRA_MODE = "mode"
-        const val EXTRA_SIDE = "side"
-
         private const val CHANNEL_ID = "notch_overlay"
         private const val NOTIFICATION_ID = 1
 
@@ -270,15 +253,5 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             )
         }
 
-        /** Schaltet den Layout-Modus um (startet den Service, falls er noch nicht läuft). */
-        fun setMode(context: Context, mode: NotchLayoutMode, side: EdgeSide = EdgeSide.RIGHT) {
-            ContextCompat.startForegroundService(
-                context,
-                Intent(context, NotchOverlayService::class.java)
-                    .setAction(ACTION_SET_MODE)
-                    .putExtra(EXTRA_MODE, mode.name)
-                    .putExtra(EXTRA_SIDE, side.name)
-            )
-        }
     }
 }

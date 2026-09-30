@@ -8,6 +8,7 @@ import com.frezzybuilds.devnotch.data.clipboard.ClipboardRepository
 import com.frezzybuilds.devnotch.data.github.GitHubRepository
 import com.frezzybuilds.devnotch.data.github.GitHubTokenStore
 import com.frezzybuilds.devnotch.data.github.createGitHubHttpClient
+import com.frezzybuilds.devnotch.data.settings.NotchSettings
 import io.ktor.client.engine.android.Android
 
 class DevNotchApp : Application() {
@@ -21,6 +22,8 @@ class AppContainer(context: Context) {
         DevNotchDatabase::class.java,
         "devnotch.db"
     ).build()
+
+    val notchSettings = NotchSettings(context)
 
     val clipboardRepository = ClipboardRepository(context, database.clipDao())
 

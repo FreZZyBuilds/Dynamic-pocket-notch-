@@ -13,13 +13,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,7 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
-import com.frezzybuilds.devnotch.service.EdgeSide
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
 import com.frezzybuilds.devnotch.service.NotchOverlayService
 import com.frezzybuilds.devnotch.ui.theme.DevNotchTheme
@@ -61,7 +65,8 @@ class MainActivity : ComponentActivity() {
                         onStop = ::stopNotch,
                         initialGitHubToken = appContainer.gitHubTokenStore.token.orEmpty(),
                         onSaveGitHubToken = { appContainer.gitHubTokenStore.token = it },
-                        onSetMode = { mode, side -> NotchOverlayService.setMode(this, mode, side) },
+                        initialDisplayMode = appContainer.notchSettings.displayMode,
+                        onDisplayModeChange = { appContainer.notchSettings.displayMode = it },
                         modifier = Modifier.padding(padding)
                     )
                 }
@@ -108,7 +113,8 @@ private fun SetupScreen(
     onStop: () -> Unit,
     initialGitHubToken: String,
     onSaveGitHubToken: (String) -> Unit,
-    onSetMode: (NotchLayoutMode, EdgeSide) -> Unit,
+    initialDisplayMode: NotchLayoutMode,
+    onDisplayModeChange: (NotchLayoutMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -131,16 +137,8 @@ private fun SetupScreen(
         OutlinedButton(onClick = onStop) {
             Text("Notch stoppen")
         }
-        Text("Layout-Modus")
-        OutlinedButton(onClick = { onSetMode(NotchLayoutMode.NOTCH_TOP, EdgeSide.RIGHT) }, enabled = overlayGranted) {
-            Text("Oben (Kamera)")
-        }
-        OutlinedButton(onClick = { onSetMode(NotchLayoutMode.EDGE_SIDE, EdgeSide.LEFT) }, enabled = overlayGranted) {
-            Text("Rand links")
-        }
-        OutlinedButton(onClick = { onSetMode(NotchLayoutMode.EDGE_SIDE, EdgeSide.RIGHT) }, enabled = overlayGranted) {
-            Text("Rand rechts")
-        }
+        Text("Einstellungen")
+        DisplayModeToggle(initialDisplayMode, onDisplayModeChange)
         Text("GitHub")
         var token by remember { mutableStateOf(initialGitHubToken) }
         var savedToken by remember { mutableStateOf(initialGitHubToken) }
@@ -156,6 +154,31 @@ private fun SetupScreen(
             savedToken = token
         }) {
             Text(if (token == savedToken && token.isNotBlank()) "Token gespeichert ✓" else "Token speichern")
+        }
+    }
+}
+
+/** Display Mode: [Punchhole Center | Floating Edge Bar]. Wirkt sofort auf die laufende Notch. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DisplayModeToggle(
+    initialMode: NotchLayoutMode,
+    onModeChange: (NotchLayoutMode) -> Unit
+) {
+    var selected by remember { mutableStateOf(initialMode) }
+    Text("Display Mode")
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        NotchLayoutMode.entries.forEachIndexed { index, mode ->
+            SegmentedButton(
+                selected = mode == selected,
+                onClick = {
+                    selected = mode
+                    onModeChange(mode)
+                },
+                shape = SegmentedButtonDefaults.itemShape(index, NotchLayoutMode.entries.size)
+            ) {
+                Text(mode.label, maxLines = 1)
+            }
         }
     }
 }

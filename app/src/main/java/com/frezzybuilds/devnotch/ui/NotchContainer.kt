@@ -37,7 +37,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.frezzybuilds.devnotch.service.EdgeSide
 import com.frezzybuilds.devnotch.service.NotchLayout
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
 import com.frezzybuilds.devnotch.ui.clipboard.ClipboardHistoryContent
@@ -51,6 +50,7 @@ private val PillWidth = 120.dp
 private val PillHeight = 35.dp
 private val DashboardWidth = 360.dp
 private val DashboardHeight = 280.dp
+private val EdgeHandleWidth = 20.dp
 
 private enum class NotchTab(val title: String) {
     OVERVIEW("Overview"),
@@ -198,7 +198,7 @@ private fun Dashboard(
     }
 }
 
-/** 120×35 dp; oben so breit/hoch, dass das Punch-Hole umschlossen wird. Am Rand hochkant. */
+/** 120×35 dp; oben so breit/hoch, dass das Punch-Hole umschlossen wird. Am Rand ein schmaler Griff. */
 @Composable
 private fun collapsedSize(layout: NotchLayout): Pair<Dp, Dp> {
     val density = LocalDensity.current
@@ -210,14 +210,16 @@ private fun collapsedSize(layout: NotchLayout): Pair<Dp, Dp> {
             val holeSpan = with(density) { ((cutout?.top ?: 0) + (cutout?.bottom ?: 0)).toDp() }
             max(PillWidth, holeWidth + 48.dp) to max(PillHeight, holeSpan)
         }
-        NotchLayoutMode.EDGE_SIDE -> PillHeight to PillWidth
+        NotchLayoutMode.EDGE_SIDE -> EdgeHandleWidth to PillWidth
     }
 }
 
-/** Oben rundum abgerundet; am Rand nur die zur Bildschirmmitte zeigende Seite. */
+/**
+ * Oben rundum abgerundet. Die Edge Bar klebt per Gravity.END am Rand, daher wird nur die
+ * Start-Seite (zur Bildschirmmitte) abgerundet – das passt auch bei RTL automatisch.
+ */
 private fun notchShape(layout: NotchLayout, radius: Dp): RoundedCornerShape =
-    when {
-        layout.mode == NotchLayoutMode.NOTCH_TOP -> RoundedCornerShape(radius)
-        layout.side == EdgeSide.RIGHT -> RoundedCornerShape(topStart = radius, bottomStart = radius)
-        else -> RoundedCornerShape(topEnd = radius, bottomEnd = radius)
+    when (layout.mode) {
+        NotchLayoutMode.NOTCH_TOP -> RoundedCornerShape(radius)
+        NotchLayoutMode.EDGE_SIDE -> RoundedCornerShape(topStart = radius, bottomStart = radius)
     }
