@@ -54,8 +54,8 @@ private val EdgeHandleWidth = 20.dp
 
 private enum class NotchTab(val title: String) {
     OVERVIEW("Overview"),
-    POMODORO("Pomodoro"),
-    CLIPBOARD("Clipboard"),
+    TIMER("Timer"),
+    CLIP("Clip"),
     DEV("Dev")
 }
 
@@ -185,13 +185,13 @@ private fun Dashboard(
         ) {
             when (selectedTab) {
                 NotchTab.OVERVIEW -> OverviewTabContent(timer)
-                NotchTab.POMODORO -> FocusTimerContent(
+                NotchTab.TIMER -> FocusTimerContent(
                     state = timer,
                     onToggle = focusTimer::toggle,
                     onReset = focusTimer::reset,
                     onSkip = focusTimer::skip
                 )
-                NotchTab.CLIPBOARD -> ClipboardHistoryContent()
+                NotchTab.CLIP -> ClipboardHistoryContent()
                 NotchTab.DEV -> GitHubContent()
             }
         }
