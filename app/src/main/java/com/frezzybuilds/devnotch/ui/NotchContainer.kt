@@ -40,8 +40,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frezzybuilds.devnotch.service.NotchLayout
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
 import com.frezzybuilds.devnotch.ui.clipboard.ClipboardHistoryContent
-import com.frezzybuilds.devnotch.ui.focus.FocusTimerContent
-import com.frezzybuilds.devnotch.ui.focus.FocusTimerState
+import com.frezzybuilds.devnotch.ui.focus.FocusTimerTab
+import com.frezzybuilds.devnotch.ui.focus.formatMmSs
 import com.frezzybuilds.devnotch.ui.focus.FocusTimerViewModel
 import com.frezzybuilds.devnotch.ui.github.GitHubContent
 
@@ -75,7 +75,11 @@ fun NotchContainer(
 
     // ViewModel hängt am ViewModelStore des Service: Der Timer läuft auch eingeklappt weiter.
     val focusTimer: FocusTimerViewModel = viewModel { FocusTimerViewModel() }
-    val timer by focusTimer.state.collectAsStateWithLifecycle()
+    val timerRemaining by focusTimer.remainingTime.collectAsStateWithLifecycle()
+    val timerTotal by focusTimer.totalTime.collectAsStateWithLifecycle()
+    val timerRunning by focusTimer.isRunning.collectAsStateWithLifecycle()
+    // Eingeklappt nur anzeigen, wenn der Timer läuft oder angebrochen pausiert ist.
+    val showTimerInPill = timerRunning || timerRemaining != timerTotal
 
     fun setExpanded(expanded: Boolean) {
         isExpanded = expanded
@@ -109,17 +113,16 @@ fun NotchContainer(
                 Dashboard(
                     selectedTab = selectedTab,
                     onSelectTab = { selectedTab = it },
-                    timer = timer,
                     focusTimer = focusTimer,
                     onClose = { setExpanded(false) },
                     modifier = Modifier
                         .wrapContentSize(Alignment.TopCenter, unbounded = true)
                         .size(DashboardWidth, DashboardHeight)
                 )
-            } else if (!timer.isIdle && layout.mode == NotchLayoutMode.NOTCH_TOP) {
+            } else if (showTimerInPill && layout.mode == NotchLayoutMode.NOTCH_TOP) {
                 // Rechts neben dem Punch-Hole, damit die Kamera frei bleibt.
                 Text(
-                    text = "${timer.phase.emoji} ${timer.formatted}",
+                    text = "⏱ ${formatMmSs(timerRemaining)}",
                     color = Color.White,
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier
@@ -135,7 +138,6 @@ fun NotchContainer(
 private fun Dashboard(
     selectedTab: NotchTab,
     onSelectTab: (NotchTab) -> Unit,
-    timer: FocusTimerState,
     focusTimer: FocusTimerViewModel,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
@@ -184,13 +186,8 @@ private fun Dashboard(
                 .padding(top = 8.dp)
         ) {
             when (selectedTab) {
-                NotchTab.OVERVIEW -> OverviewTabContent(timer)
-                NotchTab.TIMER -> FocusTimerContent(
-                    state = timer,
-                    onToggle = focusTimer::toggle,
-                    onReset = focusTimer::reset,
-                    onSkip = focusTimer::skip
-                )
+                NotchTab.OVERVIEW -> OverviewTabContent(focusTimer)
+                NotchTab.TIMER -> FocusTimerTab(focusTimer)
                 NotchTab.CLIP -> ClipboardHistoryContent()
                 NotchTab.DEV -> GitHubContent()
             }

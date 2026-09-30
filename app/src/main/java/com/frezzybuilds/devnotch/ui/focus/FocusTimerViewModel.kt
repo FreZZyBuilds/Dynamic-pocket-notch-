@@ -8,37 +8,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class FocusPhase(val durationMillis: Long, val label: String, val emoji: String) {
-    FOCUS(25 * 60_000L, "Fokus", "🍅"),
-    BREAK(5 * 60_000L, "Pause", "☕")
-}
-
-data class FocusTimerState(
-    val phase: FocusPhase = FocusPhase.FOCUS,
-    val remainingMillis: Long = FocusPhase.FOCUS.durationMillis,
-    val isRunning: Boolean = false,
-    val completedFocusSessions: Int = 0
-) {
-    /** Unberührt: volle Fokuszeit, nicht gestartet. Dann bleibt die eingeklappte Pille leer. */
-    val isIdle: Boolean
-        get() = !isRunning && phase == FocusPhase.FOCUS && remainingMillis == phase.durationMillis
-
-    val progress: Float
-        get() = 1f - remainingMillis.toFloat() / phase.durationMillis
-
-    /** mm:ss, auf volle Sekunden aufgerundet (zeigt 25:00 direkt nach dem Start). */
-    val formatted: String
-        get() {
-            val seconds = (remainingMillis + 999) / 1000
-            return "%02d:%02d".format(seconds / 60, seconds % 60)
-        }
-}
-
 /**
- * Pomodoro-Timer mit 25 min Fokus / 5 min Pause im Wechsel.
+ * Fokus-Timer mit Presets (25 min / 5 min).
  *
  * Die Restzeit wird aus einer Ziel-Uhrzeit (elapsedRealtime) berechnet statt Sekunden zu
  * zählen – so driftet der Timer nicht, auch wenn Ticks verspätet ankommen.
@@ -47,64 +20,72 @@ class FocusTimerViewModel(
     private val clock: () -> Long = SystemClock::elapsedRealtime
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(FocusTimerState())
-    val state: StateFlow<FocusTimerState> = _state.asStateFlow()
+    private val _remainingTime = MutableStateFlow(DEFAULT_MINUTES * 60L)
 
-    private var tickJob: Job? = null
+    /** Restzeit in Sekunden (Standard: 25 Minuten). */
+    val remainingTime: StateFlow<Long> = _remainingTime.asStateFlow()
+
+    private val _totalTime = MutableStateFlow(DEFAULT_MINUTES * 60L)
+
+    /** Länge des aktuellen Presets in Sekunden – Basis für den Fortschrittsring. */
+    val totalTime: StateFlow<Long> = _totalTime.asStateFlow()
+
+    private val _isRunning = MutableStateFlow(false)
+    val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
+
+    /** Exakte Restzeit in ms, damit Pausieren keine angebrochene Sekunde verliert. */
+    private var remainingMillis = DEFAULT_MINUTES * 60_000L
     private var endAt = 0L
+    private var tickJob: Job? = null
 
-    fun start() {
-        if (_state.value.isRunning) return
-        endAt = clock() + _state.value.remainingMillis
-        _state.update { it.copy(isRunning = true) }
+    fun startTimer() {
+        if (_isRunning.value) return
+        // Nach Ablauf startet „Start“ das aktuelle Preset neu.
+        if (remainingMillis == 0L) remainingMillis = _totalTime.value * 1000
+        endAt = clock() + remainingMillis
+        _isRunning.value = true
         tickJob = viewModelScope.launch {
             while (true) {
-                val remaining = (endAt - clock()).coerceAtLeast(0)
-                _state.update { it.copy(remainingMillis = remaining) }
-                if (remaining == 0L) {
-                    advancePhase()
-                    endAt = clock() + _state.value.remainingMillis
-                    continue
+                remainingMillis = (endAt - clock()).coerceAtLeast(0)
+                _remainingTime.value = remainingMillis.toDisplaySeconds()
+                if (remainingMillis == 0L) {
+                    _isRunning.value = false
+                    break
                 }
                 // Genau zum nächsten Sekundenwechsel der Restzeit aufwachen.
-                delay((remaining % 1000L).takeIf { it > 0 } ?: 1000L)
+                delay((remainingMillis % 1000L).takeIf { it > 0 } ?: 1000L)
             }
         }
     }
 
-    fun pause() {
-        if (!_state.value.isRunning) return
+    fun pauseTimer() {
+        if (!_isRunning.value) return
         tickJob?.cancel()
-        _state.update {
-            it.copy(isRunning = false, remainingMillis = (endAt - clock()).coerceAtLeast(0))
-        }
+        remainingMillis = (endAt - clock()).coerceAtLeast(0)
+        _remainingTime.value = remainingMillis.toDisplaySeconds()
+        _isRunning.value = false
     }
 
-    fun toggle() = if (_state.value.isRunning) pause() else start()
+    fun toggleTimer() = if (_isRunning.value) pauseTimer() else startTimer()
 
-    fun reset() {
+    /** Stoppt den Timer und setzt ihn auf ein Preset (z. B. 25 oder 5 Minuten). */
+    fun resetTimer(minutes: Int = DEFAULT_MINUTES) {
+        require(minutes > 0) { "minutes must be positive" }
         tickJob?.cancel()
-        _state.update { FocusTimerState(completedFocusSessions = it.completedFocusSessions) }
+        _isRunning.value = false
+        _totalTime.value = minutes * 60L
+        remainingMillis = minutes * 60_000L
+        _remainingTime.value = minutes * 60L
     }
 
-    /** Springt sofort ins nächste Intervall; läuft der Timer, läuft er dort weiter. */
-    fun skip() {
-        val wasRunning = _state.value.isRunning
-        tickJob?.cancel()
-        _state.update { it.copy(isRunning = false) }
-        advancePhase()
-        if (wasRunning) start()
-    }
+    companion object {
+        const val DEFAULT_MINUTES = 25
+        const val BREAK_MINUTES = 5
 
-    private fun advancePhase() {
-        _state.update { current ->
-            val next = if (current.phase == FocusPhase.FOCUS) FocusPhase.BREAK else FocusPhase.FOCUS
-            current.copy(
-                phase = next,
-                remainingMillis = next.durationMillis,
-                completedFocusSessions = current.completedFocusSessions +
-                    if (current.phase == FocusPhase.FOCUS) 1 else 0
-            )
-        }
+        /** Aufrunden: Direkt nach dem Start steht 25:00 da, nicht 24:59. */
+        private fun Long.toDisplaySeconds(): Long = (this + 999) / 1000
     }
 }
+
+/** Sekunden als MM:SS. */
+fun formatMmSs(seconds: Long): String = "%02d:%02d".format(seconds / 60, seconds % 60)

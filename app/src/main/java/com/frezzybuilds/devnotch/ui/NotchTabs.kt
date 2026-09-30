@@ -14,14 +14,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.frezzybuilds.devnotch.ui.focus.FocusTimerState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.frezzybuilds.devnotch.ui.focus.FocusTimerViewModel
+import com.frezzybuilds.devnotch.ui.focus.formatMmSs
 import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 
 @Composable
-fun OverviewTabContent(timer: FocusTimerState) {
+fun OverviewTabContent(focusTimer: FocusTimerViewModel) {
     val context = LocalContext.current
+    val remaining by focusTimer.remainingTime.collectAsStateWithLifecycle()
+    val total by focusTimer.totalTime.collectAsStateWithLifecycle()
+    val isRunning by focusTimer.isRunning.collectAsStateWithLifecycle()
     var now by remember { mutableStateOf(Date()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -47,9 +52,11 @@ fun OverviewTabContent(timer: FocusTimerState) {
         )
         Text("🔋 $battery %", color = Color.White, style = MaterialTheme.typography.bodyMedium)
         Text(
-            if (timer.isIdle) "🍅 Kein Timer aktiv"
-            else "${timer.phase.emoji} ${timer.phase.label} – ${timer.formatted}" +
-                if (timer.isRunning) "" else " (pausiert)",
+            when {
+                isRunning -> "⏱ Timer läuft – ${formatMmSs(remaining)}"
+                remaining != total -> "⏱ Pausiert – ${formatMmSs(remaining)}"
+                else -> "⏱ Kein Timer aktiv"
+            },
             color = Color.White,
             style = MaterialTheme.typography.bodyMedium
         )
