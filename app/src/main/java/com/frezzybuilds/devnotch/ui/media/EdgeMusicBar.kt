@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,26 +51,42 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import android.view.MotionEvent
+import kotlin.math.hypot
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.frezzybuilds.devnotch.service.NowPlaying
 
-/** Standardverlauf (Magenta → Violett → Indigo), wenn der Player kein Cover liefert. */
-private val DefaultGradient = listOf(Color(0xFFE040FB), Color(0xFF8E24AA), Color(0xFF311B92))
-
 /** Farben der Edge-Leiste: Verlauf aus dem Cover plus lesbare Vordergrundfarbe. */
 private data class EdgeColors(val gradient: List<Color>, val content: Color, val onButton: Color)
 
+/**
+ * Verlauf je nach Theme: fest vorgegeben oder – bei [EdgeTheme.ALBUM] – aus dem Cover.
+ * Ohne Cover fällt „Album-Farben“ auf den Neon-Verlauf zurück.
+ */
 @Composable
-private fun rememberEdgeColors(nowPlaying: NowPlaying): EdgeColors {
+private fun rememberEdgeColors(nowPlaying: NowPlaying, theme: EdgeTheme): EdgeColors {
+    val fixed = theme.colors
+    val fallback = EdgeTheme.Fallback.colors!!
     val accent = nowPlaying.accent
-    val top = accent?.let { Color(it.top) } ?: DefaultGradient.first()
-    val bottom = accent?.let { Color(it.bottom) } ?: DefaultGradient.last()
-    // Sanfte Überblendung bei Titelwechsel statt hartem Farbsprung.
+    val top = fixed?.first() ?: accent?.let { Color(it.top) } ?: fallback.first()
+    val middleTarget = fixed?.get(1)
+    val bottom = fixed?.last() ?: accent?.let { Color(it.bottom) } ?: fallback.last()
+    // Sanfte Überblendung bei Titel- oder Themewechsel statt hartem Farbsprung.
     val animatedTop by animateColorAsState(top, tween(600), label = "edgeTop")
     val animatedBottom by animateColorAsState(bottom, tween(600), label = "edgeBottom")
-    val middle = androidx.compose.ui.graphics.lerp(animatedTop, animatedBottom, 0.45f)
+    val animatedMiddle by animateColorAsState(
+        middleTarget ?: androidx.compose.ui.graphics.lerp(top, bottom, 0.45f),
+        tween(600),
+        label = "edgeMiddle"
+    )
+    val middle = animatedMiddle
     // Helle Cover (z. B. gelb) bekommen dunkle Schrift – wie im Screenshot mit dem gelben Theme.
     val content = if (middle.luminance() > 0.55f) Color(0xFF111111) else Color.White
     return EdgeColors(
@@ -89,12 +106,13 @@ private fun rememberEdgeColors(nowPlaying: NowPlaying): EdgeColors {
 @Composable
 fun EdgeMusicBar(
     nowPlaying: NowPlaying,
+    theme: EdgeTheme,
     onPrevious: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colors = rememberEdgeColors(nowPlaying)
+    val colors = rememberEdgeColors(nowPlaying, theme)
     // Position des Titelbereichs in der Leiste (0..1), um die Ausblendfarben zu treffen.
     var barCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var titleSpan by remember { mutableStateOf(0.3f to 0.65f) }
@@ -117,6 +135,8 @@ fun EdgeMusicBar(
             Modifier
                 .weight(1f)
                 .fillMaxHeight()
+                // Volle Leistenbreite, sonst wären die Ausblend-Flächen als Kästchen sichtbar.
+                .fillMaxWidth()
                 .onGloballyPositioned { coords ->
                     val bar = barCoords ?: return@onGloballyPositioned
                     val top = bar.localPositionOf(coords, androidx.compose.ui.geometry.Offset.Zero).y
@@ -168,13 +188,19 @@ fun EdgeMusicBar(
  * Eingeklappter Edge-Player: nur noch das runde Cover. Ein Ring im Albumverlauf zeigt, dass
  * Musik läuft, und dreht sich dabei langsam. Tippen holt die volle Leiste zurück.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun EdgeMiniBubble(
     nowPlaying: NowPlaying,
+    theme: EdgeTheme,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onDrag: (dx: Float, dy: Float) -> Unit = { _, _ -> },
+    onDragEnd: () -> Unit = {}
 ) {
-    val colors = rememberEdgeColors(nowPlaying)
+    val colors = rememberEdgeColors(nowPlaying, theme)
+    val touchSlop = LocalViewConfiguration.current.touchSlop
+    val tracker = remember { DragTracker() }
     val ringAngle = if (LocalInspectionMode.current || !nowPlaying.isPlaying) {
         0f
     } else {
@@ -192,7 +218,18 @@ fun EdgeMiniBubble(
         modifier = modifier
             .fillMaxSize()
             .clip(CircleShape)
-            .clickable(onClickLabel = "Edge-Player öffnen", onClick = onClick)
+            // Rohe Bildschirmkoordinaten (rawX/rawY): Das Fenster wandert mit dem Finger, lokale
+            // Koordinaten würden dabei springen. Unterhalb der Touch-Slop gilt die Geste als Tipp.
+            .pointerInteropFilter { event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> tracker.start(event.rawX, event.rawY)
+                    MotionEvent.ACTION_MOVE -> tracker.move(event.rawX, event.rawY, touchSlop, onDrag)
+                    MotionEvent.ACTION_UP -> if (tracker.dragging) onDragEnd() else onClick()
+                    MotionEvent.ACTION_CANCEL -> if (tracker.dragging) onDragEnd()
+                }
+                true
+            }
+            .semantics { onClick(label = "Edge-Player öffnen") { onClick(); true } }
             .drawBehind {
                 rotate(ringAngle) { drawCircle(Brush.sweepGradient(ringColors)) }
             }
@@ -218,6 +255,27 @@ fun EdgeMiniBubble(
                 Icon(MediaIcons.Pause, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
+    }
+}
+
+/** Unterscheidet Tipp und Ziehen und liefert Bewegungen als Delta in Bildschirm-Pixeln. */
+private class DragTracker {
+    private var lastX = 0f
+    private var lastY = 0f
+    private var startX = 0f
+    private var startY = 0f
+    var dragging = false
+        private set
+
+    fun start(x: Float, y: Float) {
+        startX = x; startY = y; lastX = x; lastY = y
+        dragging = false
+    }
+
+    fun move(x: Float, y: Float, slop: Float, onDrag: (Float, Float) -> Unit) {
+        if (!dragging && hypot(x - startX, y - startY) > slop) dragging = true
+        if (dragging) onDrag(x - lastX, y - lastY)
+        lastX = x; lastY = y
     }
 }
 
@@ -327,11 +385,23 @@ private fun Modifier.fadeIntoBackground(top: Color, bottom: Color, fraction: Flo
         )
     }
 
-/** Farbe eines gleichmäßig verteilten Verlaufs an Position [fraction] (0 = oben, 1 = unten). */
+/**
+ * Farbe eines gleichmäßig verteilten Verlaufs an Position [fraction] (0 = oben, 1 = unten).
+ * Mischt kanalweise in sRGB wie der Gradient-Shader – Compose' lerp() rechnet in Oklab und
+ * träfe den Hintergrund nicht exakt (sichtbare Kanten).
+ */
 private fun List<Color>.colorAt(fraction: Float): Color {
     val scaled = fraction.coerceIn(0f, 1f) * (size - 1)
     val index = scaled.toInt().coerceAtMost(size - 2)
-    return androidx.compose.ui.graphics.lerp(this[index], this[index + 1], scaled - index)
+    val t = scaled - index
+    val a = this[index]
+    val b = this[index + 1]
+    return Color(
+        red = a.red + (b.red - a.red) * t,
+        green = a.green + (b.green - a.green) * t,
+        blue = a.blue + (b.blue - a.blue) * t,
+        alpha = a.alpha + (b.alpha - a.alpha) * t
+    )
 }
 
 /** Endloser Lauftext; in der Vorschau statisch, damit Preview/Screenshot zur Ruhe kommen. */

@@ -16,7 +16,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.shape.AbsoluteRoundedCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
+import com.frezzybuilds.devnotch.service.EdgeSide
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Tab
@@ -71,6 +75,7 @@ private val EdgeHandleWidth = 20.dp
 private val EdgeBarWidth = 60.dp
 private val EdgeBarHeight = 340.dp
 private val EdgeBubbleSize = 56.dp
+private val EdgeBubbleGap = 8.dp
 
 private enum class NotchTab(val title: String) {
     DEV("Dev"),
@@ -88,7 +93,9 @@ private fun <T> notchSpring() = spring<T>(
 @Composable
 fun NotchContainer(
     layout: NotchLayout,
-    onExpandRequest: (Boolean) -> Unit
+    onExpandRequest: (Boolean) -> Unit,
+    onEdgeDrag: (dx: Float, dy: Float) -> Unit = { _, _ -> },
+    onEdgeDragEnd: () -> Unit = {}
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(NotchTab.DEV) }
@@ -109,13 +116,15 @@ fun NotchContainer(
 
     // Edge-Player: nach 5 s ohne Interaktion zur Cover-Bubble einklappen (abschaltbar).
     val settings = LocalContext.current.appContainer.notchSettings
-    val autoMinimize by remember { settings.edgeAutoMinimizeFlow() }
-        .collectAsStateWithLifecycle(initialValue = settings.edgeAutoMinimize)
+    val edgePrefs by remember { settings.edgePrefsFlow() }
+        .collectAsStateWithLifecycle(initialValue = settings.edgePrefs)
     val edgeMedia = nowPlaying?.takeIf { layout.mode == NotchLayoutMode.EDGE_SIDE }
     val edgePlayer = rememberEdgePlayerState(
-        trackKey = nowPlaying?.let { it.packageName + "|" + it.title },
-        autoMinimize = autoMinimize,
-        active = edgeMedia != null && !isExpanded
+        // Ohne „Bei neuem Song zeigen“ bleibt der Schlüssel konstant → kein Wiederaufklappen.
+        trackKey = if (edgePrefs.showOnTrackChange) nowPlaying?.let { it.packageName + "|" + it.title } else Unit,
+        autoMinimize = edgePrefs.autoMinimize,
+        active = edgeMedia != null && !isExpanded,
+        delayMillis = edgePrefs.minimizeDelaySeconds * 1_000L
     )
     val edgeMini = edgeMedia != null && edgePlayer.minimized && !isExpanded
 
@@ -135,8 +144,9 @@ fun NotchContainer(
                     if (isExpanded) Modifier.size(DashboardWidth, DashboardHeight)
                     else Modifier.size(collapsedWidth, collapsedHeight)
                 )
-                .clip(notchShape(layout, cornerRadius, circle = edgeMini))
-                .background(NotchBlack)
+                .clip(if (edgeMini) RectangleShape else notchShape(layout, cornerRadius))
+                // Bubble: transparentes Fenster, die Kreisform zeichnet EdgeMiniBubble selbst.
+                .background(if (edgeMini) Color.Transparent else NotchBlack)
                 // Nur eingeklappt klickbar, sonst schluckt die Box Taps im Dashboard.
                 .clickable(enabled = !isExpanded) { setExpanded(true) },
             contentAlignment = Alignment.Center
@@ -188,10 +198,22 @@ fun NotchContainer(
                         label = "edgePlayer"
                     ) { mini ->
                         if (mini) {
-                            EdgeMiniBubble(nowPlaying = media, onClick = edgePlayer::restore)
+                            EdgeMiniBubble(
+                                nowPlaying = media,
+                                theme = edgePrefs.theme,
+                                onClick = edgePlayer::restore,
+                                onDrag = onEdgeDrag,
+                                onDragEnd = onEdgeDragEnd,
+                                // Kleiner Abstand zum Rand: Die Bubble schwebt frei.
+                                modifier = Modifier.padding(
+                                    start = if (layout.edgeSide == EdgeSide.LEFT) EdgeBubbleGap else 0.dp,
+                                    end = if (layout.edgeSide == EdgeSide.RIGHT) EdgeBubbleGap else 0.dp
+                                )
+                            )
                         } else {
                             EdgeMusicBar(
                                 nowPlaying = media,
+                                theme = edgePrefs.theme,
                                 onPrevious = {
                                     edgePlayer.onInteraction()
                                     MediaNotificationListener.skipToPrevious()
@@ -330,7 +352,7 @@ private fun collapsedSize(layout: NotchLayout, hasMedia: Boolean, minimized: Boo
             layout.pill.width.toDp() to layout.pill.height.toDp()
         }
         NotchLayoutMode.EDGE_SIDE -> when {
-            minimized -> EdgeBubbleSize to EdgeBubbleSize
+            minimized -> EdgeBubbleSize + EdgeBubbleGap to EdgeBubbleSize
             hasMedia -> EdgeBarWidth to EdgeBarHeight
             else -> EdgeHandleWidth to PillWidth
         }
@@ -338,12 +360,12 @@ private fun collapsedSize(layout: NotchLayout, hasMedia: Boolean, minimized: Boo
 }
 
 /**
- * Oben rundum abgerundet. Die Edge Bar klebt per Gravity.END am Rand, daher wird nur die
- * Start-Seite (zur Bildschirmmitte) abgerundet – das passt auch bei RTL automatisch.
+ * Oben rundum abgerundet. Am Rand nur die zur Bildschirmmitte zeigende Seite – physisch links
+ * oder rechts, je nachdem, wo die Leiste angedockt ist.
  */
-private fun notchShape(layout: NotchLayout, radius: Dp, circle: Boolean): RoundedCornerShape =
+private fun notchShape(layout: NotchLayout, radius: Dp): Shape =
     when {
-        // Eingeklappte Cover-Bubble: rundum rund.
-        circle || layout.mode == NotchLayoutMode.NOTCH_TOP -> RoundedCornerShape(radius)
-        else -> RoundedCornerShape(topStart = radius, bottomStart = radius)
+        layout.mode == NotchLayoutMode.NOTCH_TOP -> RoundedCornerShape(radius)
+        layout.edgeSide == EdgeSide.RIGHT -> AbsoluteRoundedCornerShape(topLeft = radius, bottomLeft = radius)
+        else -> AbsoluteRoundedCornerShape(topRight = radius, bottomRight = radius)
     }

@@ -3,10 +3,20 @@ package com.frezzybuilds.devnotch.data.settings
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.frezzybuilds.devnotch.service.EdgeSide
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
+import com.frezzybuilds.devnotch.ui.media.EdgeTheme
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+
+/** Darstellungsoptionen des Edge-Players. */
+data class EdgePrefs(
+    val autoMinimize: Boolean,
+    val minimizeDelaySeconds: Int,
+    val showOnTrackChange: Boolean,
+    val theme: EdgeTheme
+)
 
 /** Persistente Einstellungen der Notch. Der Overlay-Service beobachtet Änderungen live. */
 class NotchSettings(context: Context) {
@@ -25,13 +35,44 @@ class NotchSettings(context: Context) {
         get() = prefs.getBoolean(KEY_EDGE_AUTO_MINIMIZE, true)
         set(value) = prefs.edit { putBoolean(KEY_EDGE_AUTO_MINIMIZE, value) }
 
-    /** [edgeAutoMinimize] als Flow: Umschalten in der App wirkt sofort in der laufenden Notch. */
-    fun edgeAutoMinimizeFlow(): Flow<Boolean> = callbackFlow {
+    /** Wartezeit bis zum Einklappen in Sekunden (3, 5 oder 10). */
+    var edgeMinimizeDelaySeconds: Int
+        get() = prefs.getInt(KEY_EDGE_MINIMIZE_DELAY, 5)
+        set(value) = prefs.edit { putInt(KEY_EDGE_MINIMIZE_DELAY, value) }
+
+    /** Bei neuem Titel kurz die volle Leiste zeigen. */
+    var edgeShowOnTrackChange: Boolean
+        get() = prefs.getBoolean(KEY_EDGE_SHOW_ON_TRACK, true)
+        set(value) = prefs.edit { putBoolean(KEY_EDGE_SHOW_ON_TRACK, value) }
+
+    var edgeTheme: EdgeTheme
+        get() = prefs.getString(KEY_EDGE_THEME, null)
+            ?.let { runCatching { EdgeTheme.valueOf(it) }.getOrNull() }
+            ?: EdgeTheme.ALBUM
+        set(value) = prefs.edit { putString(KEY_EDGE_THEME, value.name) }
+
+    /** Andock-Rand der verschiebbaren Bubble/Leiste. */
+    var edgeSide: EdgeSide
+        get() = prefs.getString(KEY_EDGE_SIDE, null)
+            ?.let { runCatching { EdgeSide.valueOf(it) }.getOrNull() }
+            ?: EdgeSide.RIGHT
+        set(value) = prefs.edit { putString(KEY_EDGE_SIDE, value.name) }
+
+    /** Vertikale Position als Anteil der Bildschirmhöhe (0 = Mitte), übersteht Rotation. */
+    var edgeOffsetFraction: Float
+        get() = prefs.getFloat(KEY_EDGE_OFFSET, 0f)
+        set(value) = prefs.edit { putFloat(KEY_EDGE_OFFSET, value) }
+
+    val edgePrefs: EdgePrefs
+        get() = EdgePrefs(edgeAutoMinimize, edgeMinimizeDelaySeconds, edgeShowOnTrackChange, edgeTheme)
+
+    /** Alle Edge-Darstellungsoptionen als Flow: Änderungen wirken sofort in der laufenden Notch. */
+    fun edgePrefsFlow(): Flow<EdgePrefs> = callbackFlow {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == KEY_EDGE_AUTO_MINIMIZE) trySend(edgeAutoMinimize)
+            if (key in EDGE_PREF_KEYS) trySend(edgePrefs)
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
-        trySend(edgeAutoMinimize)
+        trySend(edgePrefs)
         awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
@@ -50,5 +91,13 @@ class NotchSettings(context: Context) {
     private companion object {
         const val KEY_DISPLAY_MODE = "display_mode"
         const val KEY_EDGE_AUTO_MINIMIZE = "edge_auto_minimize"
+        const val KEY_EDGE_MINIMIZE_DELAY = "edge_minimize_delay"
+        const val KEY_EDGE_SHOW_ON_TRACK = "edge_show_on_track"
+        const val KEY_EDGE_THEME = "edge_theme"
+        const val KEY_EDGE_SIDE = "edge_side"
+        const val KEY_EDGE_OFFSET = "edge_offset"
+        val EDGE_PREF_KEYS = setOf(
+            KEY_EDGE_AUTO_MINIMIZE, KEY_EDGE_MINIMIZE_DELAY, KEY_EDGE_SHOW_ON_TRACK, KEY_EDGE_THEME
+        )
     }
 }

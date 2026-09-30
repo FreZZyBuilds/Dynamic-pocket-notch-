@@ -1,9 +1,8 @@
 package com.frezzybuilds.devnotch.service
 
+import android.app.Notification
 import android.content.ComponentName
 import android.graphics.Bitmap
-import androidx.core.graphics.scale
-import androidx.palette.graphics.Palette
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSession
@@ -12,29 +11,54 @@ import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
 import android.service.notification.NotificationListenerService
+import android.service.notification.StatusBarNotification
+import androidx.core.graphics.drawable.toBitmap
+import androidx.core.graphics.scale
+import androidx.palette.graphics.Palette
+import coil.imageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
- * Liest und steuert laufende Mediaplayer (Spotify, YouTube Music, …).
+ * Liest und steuert laufende Mediaplayer – jede App mit Media-Session: Spotify, YouTube,
+ * YouTube Music, SoundCloud, Deezer, Samsung Music, VLC, Browser-Videos (Chrome, Firefox) …
  *
  * Erst der vom Nutzer erteilte Benachrichtigungszugriff erlaubt
  * MediaSessionManager.getActiveSessions() mit dieser Komponente. Das System bindet den Service
  * dann selbst (auch nach einem Neustart); die Notch liest nur [nowPlaying].
+ *
+ * Apps liefern Titel und Cover sehr unterschiedlich. Deshalb gibt es Fallback-Ketten:
+ * - Titel: METADATA_KEY_TITLE → DISPLAY_TITLE → MediaDescription → Titel der Medien-Benachrichtigung
+ * - Cover: Bitmap in den Metadaten → Cover-URI (z. B. YouTube, per Coil geladen)
+ *          → großes Icon der Medien-Benachrichtigung
  */
 class MediaNotificationListener : NotificationListenerService() {
 
     private var sessionManager: MediaSessionManager? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val scope = MainScope()
 
     /** Alle aktiven Sessions in System-Priorität, jeweils mit registriertem Callback. */
     private var controllers: List<MediaController> = emptyList()
     private val callbacks = mutableMapOf<MediaSession.Token, MediaController.Callback>()
 
-    /** Cover + Farben werden nur bei Titelwechsel neu berechnet, nicht bei jedem Play/Pause. */
-    private var artworkKey: String? = null
-    private var artwork: Pair<Bitmap, ArtworkAccent>? = null
+    /** Cover + Farben je Titel; nur bei Titelwechsel neu berechnet, nicht bei jedem Play/Pause. */
+    private val artworkCache = object : LinkedHashMap<String, Artwork?>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Artwork?>) = size > 12
+    }
+    private val loadingUris = mutableSetOf<String>()
+
+    /** Letzte Medien-Benachrichtigung je App: Titel/Cover-Fallback für sparsame Metadaten. */
+    private val mediaNotifications = mutableMapOf<String, NotificationInfo>()
+
+    private data class Artwork(val bitmap: Bitmap, val accent: ArtworkAccent)
+    private data class NotificationInfo(val title: String?, val text: String?, val largeIcon: Bitmap?)
 
     private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { active ->
         onSessionsChanged(active.orEmpty())
@@ -42,12 +66,12 @@ class MediaNotificationListener : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        runCatching { activeNotifications }.getOrNull()?.forEach(::rememberMediaNotification)
         val manager = getSystemService(MediaSessionManager::class.java)
-        val component = ComponentName(this, MediaNotificationListener::class.java)
         try {
-            manager.addOnActiveSessionsChangedListener(sessionsListener, component, mainHandler)
+            manager.addOnActiveSessionsChangedListener(sessionsListener, component(), mainHandler)
             sessionManager = manager
-            onSessionsChanged(manager.getActiveSessions(component))
+            onSessionsChanged(manager.getActiveSessions(component()))
         } catch (_: SecurityException) {
             // Benachrichtigungszugriff wurde zwischenzeitlich entzogen.
         }
@@ -55,18 +79,47 @@ class MediaNotificationListener : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         release()
+        // Das System trennt Listener gelegentlich (z. B. nach App-Updates) – wieder verbinden.
+        runCatching { requestRebind(component()) }
         super.onListenerDisconnected()
     }
 
     override fun onDestroy() {
         release()
+        scope.cancel()
         super.onDestroy()
     }
+
+    override fun onNotificationPosted(sbn: StatusBarNotification) {
+        if (rememberMediaNotification(sbn)) publish()
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        if (mediaNotifications.remove(sbn.packageName) != null) publish()
+    }
+
+    private fun component() = ComponentName(this, MediaNotificationListener::class.java)
 
     private fun release() {
         sessionManager?.removeOnActiveSessionsChangedListener(sessionsListener)
         sessionManager = null
         onSessionsChanged(emptyList())
+    }
+
+    /** Merkt sich Titel und großes Icon von Benachrichtigungen mit Media-Session. */
+    private fun rememberMediaNotification(sbn: StatusBarNotification): Boolean {
+        val notification = sbn.notification ?: return false
+        val extras = notification.extras ?: return false
+        if (!extras.containsKey(Notification.EXTRA_MEDIA_SESSION)) return false
+        val icon = runCatching {
+            notification.getLargeIcon()?.loadDrawable(this)?.toBitmap()?.downscaled()
+        }.getOrNull()
+        mediaNotifications[sbn.packageName] = NotificationInfo(
+            title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
+            text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
+            largeIcon = icon
+        )
+        return true
     }
 
     /** Callbacks für neue Sessions registrieren, für beendete abmelden, dann neu auswählen. */
@@ -79,6 +132,7 @@ class MediaNotificationListener : NotificationListenerService() {
             val callback = object : MediaController.Callback() {
                 override fun onPlaybackStateChanged(state: PlaybackState?) = publish()
                 override fun onMetadataChanged(metadata: MediaMetadata?) = publish()
+                override fun onSessionDestroyed() = publish()
             }
             controller.registerCallback(callback, mainHandler)
             callbacks[controller.sessionToken] = callback
@@ -94,53 +148,83 @@ class MediaNotificationListener : NotificationListenerService() {
         val controller = index?.let(controllers::get)
         activeController = controller
         _nowPlaying.value = index?.let {
-            val art = controller?.let(::artworkFor)
-            NowPlayingSelector.toNowPlaying(snapshots[it])
-                .copy(artwork = art?.first, accent = art?.second)
+            val snapshot = snapshots[it]
+            val art = controller?.let { c -> artworkFor(c, snapshot) }
+            NowPlayingSelector.toNowPlaying(snapshot).copy(artwork = art?.bitmap, accent = art?.accent)
         }
     }
 
-    /**
-     * Cover des Titels, auf max. 160 px verkleinert (große Bitmaps nicht im StateFlow halten),
-     * plus zwei Akzentfarben per Palette – wie bei Edge-Music-Playern, die sich ans Album anpassen.
-     */
-    private fun artworkFor(controller: MediaController): Pair<Bitmap, ArtworkAccent>? {
-        val metadata = controller.metadata ?: return null
-        val key = listOf(
-            controller.packageName,
-            metadata.getString(MediaMetadata.METADATA_KEY_TITLE),
-            metadata.getString(MediaMetadata.METADATA_KEY_ARTIST)
-        ).joinToString("|")
-        if (key == artworkKey) return artwork
+    private fun artworkFor(controller: MediaController, snapshot: SessionSnapshot): Artwork? {
+        val key = listOf(snapshot.packageName, snapshot.title, snapshot.artist).joinToString("|")
+        artworkCache[key]?.let { return it }
 
-        val source = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-            ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_ART)
-            ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-        artworkKey = key
-        artwork = source?.let { bitmap ->
-            val factor = ARTWORK_MAX_PX.toFloat() / maxOf(bitmap.width, bitmap.height)
-            val small = if (factor < 1f) {
-                bitmap.scale((bitmap.width * factor).toInt(), (bitmap.height * factor).toInt())
-            } else {
-                bitmap
-            }
-            val palette = Palette.from(small).generate()
-            val top = palette.getVibrantColor(palette.getDominantColor(DEFAULT_ACCENT_TOP))
-            val bottom = palette.getDarkVibrantColor(palette.getDarkMutedColor(DEFAULT_ACCENT_BOTTOM))
-            small to ArtworkAccent(top, bottom)
+        val metadata = controller.metadata
+        val bitmap = metadata?.let {
+            it.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+                ?: it.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                ?: it.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
         }
-        return artwork
+        if (bitmap != null) return bitmap.downscaled().toArtwork().also { artworkCache[key] = it }
+
+        // Nur eine Adresse (YouTube & Co.): asynchron laden, danach erneut veröffentlichen.
+        val uri = metadata?.let {
+            it.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI)
+                ?: it.getString(MediaMetadata.METADATA_KEY_ART_URI)
+                ?: it.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI)
+                ?: it.description?.iconUri?.toString()
+        }
+        if (uri != null && loadingUris.add(key)) loadArtwork(key, uri)
+
+        // Bis dahin (oder ohne URI): das Cover aus der Medien-Benachrichtigung.
+        return mediaNotifications[snapshot.packageName]?.largeIcon?.toArtwork()
     }
 
-    private fun MediaController.snapshot() = SessionSnapshot(
-        packageName = packageName,
-        playbackState = playbackState?.state,
-        title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
-            ?: metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE),
-        artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST)
-            ?: metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
-            ?: metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE)
-    )
+    private fun loadArtwork(key: String, uri: String) {
+        scope.launch {
+            val request = ImageRequest.Builder(this@MediaNotificationListener)
+                .data(uri)
+                .size(ARTWORK_MAX_PX)
+                .allowHardware(false) // Palette braucht Software-Bitmaps
+                .build()
+            val result = imageLoader.execute(request)
+            loadingUris.remove(key)
+            val bitmap = (result as? SuccessResult)?.drawable?.toBitmap() ?: return@launch
+            artworkCache[key] = bitmap.downscaled().toArtwork()
+            publish()
+        }
+    }
+
+    /** Große Bitmaps nicht im StateFlow halten: auf max. 160 px verkleinern. */
+    private fun Bitmap.downscaled(): Bitmap {
+        val factor = ARTWORK_MAX_PX.toFloat() / maxOf(width, height)
+        return if (factor < 1f) scale((width * factor).toInt(), (height * factor).toInt()) else this
+    }
+
+    /** Zwei Akzentfarben per Palette – wie Edge-Music-Player, die sich ans Album anpassen. */
+    private fun Bitmap.toArtwork(): Artwork {
+        val palette = Palette.from(this).generate()
+        val top = palette.getVibrantColor(palette.getDominantColor(DEFAULT_ACCENT_TOP))
+        val bottom = palette.getDarkVibrantColor(palette.getDarkMutedColor(DEFAULT_ACCENT_BOTTOM))
+        return Artwork(this, ArtworkAccent(top, bottom))
+    }
+
+    private fun MediaController.snapshot(): SessionSnapshot {
+        val description = metadata?.description
+        val notification = mediaNotifications[packageName]
+        return SessionSnapshot(
+            packageName = packageName,
+            playbackState = playbackState?.state,
+            title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
+                ?: metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)
+                ?: description?.title?.toString()
+                ?: notification?.title,
+            artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST)
+                ?: metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
+                ?: metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE)
+                ?: description?.subtitle?.toString()
+                ?: notification?.text
+        )
+    }
 
     companion object {
         private const val ARTWORK_MAX_PX = 160

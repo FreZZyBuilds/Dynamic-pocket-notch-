@@ -36,11 +36,42 @@ data class CameraLens(val centerX: Int, val centerY: Int, val diameter: Int) {
  */
 data class PillGeometry(val width: Int, val height: Int, val x: Int, val y: Int)
 
+/** An welchem Bildschirmrand der Edge-Player andockt (physisch, unabhängig von RTL). */
+enum class EdgeSide { LEFT, RIGHT }
+
 data class NotchLayout(
     val mode: NotchLayoutMode,
     val lens: CameraLens? = null,
-    val pill: PillGeometry
+    val pill: PillGeometry,
+    val edgeSide: EdgeSide = EdgeSide.RIGHT
 )
+
+/**
+ * Loslassen nach dem Verschieben der Bubble: Sie rastet am näheren Rand ein.
+ *
+ * [x] ist der Fensterversatz vom aktuellen Andock-Rand nach innen (Gravity.LEFT bzw. RIGHT).
+ * Wechselt der Rand, wird [x] in die Koordinaten des neuen Randes umgerechnet, damit die
+ * Einrast-Animation dort startet, wo der Finger losgelassen hat.
+ */
+object EdgeDock {
+    data class Snap(val side: EdgeSide, val startX: Int)
+
+    fun snap(side: EdgeSide, x: Int, windowWidth: Int, screenWidth: Int): Snap {
+        val centerFromLeft = when (side) {
+            EdgeSide.LEFT -> x + windowWidth / 2
+            EdgeSide.RIGHT -> screenWidth - x - windowWidth / 2
+        }
+        val target = if (centerFromLeft < screenWidth / 2) EdgeSide.LEFT else EdgeSide.RIGHT
+        val startX = if (target == side) x else screenWidth - x - windowWidth
+        return Snap(target, startX)
+    }
+
+    /** Vertikaler Versatz (CENTER_VERTICAL) so begrenzen, dass das Fenster sichtbar bleibt. */
+    fun clampY(y: Int, windowHeight: Int, screenHeight: Int): Int {
+        val limit = (screenHeight - windowHeight) / 2
+        return y.coerceIn(-limit.coerceAtLeast(0), limit.coerceAtLeast(0))
+    }
+}
 
 object NotchGeometry {
     const val PILL_WIDTH_DP = 120f

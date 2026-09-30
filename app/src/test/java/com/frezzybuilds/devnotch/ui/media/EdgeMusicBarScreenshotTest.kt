@@ -9,6 +9,7 @@ import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -80,42 +81,63 @@ class EdgeMusicBarScreenshotTest {
         ) { content() }
     }
 
-    @Test
-    fun renderEdgeStates() {
+    private fun capture(name: String, content: @Composable () -> Unit) {
         lateinit var view: View
         compose.setContent {
             view = LocalView.current
             // Vorschau-Modus: Equalizer und Lauftext als Standbild, damit Compose idle wird.
             CompositionLocalProvider(LocalInspectionMode provides true) {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                Row(
-                    modifier = Modifier
-                        .background(Brush.verticalGradient(listOf(Color(0xFF2B2F77), Color(0xFF6A3DE8))))
-                        .padding(24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(28.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Docked { EdgeMusicBar(defaultTheme, {}, {}, {}) }
-                    Docked { EdgeMusicBar(blueArtwork, {}, {}, {}) }
-                    Docked { EdgeMusicBar(yellowArtwork, {}, {}, {}) }
-                    Box(Modifier.size(56.dp)) { EdgeMiniBubble(yellowArtwork, {}) }
-                    Box(Modifier.size(56.dp)) { EdgeMiniBubble(blueArtwork, {}) }
+                MaterialTheme(colorScheme = darkColorScheme()) {
                     Box(
                         Modifier
-                            .size(20.dp, 120.dp)
-                            .clip(RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp))
-                    ) { EdgeHandle() }
+                            .background(Brush.verticalGradient(listOf(Color(0xFF2B2F77), Color(0xFF6A3DE8))))
+                            .padding(24.dp)
+                    ) { content() }
                 }
             }
-            }
         }
-
         compose.waitForIdle()
         // Direkt über Skia zeichnen (Robolectric Native Graphics) – captureToImage wartet auf
         // Frame-Commit-Callbacks, die Robolectric nicht liefert.
         val image = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
         view.draw(Canvas(image))
-        val out = File("build/screenshots/edge_music_bar.png").apply { parentFile?.mkdirs() }
+        val out = File("build/screenshots/$name.png").apply { parentFile?.mkdirs() }
         out.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    @Test
+    fun renderEdgeStates() = capture("edge_music_bar") {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(28.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Docked { EdgeMusicBar(defaultTheme, EdgeTheme.ALBUM, {}, {}, {}) }
+            Docked { EdgeMusicBar(blueArtwork, EdgeTheme.ALBUM, {}, {}, {}) }
+            Docked { EdgeMusicBar(yellowArtwork, EdgeTheme.ALBUM, {}, {}, {}) }
+            Box(Modifier.size(56.dp)) { EdgeMiniBubble(yellowArtwork, EdgeTheme.ALBUM, {}) }
+            Box(Modifier.size(56.dp)) { EdgeMiniBubble(blueArtwork, EdgeTheme.ALBUM, {}) }
+            Box(
+                Modifier
+                    .size(20.dp, 120.dp)
+                    .clip(RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp))
+            ) { EdgeHandle() }
+        }
+    }
+
+    /** Alle Themes mit demselben Song (ohne Cover), dazu die passende Bubble darunter. */
+    @Test
+    @Config(sdk = [34], qualifiers = "w720dp-h560dp-xxhdpi")
+    fun renderThemes() = capture("edge_themes") {
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            EdgeTheme.entries.forEach { theme ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Docked { EdgeMusicBar(blueArtwork.copy(title = theme.label, artist = "DevNotch"), theme, {}, {}, {}) }
+                    Box(Modifier.size(56.dp)) { EdgeMiniBubble(blueArtwork, theme, {}) }
+                }
+            }
+        }
     }
 }

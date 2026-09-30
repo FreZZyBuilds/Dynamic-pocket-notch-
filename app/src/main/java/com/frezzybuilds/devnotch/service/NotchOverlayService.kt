@@ -1,5 +1,7 @@
 package com.frezzybuilds.devnotch.service
 
+import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -19,6 +21,7 @@ import android.provider.Settings
 import android.view.Display
 import android.view.Gravity
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -43,6 +46,7 @@ import com.frezzybuilds.devnotch.appContainer
 import com.frezzybuilds.devnotch.data.clipboard.ClipboardListener
 import com.frezzybuilds.devnotch.ui.NotchContainer
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -73,6 +77,13 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     )
     private var expanded = false
 
+    /** Edge-Modus: Andock-Rand, Versatz nach innen (nur beim Ziehen/Einrasten) und vertikal. */
+    private var edgeSide = EdgeSide.RIGHT
+    // Float: Drag-Deltas sind Bruchteile von Pixeln und würden sich beim Abrunden verlieren.
+    private var edgeX = 0f
+    private var edgeY = 0f
+    private var snapAnimator: ValueAnimator? = null
+
     override fun onCreate() {
         super.onCreate()
         running.value = true
@@ -82,6 +93,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val settings = appContainer.notchSettings
+        edgeSide = settings.edgeSide
+        edgeY = settings.edgeOffsetFraction * screenHeight()
         // Vor dem ersten Layout gibt es noch keine Window-Insets: detectCutoutBounds() nutzt
         // dann die Display-Aussparung (API 29+) und korrigiert sich, sobald Insets ankommen.
         notchLayout = layoutFor(settings.displayMode, detectCutoutBounds()?.toLens())
@@ -111,12 +124,15 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // Bei Rotation wandern Aussparung und Bildschirmmitte mit.
+        // Bei Rotation wandern Aussparung und Bildschirmmitte mit; die Edge-Position ist relativ
+        // zur Bildschirmhöhe gespeichert und passt daher auch im Querformat.
+        edgeY = appContainer.notchSettings.edgeOffsetFraction * screenHeight()
         notchLayout = layoutFor(notchLayout.mode, detectCutoutBounds()?.toLens())
         applyLayout()
     }
 
     override fun onDestroy() {
+        snapAnimator?.cancel()
         clipboardListener.stop()
         appContainer.notchSettings.removeListener(displayModeListener)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
@@ -155,7 +171,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                     onExpandRequest = { isExpanded ->
                         expanded = isExpanded
                         applyLayout()
-                    }
+                    },
+                    onEdgeDrag = ::onEdgeDrag,
+                    onEdgeDragEnd = ::onEdgeDragEnd
                 )
             }
         }
@@ -184,6 +202,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         windowManager.updateViewLayout(view, layoutParams)
     }
 
+    // LEFT/RIGHT statt START/END: gemeint ist der physische Rand, an den die Bubble gezogen wurde.
+    @SuppressLint("RtlHardcoded")
     private fun updatePosition() {
         layoutParams.apply {
             when (notchLayout.mode) {
@@ -204,10 +224,11 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                     }
                 }
                 NotchLayoutMode.EDGE_SIDE -> {
-                    // Dockt wie das Samsung Edge-Panel am rechten Rand an (bei RTL-Sprachen links).
-                    gravity = Gravity.END or Gravity.CENTER_VERTICAL
-                    x = 0
-                    y = 0
+                    // Physischer Rand (links/rechts), den der Nutzer per Ziehen gewählt hat.
+                    val edge = if (edgeSide == EdgeSide.LEFT) Gravity.LEFT else Gravity.RIGHT
+                    gravity = edge or Gravity.CENTER_VERTICAL
+                    x = edgeX.roundToInt()
+                    y = edgeY.roundToInt()
                     flags = flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS.inv()
                 }
             }
@@ -217,6 +238,42 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             } else {
                 flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             }
+        }
+    }
+
+    /** Bubble folgt dem Finger (Deltas in Bildschirm-Pixeln). */
+    private fun onEdgeDrag(dx: Float, dy: Float) {
+        snapAnimator?.cancel()
+        // x zählt vom Andock-Rand nach innen: rechts angedockt bedeutet Finger nach rechts = kleiner.
+        edgeX += if (edgeSide == EdgeSide.LEFT) dx else -dx
+        edgeY += dy
+        applyLayout()
+    }
+
+    /** Loslassen: am näheren Rand einrasten (animiert) und Position speichern. */
+    private fun onEdgeDragEnd() {
+        val view = composeView ?: return
+        val snap = EdgeDock.snap(edgeSide, edgeX.roundToInt(), view.width, screenWidth())
+        if (snap.side != edgeSide) {
+            edgeSide = snap.side
+            notchLayout = notchLayout.copy(edgeSide = snap.side)
+        }
+        edgeX = snap.startX.toFloat()
+        edgeY = EdgeDock.clampY(edgeY.roundToInt(), view.height, screenHeight()).toFloat()
+        applyLayout()
+
+        appContainer.notchSettings.edgeSide = edgeSide
+        appContainer.notchSettings.edgeOffsetFraction = edgeY / screenHeight()
+
+        snapAnimator?.cancel()
+        snapAnimator = ValueAnimator.ofFloat(edgeX, 0f).apply {
+            duration = 260
+            interpolator = DecelerateInterpolator()
+            addUpdateListener {
+                edgeX = it.animatedValue as Float
+                applyLayout()
+            }
+            start()
         }
     }
 
@@ -267,7 +324,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private fun layoutFor(mode: NotchLayoutMode, lens: CameraLens?) = NotchLayout(
         mode = mode,
         lens = lens,
-        pill = NotchGeometry.collapsedPill(lens, screenWidth(), resources.displayMetrics.density)
+        pill = NotchGeometry.collapsedPill(lens, screenWidth(), resources.displayMetrics.density),
+        edgeSide = edgeSide
     )
 
     private fun screenWidth(): Int = screenSize().x

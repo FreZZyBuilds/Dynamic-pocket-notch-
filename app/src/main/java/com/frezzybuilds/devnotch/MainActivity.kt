@@ -12,6 +12,21 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import com.frezzybuilds.devnotch.data.settings.NotchSettings
+import com.frezzybuilds.devnotch.ui.media.EdgeTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -145,21 +161,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.clickable { showModeDialog = true }
             )
             if (displayMode == NotchLayoutMode.EDGE_SIDE) {
-                HorizontalDivider()
-                var autoMinimize by remember { mutableStateOf(settings.edgeAutoMinimize) }
-                ListItem(
-                    headlineContent = { Text("Edge-Player einklappen") },
-                    supportingContent = { Text("Nach 5 s nur noch das runde Cover zeigen – Tippen öffnet den Player wieder") },
-                    trailingContent = {
-                        Switch(
-                            checked = autoMinimize,
-                            onCheckedChange = {
-                                autoMinimize = it
-                                settings.edgeAutoMinimize = it
-                            }
-                        )
-                    }
-                )
+                EdgePlayerSettings(settings)
             }
             HorizontalDivider()
             ListItem(
@@ -295,4 +297,131 @@ private fun openOverlaySettings(context: Context) {
 
 private fun openNotificationListenerSettings(context: Context) {
     context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+}
+
+/** Optionen des Edge-Players: Design, Einklappen, Wartezeit, Verhalten bei neuem Song. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EdgePlayerSettings(settings: NotchSettings) {
+    var theme by remember { mutableStateOf(settings.edgeTheme) }
+    var showThemeDialog by remember { mutableStateOf(false) }
+    var autoMinimize by remember { mutableStateOf(settings.edgeAutoMinimize) }
+    var delay by remember { mutableIntStateOf(settings.edgeMinimizeDelaySeconds) }
+    var showOnTrack by remember { mutableStateOf(settings.edgeShowOnTrackChange) }
+
+    HorizontalDivider()
+    ListItem(
+        headlineContent = { Text("Design") },
+        supportingContent = { Text(theme.label) },
+        leadingContent = { ThemeSwatch(theme) },
+        modifier = Modifier.clickable { showThemeDialog = true }
+    )
+    HorizontalDivider()
+    ListItem(
+        headlineContent = { Text("Edge-Player einklappen") },
+        supportingContent = { Text("Zeigt nach kurzer Zeit nur noch das runde Cover. Tippen öffnet den Player, Ziehen verschiebt die Bubble.") },
+        trailingContent = {
+            Switch(
+                checked = autoMinimize,
+                onCheckedChange = {
+                    autoMinimize = it
+                    settings.edgeAutoMinimize = it
+                }
+            )
+        }
+    )
+    if (autoMinimize) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Text("Einklappen nach", style = MaterialTheme.typography.bodyMedium)
+            val options = listOf(3, 5, 10)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                options.forEachIndexed { index, seconds ->
+                    SegmentedButton(
+                        selected = delay == seconds,
+                        onClick = {
+                            delay = seconds
+                            settings.edgeMinimizeDelaySeconds = seconds
+                        },
+                        shape = SegmentedButtonDefaults.itemShape(index, options.size)
+                    ) { Text("$seconds s") }
+                }
+            }
+        }
+        ListItem(
+            headlineContent = { Text("Bei neuem Song kurz zeigen") },
+            supportingContent = { Text("Klappt den Player bei Titelwechsel auf, damit du den neuen Song siehst") },
+            trailingContent = {
+                Switch(
+                    checked = showOnTrack,
+                    onCheckedChange = {
+                        showOnTrack = it
+                        settings.edgeShowOnTrackChange = it
+                    }
+                )
+            }
+        )
+    }
+
+    if (showThemeDialog) {
+        ThemeDialog(
+            current = theme,
+            onSelect = {
+                theme = it
+                settings.edgeTheme = it
+                showThemeDialog = false
+            },
+            onDismiss = { showThemeDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun ThemeDialog(current: EdgeTheme, onSelect: (EdgeTheme) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Design des Edge-Players") },
+        text = {
+            Column(Modifier.selectableGroup().verticalScroll(rememberScrollState())) {
+                EdgeTheme.entries.forEach { theme ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = theme == current,
+                                onClick = { onSelect(theme) },
+                                role = Role.RadioButton
+                            )
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = theme == current, onClick = null)
+                        Spacer(Modifier.width(12.dp))
+                        ThemeSwatch(theme)
+                        Column(Modifier.padding(start = 12.dp)) {
+                            Text(theme.label, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                theme.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Fertig") } }
+    )
+}
+
+/** Farbvorschau: Verlauf des Themes; „Album-Farben“ als bunter Farbkreis. */
+@Composable
+private fun ThemeSwatch(theme: EdgeTheme) {
+    val brush = theme.colors?.let { Brush.verticalGradient(it) }
+        ?: Brush.sweepGradient(listOf(Color(0xFFE040FB), Color(0xFF18FFFF), Color(0xFFFFD54F), Color(0xFFFF5252), Color(0xFFE040FB)))
+    Box(
+        Modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(brush)
+    )
 }
