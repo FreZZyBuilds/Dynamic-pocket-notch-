@@ -44,4 +44,16 @@ class ExpandedSizeTest {
         val raised = PillGeometry(width = 330, height = 96, x = 0, y = -4)
         assertEquals(92, NotchGeometry.expandedTopInset(raised, statusBarHeight = 60))
     }
+
+    @Test
+    fun `user size is applied but never exceeds the screen`() {
+        // Gewünscht 420 × 520 dp auf 412 × 915: Breite durch den Rand begrenzt, Höhe passt.
+        val (w, h) = ExpandedSize.of(NotchLayoutMode.NOTCH_TOP, 412, 915, landscape = false, topInsetDp = 36f, wantedWidthDp = 420, wantedHeightDp = 520)
+        assertEquals(412f - 16f, w)
+        assertEquals(520f + 36f, h)
+        // Querformat (Höhe 412): höchstens 80 % der Höhe.
+        assertEquals(329, ExpandedSize.dashboardHeightDp(412, 600))
+        // Kleiner Wunsch bleibt klein.
+        assertEquals(240, ExpandedSize.dashboardHeightDp(915, 240))
+    }
 }

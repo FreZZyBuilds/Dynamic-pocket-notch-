@@ -40,11 +40,19 @@ du die zugehörige Funktion selbst eingerichtet hast.
 | **Zugangsdaten** (GitHub-Token, API-Schlüssel der KI-Anbieter, Ollama-Adresse) | Abruf der jeweiligen Statistiken (siehe 4) | App-privater Speicher, vom Backup ausgeschlossen |
 | **Zwischengespeicherte Statistiken** (KI-Kosten des Monats, GitHub-Profilbild) | Schnelle Anzeige ohne erneuten Abruf | App-privater Speicher bzw. App-Cache |
 | **Pro-Status** | Freischaltung der Pro-Funktionen | App-privater Speicher |
+| **Benachrichtigungen** (App, Titel, Text, Symbol, Aktionen) | Kurze Anzeige in der Notch („Peek“) mit Öffnen, Schließen und direkten Aktionen | Nur im Arbeitsspeicher, solange die Benachrichtigung angezeigt wird |
+| **Live-Ansichten** (Anrufer und Gesprächsdauer, nächste Abbiegung der Navigation, Timer, Fortschritt von Downloads) | Dauerhafte Anzeige laufender Vorgänge in der Pille, Annehmen/Ablehnen/Auflegen von Anrufen über die Knöpfe der Telefon-App | Nur im Arbeitsspeicher, solange die Benachrichtigung besteht |
+| **Liste der Apps, die Benachrichtigungen geschickt haben** (Paketname und App-Name, höchstens 60) | Auswahl in den Einstellungen, welche Apps in der Notch erscheinen | App-privater Speicher, vom Backup ausgeschlossen |
 
-Wiedergabeinformationen werden über den Android-Benachrichtigungszugriff gelesen. DevNotch
-wertet **ausschließlich Medien-Benachrichtigungen** aus, also Benachrichtigungen, die eine
-Mediensitzung enthalten. Andere Benachrichtigungen (Nachrichten, E-Mails usw.) werden sofort
-verworfen, nicht gelesen und nicht gespeichert.
+Wiedergabeinformationen, Benachrichtigungen und Live-Ansichten liest DevNotch über den
+Android-Benachrichtigungszugriff. Die Inhalte werden **ausschließlich auf dem Gerät** angezeigt,
+**nie übertragen** und nicht dauerhaft gespeichert. Gespeichert wird nur die Liste der App-Namen
+für die Filtereinstellung, ohne Inhalte. In den Einstellungen kannst du Benachrichtigungen und
+jede Art von Live-Ansicht einzeln abschalten und Apps ausblenden. Sind Benachrichtigungen und
+alle Live-Ansichten aus, wertet DevNotch nur noch Medien-Benachrichtigungen aus. Auf dem
+Sperrbildschirm zeigt DevNotch standardmäßig nur den App-Namen, keine Inhalte. Eine
+Benachrichtigung schließt DevNotch nur, wenn du in der Notch auf ✕ tippst. Aktionen (z. B.
+„Annehmen“ oder „Als gelesen markieren“) löst es nur aus, wenn du den Knopf antippst.
 
 Die Zwischenablage liest DevNotch nur, wenn Android den Zugriff erlaubt. Ab Android 10 ist das
 nur der Fall, solange DevNotch im Vordergrund ist.
@@ -102,7 +110,7 @@ ebenfalls von RevenueCat geladen.
 | Berechtigung | Wofür |
 |---|---|
 | Über anderen Apps einblenden (`SYSTEM_ALERT_WINDOW`) | Die Notch, das Floating-Dashboard und den Edge-Player über dem aktuellen Bildschirm zeichnen |
-| Benachrichtigungszugriff (`BIND_NOTIFICATION_LISTENER_SERVICE`) | Ausschließlich Mediensitzungen steuern und den laufenden Player erkennen (siehe 3) |
+| Benachrichtigungszugriff (`BIND_NOTIFICATION_LISTENER_SERVICE`) | Mediensitzungen steuern, Benachrichtigungen und Live-Ansichten (Anrufe, Navigation, Timer, Fortschritt) in der Notch anzeigen (siehe 3) |
 | Vordergrunddienst (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE`) | Die Notch dauerhaft anzeigen, ohne dass Android sie beendet |
 | Benachrichtigungen (`POST_NOTIFICATIONS`) | Die vorgeschriebene, dezente Dienst-Benachrichtigung mit „Beenden“-Knopf |
 | Nach dem Neustart starten (`RECEIVE_BOOT_COMPLETED`) | Die Notch nach einem Neustart oder App-Update wieder einblenden, falls sie aktiv war |

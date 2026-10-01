@@ -2,6 +2,7 @@ package com.frezzybuilds.devnotch.service
 
 import android.app.Notification
 import android.content.ComponentName
+import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.media.MediaMetadata
 import android.media.session.MediaController
@@ -16,6 +17,7 @@ import com.frezzybuilds.devnotch.appContainer
 import com.frezzybuilds.devnotch.notify.NotchNotification
 import com.frezzybuilds.devnotch.notify.NotificationController
 import com.frezzybuilds.devnotch.notify.NotificationHub
+import com.frezzybuilds.devnotch.data.settings.NotchSettings
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.scale
 import androidx.palette.graphics.Palette
@@ -61,6 +63,9 @@ class MediaNotificationListener : NotificationListenerService() {
     /** Letzte Medien-Benachrichtigung je App: Titel/Cover-Fallback für sparsame Metadaten. */
     private val mediaNotifications = mutableMapOf<String, NotificationInfo>()
 
+    /** Hält die Referenz – SharedPreferences merkt sich Listener nur schwach. */
+    private var notifyPrefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
+
     private data class Artwork(val bitmap: Bitmap, val accent: ArtworkAccent)
     private data class NotificationInfo(val title: String?, val text: String?, val largeIcon: Bitmap?)
 
@@ -75,6 +80,13 @@ class MediaNotificationListener : NotificationListenerService() {
         runCatching { activeNotifications }.getOrNull()?.forEach { sbn ->
             rememberMediaNotification(sbn)
             routeNotification(sbn, initialScan = true)
+        }
+        // Schalter geändert (z. B. Navigation aus): laufende Live-Ansichten neu bewerten.
+        val settings = applicationContext.appContainer.notchSettings
+        notifyPrefsListener?.let(settings::removeListener)
+        notifyPrefsListener = settings.addListener(NotchSettings.NOTIFY_PREF_KEYS) {
+            NotificationHub.clearLive()
+            runCatching { activeNotifications }.getOrNull()?.forEach { routeNotification(it, initialScan = true) }
         }
         val manager = getSystemService(MediaSessionManager::class.java)
         try {
@@ -116,6 +128,8 @@ class MediaNotificationListener : NotificationListenerService() {
      */
     private fun routeNotification(sbn: StatusBarNotification, initialScan: Boolean) {
         val prefs = applicationContext.appContainer.notchSettings.notifyPrefs
+        // Alles ausgeschaltet: Benachrichtigungen gar nicht erst auswerten.
+        if (!prefs.enabled && !prefs.live.any) return
         val notification = NotchNotification.from(this, sbn, runCatching { currentRanking }.getOrNull()) ?: return
         if (notification.isMedia) return
         val dnd = runCatching { currentInterruptionFilter != INTERRUPTION_FILTER_ALL }.getOrDefault(false)
@@ -125,6 +139,8 @@ class MediaNotificationListener : NotificationListenerService() {
     private fun component() = ComponentName(this, MediaNotificationListener::class.java)
 
     private fun release() {
+        notifyPrefsListener?.let(applicationContext.appContainer.notchSettings::removeListener)
+        notifyPrefsListener = null
         sessionManager?.removeOnActiveSessionsChangedListener(sessionsListener)
         sessionManager = null
         onSessionsChanged(emptyList())

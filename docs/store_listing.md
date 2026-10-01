@@ -27,6 +27,17 @@ Datenschutzerklärung: [URL zu docs/privacy_policy.md, z. B. GitHub Pages]*
 > • Edge-Player am Bildschirmrand, der sich nach ein paar Sekunden zur kleinen Bubble einklappt
 > • Themes und Farben, die sich dem Cover anpassen
 >
+> **🔔 Benachrichtigungen & Live-Ansichten**
+> • Neue Benachrichtigungen gleiten kurz aus der Notch: öffnen, wegwischen oder direkt eine
+>   Aktion auslösen
+> • Eingehende Anrufe mit Annehmen/Ablehnen, laufende Gesprächsdauer in der Pille
+> • Navigation (Google Maps, Waze u. a.), Timer und Downloads als Live-Ansicht
+> • Filter pro App, „Nicht stören“, Anzeigedauer, Datenschutz auf dem Sperrbildschirm
+>
+> **✧ Lichtlauf & Größe**
+> • Farbiges Licht um die Notch in 10 Paletten und 3 Stilen, Tempo, Helligkeit und Länge
+> • Aufgeklappte Notch per Griff größer ziehen
+>
 > **⏱ Focus Timer**
 > • Pomodoro 25/5 mit Fortschritt direkt in der Pille
 >
@@ -58,11 +69,11 @@ Datenschutzerklärung: [URL zu docs/privacy_policy.md, z. B. GitHub Pages]*
 > Berechtigung kann die Notch nicht über anderen Apps erscheinen. Das ist die Kernfunktion
 > der App.
 >
-> **Benachrichtigungszugriff:** wird ausschließlich genutzt, um Mediensitzungen zu steuern
-> (Play/Pause, Weiter, Zurück) und zu erkennen, welcher Player gerade läuft (Titel, Interpret,
-> Cover). Android gibt Mediensitzungen anderer Apps nur an Apps mit diesem Zugriff heraus.
-> Andere Benachrichtigungen wie Nachrichten oder E-Mails werden weder gelesen noch gespeichert
-> oder übertragen. Ohne den Zugriff funktioniert alles außer der Musiksteuerung.
+> **Benachrichtigungszugriff:** steuert Mediensitzungen (Play/Pause, Weiter, Zurück) und zeigt
+> Benachrichtigungen, Anrufe, Navigation, Timer und Downloads in der Notch an. Alles bleibt auf
+> dem Gerät: Inhalte werden nie übertragen und nicht gespeichert. Jede Funktion ist einzeln
+> abschaltbar. Ohne den Zugriff funktioniert alles außer Musik, Benachrichtigungen und
+> Live-Ansichten.
 >
 > Abos verlängern sich automatisch und sind jederzeit im Play Store kündbar.
 
@@ -101,31 +112,37 @@ jederzeit über die Benachrichtigung („Beenden“) oder den Schalter in der Ap
 
 ### `BIND_NOTIFICATION_LISTENER_SERVICE` – Benachrichtigungszugriff
 
-**Wofür:** Der Zugriff dient **ausschließlich** zwei Dingen: Mediensitzungen zu steuern und den
-laufenden Player zu erkennen. Android liefert die aktiven Mediensitzungen anderer Apps
-(`MediaSessionManager.getActiveSessions(...)`) nur an Apps, deren `NotificationListenerService`
-vom Nutzer freigegeben ist. Über die erhaltenen `MediaController` liest DevNotch Titel,
-Interpret, Cover und Wiedergabestatus und sendet Play/Pause, Weiter und Zurück.
+**Wofür:** Der Zugriff ist Grundlage von drei Kernfunktionen:
+1. **Mediensteuerung:** Android liefert die aktiven Mediensitzungen anderer Apps
+   (`MediaSessionManager.getActiveSessions(...)`) nur an Apps, deren
+   `NotificationListenerService` freigegeben ist. Über die `MediaController` liest DevNotch Titel,
+   Interpret, Cover und Status und sendet Play/Pause, Weiter und Zurück.
+2. **Benachrichtigungen in der Notch:** Neue Benachrichtigungen erscheinen kurz als „Peek“ mit
+   App, Titel und Text. Der Nutzer kann sie öffnen (`contentIntent`), eine Aktion der App
+   auslösen oder sie schließen (`cancelNotification`, nur nach Tippen auf ✕).
+3. **Live-Ansichten:** Laufende Anrufe (`CATEGORY_CALL`/`CallStyle`), Navigation (z. B. Google
+   Maps), Timer und Fortschrittsbalken bleiben in der Pille sichtbar. Annehmen, Ablehnen und
+   Auflegen lösen die Knöpfe der Telefon-App aus.
 
-**Was nicht passiert:** `MediaNotificationListener` prüft jede eingehende Benachrichtigung
-nur darauf, ob sie eine Mediensitzung enthält (`Notification.EXTRA_MEDIA_SESSION`). Alle
-anderen Benachrichtigungen werden sofort verworfen, nicht ausgewertet und nicht gespeichert.
-Medieninformationen bleiben im Arbeitsspeicher, werden nie auf den Datenträger geschrieben und
-nie übertragen. DevNotch beantwortet, schließt oder verändert keine Benachrichtigungen.
+**Umgang mit den Daten:** Inhalte werden nur im Arbeitsspeicher gehalten, solange die
+Benachrichtigung besteht. Sie werden nie auf den Datenträger geschrieben und nie übertragen.
+Gespeichert werden nur Paket- und App-Namen für die Filterliste in den Einstellungen.
+Benachrichtigungen und jede Live-Ansicht lassen sich einzeln abschalten, Apps lassen sich
+ausblenden. Sind alle aus, wertet DevNotch nur noch Medien-Benachrichtigungen aus. Auf dem
+Sperrbildschirm zeigt DevNotch standardmäßig nur den App-Namen. DevNotch beantwortet keine
+Nachrichten: Aktionen mit Texteingabe (z. B. „Antworten“) werden nicht angeboten.
 
-**Warum nötig:** Ohne diesen Zugriff gibt Android die Mediensitzungen fremder Apps nicht heraus.
-Die Musiksteuerung in der Notch und im Edge-Player wäre dann unmöglich. Alle anderen Funktionen
-laufen auch ohne den Zugriff.
+**Warum nötig:** Ohne diesen Zugriff gibt Android weder Mediensitzungen noch Benachrichtigungen
+fremder Apps heraus. Alle anderen Funktionen laufen auch ohne den Zugriff.
 
-> **EN:** Used **exclusively** to control media sessions and detect the currently playing
-> player. Android only exposes other apps' active media sessions
-> (`MediaSessionManager.getActiveSessions`) to an app whose `NotificationListenerService` the
-> user has enabled. DevNotch reads title, artist, artwork and playback state through the
-> returned `MediaController`s and sends play/pause/skip commands. Every posted notification is
-> checked only for `EXTRA_MEDIA_SESSION`; all other notifications are discarded immediately,
-> never parsed, stored or transmitted. Media metadata stays in memory only. The app never
-> replies to, dismisses or modifies notifications. All features except media control work
-> without this access.
+> **EN:** Powers three core features: (1) media control – other apps' active media sessions are
+> only exposed to an enabled `NotificationListenerService`; (2) notification peeks – new
+> notifications briefly appear in the notch with open, dismiss (only on user tap) and the app's
+> own actions; (3) live activities – ongoing calls (answer/decline/hang up via the dialer's own
+> actions), turn-by-turn navigation, timers and progress. Content stays in memory only while
+> the notification exists, is never written to disk and never transmitted. Only package and
+> app names are stored for the per-app filter. Each feature can be turned off individually;
+> on the lock screen only the app name is shown by default.
 
 ### `FOREGROUND_SERVICE_SPECIAL_USE` – Vordergrunddienst (Erklärung in der Play Console)
 
@@ -160,7 +177,7 @@ zu. Lehnt die Prüfung sie ab, kann die App stattdessen die Einstellungsliste
 | Werden Nutzerdaten erhoben oder geteilt? | **Ja:** Kaufdaten über RevenueCat |
 | Kaufverlauf | Erhoben, nicht geteilt · Zweck: App-Funktionalität (Pro-Freischaltung) · erforderlich für Käufe |
 | Geräte- oder andere IDs | Erhoben (anonyme RevenueCat-App-Nutzer-ID) · Zweck: App-Funktionalität |
-| Notizen, Zwischenablage, Medieninfos | **Nicht erhoben** (verlassen das Gerät nicht) |
+| Notizen, Zwischenablage, Medieninfos, Benachrichtigungsinhalte | **Nicht erhoben** (verlassen das Gerät nicht) |
 | GitHub-/KI-Abrufe | Gehen direkt vom Gerät an den vom Nutzer gewählten Dienst und werden vom Nutzer selbst ausgelöst. **Vor dem Ausfüllen prüfen**, ob das unter die Play-Ausnahme „vom Nutzer initiierte Übertragung“ fällt; sonst als „App-Aktivität / sonstige“ angeben |
 | Verschlüsselung bei der Übertragung | Ja (HTTPS). Ausnahme: eine vom Nutzer eingetragene lokale `http://`-Ollama-Adresse. Deshalb zur Sicherheit „Nein“ angeben oder Ollama-HTTP entfernen |
 | Löschung möglich? | Ja: App-Daten löschen bzw. deinstallieren. Ein Konto gibt es nicht |

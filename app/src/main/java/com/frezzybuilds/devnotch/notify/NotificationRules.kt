@@ -13,7 +13,9 @@ data class LivePrefs(
     val navigation: Boolean = true,
     val timers: Boolean = true,
     val progress: Boolean = true
-)
+) {
+    val any: Boolean get() = calls || navigation || timers || progress
+}
 
 /** Einstellungen für Benachrichtigungen in der Notch. */
 data class NotifyPrefs(

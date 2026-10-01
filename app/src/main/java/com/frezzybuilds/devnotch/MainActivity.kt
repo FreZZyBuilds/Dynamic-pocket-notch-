@@ -280,8 +280,8 @@ fun SetupScreen(
                 SetupStep(
                     title = "Benachrichtigungen",
                     done = hasListenerAccess,
-                    doneText = "Mediensteuerung verfügbar.",
-                    todoText = "Für Musik-Steuerung und Song-Peeks.",
+                    doneText = "Musik, Benachrichtigungen und Live-Ansichten aktiv.",
+                    todoText = "Für Musik, Benachrichtigungen, Anrufe und Navigation.",
                     action = "Erteilen",
                     onAction = { openNotificationListenerSettings(context) }
                 ),
@@ -297,19 +297,25 @@ fun SetupScreen(
             modifier = Modifier.staggerIn(2)
         )
 
-        GlassCard(Modifier.fillMaxWidth().staggerIn(3)) {
-            Column(CardPadding) {
-                SectionHeader(
-                    icon = "◐",
-                    title = "Platzierung",
-                    subtitle = if (isTablet) "${NotchLayoutMode.EDGE_SIDE.label} – auf Tablets automatisch" else displayMode.label
-                )
-            }
+        SettingsSection(
+            id = "actions",
+            icon = "⚡",
+            title = "Schnellaktionen",
+            subtitle = "Peeks testen, Größe zurücksetzen",
+            defaultOpen = true,
+            modifier = Modifier.staggerIn(3)
+        ) { QuickActions(settings, isServiceRunning) }
+
+        SettingsSection(
+            id = "look",
+            icon = "◐",
+            title = "Darstellung",
+            subtitle = if (isTablet) "${NotchLayoutMode.EDGE_SIDE.label} – auf Tablets automatisch" else displayMode.label,
+            modifier = Modifier.staggerIn(3)
+        ) {
             if (!isTablet) {
-                Row(
-                    Modifier.padding(start = 18.dp, end = 18.dp, bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                SettingLabel("Platzierung")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     NotchLayoutMode.entries.forEach { mode ->
                         ModeChip(
                             label = if (mode == NotchLayoutMode.NOTCH_TOP) "Notch oben" else "Am Rand",
@@ -323,21 +329,49 @@ fun SetupScreen(
                     }
                 }
             }
+            AnimatedVisibility(visible = displayMode == NotchLayoutMode.NOTCH_TOP && !isTablet) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { NotchSizeSettings(settings) }
+            }
             AnimatedVisibility(visible = displayMode == NotchLayoutMode.EDGE_SIDE || isTablet) {
                 Column { EdgePlayerSettings(settings) }
             }
         }
 
-        GlassCard(Modifier.fillMaxWidth().staggerIn(4)) {
-            Column(CardPadding, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                SectionHeader(icon = "✧", title = "Lichtlauf", subtitle = "Licht, das um die Notch kreist")
-                BeamSettings(settings)
-            }
-        }
+        SettingsSection(
+            id = "beam",
+            icon = "✧",
+            title = "Lichtlauf",
+            subtitle = "Licht, das um die Notch kreist",
+            modifier = Modifier.staggerIn(4)
+        ) { BeamSettings(settings) }
 
-        Box(Modifier.staggerIn(4)) { OemHintCard(settings) }
+        SettingsSection(
+            id = "notify",
+            icon = "🔔",
+            title = "Benachrichtigungen",
+            subtitle = if (hasListenerAccess) "Peeks aus der Notch, Filter pro App" else "Zugriff fehlt",
+            modifier = Modifier.staggerIn(4)
+        ) { NotificationSettings(settings, hasListenerAccess) { openNotificationListenerSettings(context) } }
 
-        Box(Modifier.staggerIn(5)) { ProStatusCard(onOpenPaywall) }
+        SettingsSection(
+            id = "live",
+            icon = "◉",
+            title = "Live-Ansichten",
+            subtitle = "Anrufe, Navigation, Timer, Fortschritt",
+            modifier = Modifier.staggerIn(5)
+        ) { LiveViewSettings(settings) }
+
+        SettingsSection(
+            id = "lock",
+            icon = "🔒",
+            title = "Sperrbildschirm",
+            subtitle = "Was gesperrt sichtbar ist",
+            modifier = Modifier.staggerIn(5)
+        ) { LockscreenSettings(settings) }
+
+        Box(Modifier.staggerIn(5)) { OemHintCard(settings) }
+
+        Box(Modifier.staggerIn(6)) { ProStatusCard(onOpenPaywall) }
 
         val gitHubRequester = remember { BringIntoViewRequester() }
         val aiRequester = remember { BringIntoViewRequester() }
@@ -350,9 +384,15 @@ fun SetupScreen(
             onSectionShown()
         }
 
-        GitHubCard(Modifier.bringIntoViewRequester(gitHubRequester).staggerIn(6))
+        GitHubCard(
+            Modifier.bringIntoViewRequester(gitHubRequester).staggerIn(6),
+            forceOpen = focusSection == Setup.Section.GITHUB
+        )
 
-        AiUsageCard(Modifier.bringIntoViewRequester(aiRequester).staggerIn(7))
+        AiUsageCard(
+            Modifier.bringIntoViewRequester(aiRequester).staggerIn(7),
+            forceOpen = focusSection == Setup.Section.AI
+        )
 
         Spacer(Modifier.height(24.dp))
     }
@@ -452,13 +492,13 @@ private fun BeamSettings(settings: NotchSettings) {
 
 /** Zwischenüberschrift innerhalb einer Karte. */
 @Composable
-private fun SettingLabel(text: String) {
+internal fun SettingLabel(text: String) {
     Text(text.uppercase(), color = Glass.TextSecondary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
 }
 
 /** Reihe aus Auswahl-Kacheln (eine aktiv). */
 @Composable
-private fun <T> ChoiceRow(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
+internal fun <T> ChoiceRow(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         options.forEach { option ->
             ModeChip(label(option), selected = option == selected, modifier = Modifier.weight(1f)) { onSelect(option) }
@@ -492,7 +532,7 @@ private fun PaletteChip(palette: BeamPalette, selected: Boolean, modifier: Modif
 
 /** Regler mit Beschriftung und aktuellem Wert; gespeichert wird beim Loslassen. */
 @Composable
-private fun ValueSlider(
+internal fun ValueSlider(
     label: String,
     valueText: String,
     value: Float,
@@ -521,7 +561,7 @@ private fun ValueSlider(
 
 /** Auswahl-Kachel für die Platzierung: aktiv mit Neon-Rand und Verlaufstext. */
 @Composable
-private fun ModeChip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun ModeChip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
     Box(
         modifier
@@ -543,7 +583,7 @@ private fun ModeChip(label: String, selected: Boolean, modifier: Modifier = Modi
 
 
 @Composable
-private fun GitHubCard(modifier: Modifier = Modifier) {
+private fun GitHubCard(modifier: Modifier = Modifier, forceOpen: Boolean = false) {
     val settings = LocalContext.current.appContainer.gitHubSettings
     var token by remember { mutableStateOf(settings.token.orEmpty()) }
     var username by remember { mutableStateOf(settings.username.orEmpty()) }
@@ -552,16 +592,18 @@ private fun GitHubCard(modifier: Modifier = Modifier) {
 
     // Verbunden: kompakt mit „Bearbeiten“; sonst gleich die Felder.
     var editing by remember { mutableStateOf(settings.token.isNullOrBlank()) }
-    GlassCard(modifier.fillMaxWidth()) {
+    SettingsSection(
+        id = "github",
+        icon = "</>",
+        title = "GitHub-Heatmap",
+        subtitle = if (saved.first.isNotBlank()) "Verbunden${saved.second.takeIf { it.isNotBlank() }?.let { " als @$it" } ?: ""}" else "Pro · Contributions und offene PRs in der Notch",
+        modifier = modifier,
+        forceOpen = forceOpen
+    ) {
         Column(
-            modifier = CardPadding.animateContentSize(),
+            modifier = Modifier.animateContentSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            SectionHeader(
-                icon = "</>",
-                title = "GitHub-Heatmap",
-                subtitle = if (saved.first.isNotBlank()) "Verbunden${saved.second.takeIf { it.isNotBlank() }?.let { " als @$it" } ?: ""}" else "Pro · Contributions und offene PRs in der Notch"
-            )
             if (!editing) {
                 GlassButton("Bearbeiten", onClick = { editing = true })
                 return@Column
@@ -669,7 +711,7 @@ private fun ProStatusCard(onOpenPaywall: (ProFeature?) -> Unit) {
  * eingeklappt in der Notch erscheinen soll. Speichern löst sofort eine Abfrage aus.
  */
 @Composable
-private fun AiUsageCard(modifier: Modifier = Modifier) {
+private fun AiUsageCard(modifier: Modifier = Modifier, forceOpen: Boolean = false) {
     val container = LocalContext.current.appContainer
     val settings = container.aiUsageSettings
     val scope = rememberCoroutineScope()
@@ -691,13 +733,15 @@ private fun AiUsageCard(modifier: Modifier = Modifier) {
         if (ollamaUrl.isNotBlank()) add("Ollama")
     }
     var editing by remember { mutableStateOf(connected.isEmpty()) }
-    GlassCard(modifier.fillMaxWidth()) {
-        Column(CardPadding.animateContentSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SectionHeader(
-                icon = "✦",
-                title = "KI-Token-Tracker",
-                subtitle = if (connected.isEmpty()) "Pro · Monatskosten deiner KI-Anbieter" else "${connected.size} verbunden · Limit \$$limit"
-            )
+    SettingsSection(
+        id = "ai",
+        icon = "✦",
+        title = "KI-Token-Tracker",
+        subtitle = if (connected.isEmpty()) "Pro · Monatskosten deiner KI-Anbieter" else "${connected.size} verbunden · Limit \$$limit",
+        modifier = modifier,
+        forceOpen = forceOpen
+    ) {
+        Column(Modifier.animateContentSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (connected.isNotEmpty()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     connected.forEach { name ->

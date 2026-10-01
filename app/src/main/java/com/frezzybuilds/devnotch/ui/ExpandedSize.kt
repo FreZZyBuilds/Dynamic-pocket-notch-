@@ -12,12 +12,20 @@ object ExpandedSize {
     const val DASHBOARD_MAX_WIDTH_DP = 360
     const val DASHBOARD_HEIGHT_DP = 280
 
+    /** Vom Nutzer einstellbar (Regler bzw. Ziehen am Griff). */
+    val DASHBOARD_WIDTH_RANGE = 300..480
+    val DASHBOARD_HEIGHT_RANGE = 240..600
+
     /** Mindestabstand des Dashboards zu den Bildschirmrändern. */
     private const val SIDE_MARGIN_DP = 8
 
     /** Nie breiter als der Bildschirm (Samsung mit großem Bildschirmzoom: ~360 dp gesamt). */
-    fun dashboardWidthDp(screenWidthDp: Int): Int =
-        minOf(DASHBOARD_MAX_WIDTH_DP, screenWidthDp - 2 * SIDE_MARGIN_DP)
+    fun dashboardWidthDp(screenWidthDp: Int, wantedDp: Int = DASHBOARD_MAX_WIDTH_DP): Int =
+        minOf(wantedDp, screenWidthDp - 2 * SIDE_MARGIN_DP)
+
+    /** Höchstens 80 % der Bildschirmhöhe, damit das Dashboard nie über den Rand ragt. */
+    fun dashboardHeightDp(screenHeightDp: Int, wantedDp: Int = DASHBOARD_HEIGHT_DP): Int =
+        minOf(wantedDp, (screenHeightDp * 0.8f).toInt())
 
     /** Peek: Pille wächst nach unten – Zeile mit der Linse plus eine Textzeile darunter. */
     const val PEEK_MAX_WIDTH_DP = 320
@@ -39,10 +47,13 @@ object ExpandedSize {
         screenWidthDp: Int,
         screenHeightDp: Int,
         landscape: Boolean,
-        topInsetDp: Float
+        topInsetDp: Float,
+        wantedWidthDp: Int = DASHBOARD_MAX_WIDTH_DP,
+        wantedHeightDp: Int = DASHBOARD_HEIGHT_DP
     ): Pair<Float, Float> = when (mode) {
         NotchLayoutMode.NOTCH_TOP ->
-            dashboardWidthDp(screenWidthDp).toFloat() to DASHBOARD_HEIGHT_DP + topInsetDp
+            dashboardWidthDp(screenWidthDp, wantedWidthDp).toFloat() to
+                dashboardHeightDp(screenHeightDp, wantedHeightDp) + topInsetDp
         NotchLayoutMode.EDGE_SIDE ->
             EdgeDrawerSpec.forScreen(screenWidthDp, screenHeightDp, landscape).let { it.width.value to it.height.value }
     }

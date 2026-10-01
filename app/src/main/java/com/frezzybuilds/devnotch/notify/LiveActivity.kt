@@ -82,8 +82,7 @@ fun interface LiveParser {
 object LiveParsers {
     private val NAVIGATION_APPS = setOf(
         "com.google.android.apps.maps", "com.waze", "com.here.app.maps", "net.osmand", "net.osmand.plus",
-        "com.sygic.aura", "com.mapswithme.maps.pro", "app.organicmaps", "com.tomtom.gplay.navapp",
-        "com.samsung.android.app.galaxyfinder"
+        "com.sygic.aura", "com.mapswithme.maps.pro", "app.organicmaps", "com.tomtom.gplay.navapp"
     )
     private val ANSWER = Regex("(?i)annehmen|antworten|answer|accept|abheben")
     private val DECLINE = Regex("(?i)ablehnen|decline|reject|abweisen")

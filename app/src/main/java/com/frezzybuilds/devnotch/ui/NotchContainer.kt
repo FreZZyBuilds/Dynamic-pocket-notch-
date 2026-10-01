@@ -1,6 +1,10 @@
 package com.frezzybuilds.devnotch.ui
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import com.frezzybuilds.devnotch.notify.sendFromNotch
 import com.frezzybuilds.devnotch.notify.NotificationRules
 import com.frezzybuilds.devnotch.notify.NotificationHub
@@ -165,7 +169,9 @@ fun NotchContainer(
     /** Einklapp-Animation ist fertig – erst jetzt darf der Service das Fenster verkleinern. */
     onCollapseSettled: () -> Unit = {},
     /** Peek beginnt/endet – der Service passt die Fenstergröße einmalig an. */
-    onPeekChange: (extraHeightDp: Int?) -> Unit = {}
+    onPeekChange: (extraHeightDp: Int?) -> Unit = {},
+    /** Dashboard-Größe (dp) – der Service setzt das Fenster passend, auch live beim Ziehen. */
+    onDashboardSizeChange: (widthDp: Int, heightDp: Int) -> Unit = { _, _ -> }
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     // Erster Eindruck mit sofortigem Nutzen: ohne GitHub-Token startet die Notch im Timer.
@@ -348,13 +354,36 @@ fun NotchContainer(
     val topInset = with(density) {
         if (layout.mode == NotchLayoutMode.NOTCH_TOP) layout.expandedTopInset.toDp() else 0.dp
     }
+    // Größe aus den Einstellungen; am Griff gezogen gilt bis zum Loslassen der Live-Wert.
+    val sizeSettings = LocalContext.current.appContainer.notchSettings
+    val savedSize by remember { sizeSettings.dashboardSizeFlow() }
+        .collectAsStateWithLifecycle(initialValue = sizeSettings.dashboardSize)
+    var dragHeightDp by remember { mutableStateOf<Float?>(null) }
+    val wantedHeightDp = dragHeightDp?.toInt() ?: savedSize.heightDp
+    LaunchedEffect(savedSize.widthDp, wantedHeightDp) { onDashboardSizeChange(savedSize.widthDp, wantedHeightDp) }
     val (expandedWidth, expandedHeight) = ExpandedSize.of(
         layout.mode,
         configuration.screenWidthDp,
         configuration.screenHeightDp,
         layout.landscape,
-        topInset.value
+        topInset.value,
+        wantedWidthDp = savedSize.widthDp,
+        wantedHeightDp = wantedHeightDp
     ).let { (w, h) -> w.dp to h.dp }
+    val resizeDensity = LocalDensity.current
+    val onResizeDrag: ((Float) -> Unit)? = if (layout.mode == NotchLayoutMode.NOTCH_TOP) { deltaPx ->
+        val current = dragHeightDp ?: savedSize.heightDp.toFloat()
+        val deltaDp = with(resizeDensity) { deltaPx.toDp().value }
+        val min = ExpandedSize.DASHBOARD_HEIGHT_RANGE.first.toFloat()
+        // maxOf: auf sehr niedrigen Bildschirmen wäre die Obergrenze sonst kleiner als die Untergrenze.
+        val max = maxOf(min, ExpandedSize.dashboardHeightDp(configuration.screenHeightDp, ExpandedSize.DASHBOARD_HEIGHT_RANGE.last).toFloat())
+        dragHeightDp = (current + deltaDp).coerceIn(min, max)
+    } else null
+    val onResizeEnd: () -> Unit = {
+        dragHeightDp?.let { sizeSettings.dashboardHeightDp = it.toInt() }
+    }
+    // Live-Wert erst verwerfen, wenn der gespeicherte ankommt – sonst springt die Höhe kurz zurück.
+    LaunchedEffect(savedSize.heightDp) { dragHeightDp = null }
     var leftPane by remember { mutableStateOf(DrawerPane.DEV) }
     var rightPane by remember { mutableStateOf(DrawerPane.NOTES) }
 
@@ -476,6 +505,8 @@ fun NotchContainer(
                     Dashboard(
                         live = live,
                         onSend = ::sendIntent,
+                        onResizeDrag = onResizeDrag,
+                        onResizeEnd = onResizeEnd,
                         tabs = if (locked) LockedTabs else NotchTab.entries,
                         selectedTab = if (locked) NotchTab.TIMER else selectedTab,
                         onSelectTab = { selectedTab = it },
@@ -588,6 +619,8 @@ fun NotchContainer(
 private fun Dashboard(
     live: LiveActivity?,
     onSend: (PendingIntent?) -> Unit,
+    onResizeDrag: ((Float) -> Unit)?,
+    onResizeEnd: () -> Unit,
     tabs: List<NotchTab>,
     selectedTab: NotchTab,
     onSelectTab: (NotchTab) -> Unit,
@@ -652,7 +685,8 @@ private fun Dashboard(
             },
             label = "tabContent",
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxWidth()
                 .padding(top = 8.dp)
                 .staggerIn(2)
         ) { tab ->
@@ -666,6 +700,8 @@ private fun Dashboard(
                 }
             }
         }
+        // Griff am unteren Rand: nach unten ziehen macht das Dashboard höher.
+        if (onResizeDrag != null) ResizeGrip(onResizeDrag, onResizeEnd)
     }
 }
 
@@ -839,5 +875,28 @@ private fun Modifier.pillProgress(elapsed: State<Float>): Modifier = drawWithCon
 private class AnimatedNotchShape(private val layout: NotchLayout, private val radius: State<Dp>) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
         notchShape(layout, radius.value).createOutline(size, layoutDirection, density)
+}
+
+/**
+ * Griff unten am Dashboard: nach unten ziehen = größer, nach oben = kleiner. Verbraucht die
+ * Geste, damit sie nicht als „Wischen zum Schließen“ beim Container ankommt.
+ */
+@Composable
+private fun ResizeGrip(onDrag: (Float) -> Unit, onEnd: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(18.dp)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(onDragEnd = onEnd, onDragCancel = onEnd) { change, dragAmount ->
+                    change.consume()
+                    onDrag(dragAmount)
+                }
+            }
+            .semantics { contentDescription = "Größe ändern" },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(Modifier.size(44.dp, 4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.35f)))
+    }
 }
 

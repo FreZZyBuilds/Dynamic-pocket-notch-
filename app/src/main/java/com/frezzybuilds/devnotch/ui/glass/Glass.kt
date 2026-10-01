@@ -1,5 +1,11 @@
 package com.frezzybuilds.devnotch.ui.glass
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
@@ -198,6 +204,60 @@ fun SectionHeader(icon: String, title: String, subtitle: String? = null, modifie
             if (subtitle != null) {
                 Text(subtitle, color = Glass.TextSecondary, style = MaterialTheme.typography.bodySmall)
             }
+        }
+    }
+}
+
+/**
+ * Einklappbare Glas-Karte: Kopf mit Symbol, Titel, Kurzinfo und drehendem Pfeil; der Inhalt
+ * gleitet auf und zu. Der Zustand liegt beim Aufrufer (z. B. gespeichert in den Einstellungen).
+ */
+@Composable
+fun CollapsibleCard(
+    icon: String,
+    title: String,
+    subtitle: String?,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+    neon: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val rotation by animateFloatAsState(if (expanded) 180f else 0f, spring(stiffness = Spring.StiffnessMediumLow), label = "chevron")
+    GlassCard(modifier.fillMaxWidth(), neon = neon) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable(role = Role.Button, onClickLabel = if (expanded) "Einklappen" else "Aufklappen", onClick = onToggle)
+                .then(CardPadding),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SectionHeader(icon, title, subtitle, Modifier.weight(1f))
+            Box(
+                Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = if (expanded) 0.12f else 0.06f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "⌄",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.graphicsLayer { rotationZ = rotation }
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(220, delayMillis = 60)),
+            exit = shrinkVertically(spring(stiffness = Spring.StiffnessMedium)) + fadeOut(tween(120))
+        ) {
+            Column(
+                Modifier.padding(start = 18.dp, end = 18.dp, bottom = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                content = content
+            )
         }
     }
 }

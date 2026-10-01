@@ -11,6 +11,7 @@ import com.frezzybuilds.devnotch.notify.LivePrefs
 import com.frezzybuilds.devnotch.notify.LockContent
 import com.frezzybuilds.devnotch.notify.NotifyPrefs
 import com.frezzybuilds.devnotch.service.EdgeSide
+import com.frezzybuilds.devnotch.ui.ExpandedSize
 import com.frezzybuilds.devnotch.service.LockscreenMode
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
 import com.frezzybuilds.devnotch.service.isTablet
@@ -26,6 +27,9 @@ data class EdgePrefs(
     val showOnTrackChange: Boolean,
     val theme: EdgeTheme
 )
+
+/** Breite und Höhe des aufgeklappten Dashboards in dp. */
+data class DashboardSize(val widthDp: Int, val heightDp: Int)
 
 data class BeamPrefs(val mode: BeamMode, val look: BeamLook)
 
@@ -235,17 +239,41 @@ class NotchSettings(context: Context) {
         prefs.edit { putString(KEY_NOTIFY_SEEN, updated.entries.joinToString("\n") { "${it.key}\t${it.value}" }) }
     }
 
+    // --- Größe des aufgeklappten Dashboards (Notch oben) ---------------------------------------
+    var dashboardWidthDp: Int
+        get() = prefs.getInt(KEY_DASH_WIDTH, ExpandedSize.DASHBOARD_MAX_WIDTH_DP)
+        set(value) = prefs.edit { putInt(KEY_DASH_WIDTH, value.coerceIn(ExpandedSize.DASHBOARD_WIDTH_RANGE)) }
+    var dashboardHeightDp: Int
+        get() = prefs.getInt(KEY_DASH_HEIGHT, ExpandedSize.DASHBOARD_HEIGHT_DP)
+        set(value) = prefs.edit { putInt(KEY_DASH_HEIGHT, value.coerceIn(ExpandedSize.DASHBOARD_HEIGHT_RANGE)) }
+    val dashboardSize: DashboardSize get() = DashboardSize(dashboardWidthDp, dashboardHeightDp)
+
+    fun dashboardSizeFlow(): Flow<DashboardSize> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_DASH_WIDTH || key == KEY_DASH_HEIGHT) trySend(dashboardSize)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(dashboardSize)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     var lockscreenMode: LockscreenMode
         get() = prefs.getString(KEY_LOCKSCREEN_MODE, null)
             ?.let { name -> LockscreenMode.entries.firstOrNull { it.name == name } }
             ?: LockscreenMode.SHOW
         set(value) = prefs.edit { putString(KEY_LOCKSCREEN_MODE, value.name) }
 
+    // --- Einstellungen: welche Karten aufgeklappt sind ------------------------------------------
+    fun isSectionOpen(id: String, default: Boolean): Boolean = prefs.getBoolean("section_open_$id", default)
+    fun setSectionOpen(id: String, open: Boolean) = prefs.edit { putBoolean("section_open_$id", open) }
+
     fun removeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
         prefs.unregisterOnSharedPreferenceChangeListener(listener)
 
     companion object {
         const val KEY_LOCKSCREEN_MODE = "lockscreen_mode"
+        const val KEY_DASH_WIDTH = "dashboard_width"
+        const val KEY_DASH_HEIGHT = "dashboard_height"
         const val KEY_NOTIFY_ENABLED = "notify_enabled"
         const val KEY_NOTIFY_DURATION = "notify_duration"
         const val KEY_NOTIFY_LOCK_CONTENT = "notify_lock_content"

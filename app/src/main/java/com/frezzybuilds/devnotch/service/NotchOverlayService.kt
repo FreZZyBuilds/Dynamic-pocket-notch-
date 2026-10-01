@@ -112,6 +112,10 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private var peeking = false
     private var windowPeek = false
 
+    /** Gewünschte Dashboard-Größe (dp) – vom NotchContainer gemeldet, auch live beim Ziehen. */
+    private var dashboardWidthDp = ExpandedSize.DASHBOARD_MAX_WIDTH_DP
+    private var dashboardHeightDp = ExpandedSize.DASHBOARD_HEIGHT_DP
+
     /** Höhe des aktuellen Peeks unter der Linsen-Zeile (Benachrichtigungen sind höher). */
     private var peekExtraHeightDp = ExpandedSize.PEEK_EXTRA_HEIGHT_DP
 
@@ -331,6 +335,13 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                             applyLayout()
                         }
                     },
+                    onDashboardSizeChange = { w, h ->
+                        if (w != dashboardWidthDp || h != dashboardHeightDp) {
+                            dashboardWidthDp = w
+                            dashboardHeightDp = h
+                            if (windowExpanded) applyLayout()
+                        }
+                    },
                     onEdgeDrag = ::onEdgeDrag,
                     onEdgeDragEnd = ::onEdgeDragEnd,
                     onFocusableChange = { wantsFocus ->
@@ -486,7 +497,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             config.screenWidthDp,
             config.screenHeightDp,
             notchLayout.landscape,
-            if (notchLayout.mode == NotchLayoutMode.NOTCH_TOP) notchLayout.expandedTopInset / density else 0f
+            if (notchLayout.mode == NotchLayoutMode.NOTCH_TOP) notchLayout.expandedTopInset / density else 0f,
+            wantedWidthDp = dashboardWidthDp,
+            wantedHeightDp = dashboardHeightDp
         )
         return (w * density).roundToInt() to (h * density).roundToInt()
     }
