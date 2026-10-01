@@ -2,6 +2,7 @@ package com.frezzybuilds.devnotch.service
 
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
+import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -23,6 +24,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.Display
 import android.view.Gravity
@@ -52,6 +54,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.frezzybuilds.devnotch.MainActivity
 import com.frezzybuilds.devnotch.R
 import com.frezzybuilds.devnotch.appContainer
+import com.frezzybuilds.devnotch.data.settings.NotchSettings
 import com.frezzybuilds.devnotch.data.clipboard.ClipboardListener
 import com.frezzybuilds.devnotch.peek.Peek
 import com.frezzybuilds.devnotch.peek.PeekCenter
@@ -122,6 +125,29 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         if (changed) applyLayout()
     }
 
+    /** Bildschirm an/aus und Sperre – bestimmt Sichtbarkeit und was die Notch zeigen darf. */
+    private var deviceLock by mutableStateOf(DeviceLock.UNLOCKED)
+    private lateinit var lockSettingsListener: SharedPreferences.OnSharedPreferenceChangeListener
+
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val keyguard = getSystemService(KeyguardManager::class.java)
+            val next = when (intent.action) {
+                Intent.ACTION_SCREEN_OFF -> DeviceLock.SCREEN_OFF
+                Intent.ACTION_USER_PRESENT -> DeviceLock.UNLOCKED
+                else -> DeviceLock.from(screenOn = true, keyguardLocked = keyguard?.isKeyguardLocked == true)
+            }
+            if (next == DeviceLock.SCREEN_OFF) {
+                // Beim Sperren nichts offen lassen: einklappen, Peek beenden, Fokus abgeben.
+                backPresses++
+                PeekCenter.current.value?.let(PeekCenter::dismiss)
+                windowFocusable = false
+            }
+            deviceLock = next
+            applyLayout()
+        }
+    }
+
     /** Ladekabel angesteckt → Lade-Peek mit Akkustand. */
     private val powerReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -176,6 +202,21 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             IntentFilter(Intent.ACTION_POWER_CONNECTED),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
+        ContextCompat.registerReceiver(
+            this,
+            screenReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_USER_PRESENT)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        deviceLock = DeviceLock.from(
+            screenOn = getSystemService(PowerManager::class.java)?.isInteractive != false,
+            keyguardLocked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
+        )
+        lockSettingsListener = settings.addListener(setOf(NotchSettings.KEY_LOCKSCREEN_MODE)) { applyLayout() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -215,6 +256,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         mainHandler.removeCallbacks(shrinkWindow)
         unregisterReceiver(powerReceiver)
+        unregisterReceiver(screenReceiver)
+        appContainer.notchSettings.removeListener(lockSettingsListener)
         composeView?.let { windowManager.removeView(it) }
         composeView = null
         viewModelStore.clear()
@@ -291,7 +334,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                             applyLayout()
                         }
                     },
-                    backPresses = backPresses
+                    backPresses = backPresses,
+                    locked = deviceLock.isLocked
                 )
             }
         }
@@ -388,8 +432,24 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                     contentView?.layoutParams = lp
                 }
             }
-            // Fokussierbar nur bei Bedarf (siehe [windowFocusable]); eingeklappt nie.
-            flags = if (OverlayWindowFlags.isFocusable(expanded, windowFocusable)) {
+            // Sperrbildschirm: je nach Einstellung darüber anzeigen oder ganz ausblenden.
+            val lockMode = appContainer.notchSettings.lockscreenMode
+            val hidden = DeviceLock.hideOverlay(deviceLock, lockMode)
+            @Suppress("DEPRECATION") // Für Fenster ohne Activity weiterhin der Weg über die Sperre.
+            flags = if (lockMode == LockscreenMode.SHOW) {
+                flags or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+            } else {
+                flags and WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED.inv()
+            }
+            flags = if (hidden) {
+                flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            } else {
+                flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+            }
+            composeView?.visibility = if (hidden) android.view.View.INVISIBLE else android.view.View.VISIBLE
+            // Fokussierbar nur bei Bedarf (siehe [windowFocusable]); eingeklappt und gesperrt nie
+            // (die PIN-Eingabe des Sperrbildschirms darf nie zu uns wandern).
+            flags = if (!deviceLock.isLocked && OverlayWindowFlags.isFocusable(expanded, windowFocusable)) {
                 flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
             } else {
                 flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE

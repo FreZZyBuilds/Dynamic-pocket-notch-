@@ -123,6 +123,9 @@ private val EdgeBarHeight = 340.dp
 private val EdgeBubbleSize = 56.dp
 private val EdgeBubbleGap = 8.dp
 
+/** Auf dem Sperrbildschirm erlaubt: nichts Privates. */
+private val LockedTabs = listOf(NotchTab.TIMER)
+
 private const val AI_REFRESH_INTERVAL_MS = 15 * 60_000L
 
 /** Mindest-Wischstrecke, ab der eine Geste die Notch öffnet oder schließt. */
@@ -152,6 +155,8 @@ fun NotchContainer(
     onFocusableChange: (Boolean) -> Unit = {},
     /** Zählt Zurück-Tasten des fokussierten Overlays hoch; jede Änderung klappt die Notch ein. */
     backPresses: Int = 0,
+    /** Sperrbildschirm: nur Musik und Timer, keine privaten Inhalte (Notizen, Clip, Dev, AI). */
+    locked: Boolean = false,
     /** Einklapp-Animation ist fertig – erst jetzt darf der Service das Fenster verkleinern. */
     onCollapseSettled: () -> Unit = {},
     /** Peek beginnt/endet – der Service passt die Fenstergröße einmalig an. */
@@ -217,7 +222,10 @@ fun NotchContainer(
 
     // --- Peeks: kurze Live-Einblendungen der eingeklappten Pille (nur Notch oben) -----------
     val peek by PeekCenter.current.collectAsStateWithLifecycle()
-    val activePeek = peek.takeIf { layout.mode == NotchLayoutMode.NOTCH_TOP && !isExpanded }
+    val activePeek = peek.takeIf {
+        // Gesperrt keine Textauszüge aus der Zwischenablage.
+        layout.mode == NotchLayoutMode.NOTCH_TOP && !isExpanded && !(locked && it is Peek.Copied)
+    }
     val peekHaptic = LocalHapticFeedback.current
     // Lebensdauer unabhängig von der Anzeige: Ein Peek aus dem Edge-Modus oder bei offener
     // Notch läuft trotzdem ab und taucht später nicht unpassend auf.
@@ -413,7 +421,7 @@ fun NotchContainer(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                if (isExpanded && layout.mode == NotchLayoutMode.EDGE_SIDE && drawer.split) {
+                if (isExpanded && layout.mode == NotchLayoutMode.EDGE_SIDE && drawer.split && !locked) {
                     // Seitlicher Drawer als Split-Ansicht: links Dev/Pomodoro, rechts Notizen/Clipboard.
                     SplitDrawer(
                         focusTimer = focusTimer,
@@ -432,7 +440,8 @@ fun NotchContainer(
                     // statt während der Animation zusammengequetscht zu werden. Schmale Bildschirme
                     // im Edge-Modus nutzen dieselben Tabs in Drawer-Größe.
                     Dashboard(
-                        selectedTab = selectedTab,
+                        tabs = if (locked) LockedTabs else NotchTab.entries,
+                        selectedTab = if (locked) NotchTab.TIMER else selectedTab,
                         onSelectTab = { selectedTab = it },
                         focusTimer = focusTimer,
                         nowPlaying = nowPlaying,
@@ -532,6 +541,7 @@ fun NotchContainer(
 
 @Composable
 private fun Dashboard(
+    tabs: List<NotchTab>,
     selectedTab: NotchTab,
     onSelectTab: (NotchTab) -> Unit,
     focusTimer: FocusTimerViewModel,
@@ -543,14 +553,15 @@ private fun Dashboard(
         Box(Modifier.staggerIn(0)) { DashboardHeader(nowPlaying, onClose) }
 
         TabRow(
-            selectedTabIndex = selectedTab.ordinal,
+            selectedTabIndex = tabs.indexOf(selectedTab).coerceAtLeast(0),
             containerColor = Color.Transparent,
             contentColor = Color.White,
             // Indikator im Markenverlauf statt Standard-Lila, Trennlinie kaum sichtbar.
             indicator = { positions ->
-                if (selectedTab.ordinal < positions.size) {
+                val index = tabs.indexOf(selectedTab)
+                if (index in positions.indices) {
                     Box(
-                        with(TabRowDefaults) { Modifier.tabIndicatorOffset(positions[selectedTab.ordinal]) }
+                        with(TabRowDefaults) { Modifier.tabIndicatorOffset(positions[index]) }
                             .padding(horizontal = 14.dp)
                             .height(2.5.dp)
                             .clip(RoundedCornerShape(2.dp))
@@ -561,7 +572,7 @@ private fun Dashboard(
             divider = { HorizontalDivider(color = Color.White.copy(alpha = 0.08f)) },
             modifier = Modifier.staggerIn(1)
         ) {
-            NotchTab.entries.forEach { tab ->
+            tabs.forEach { tab ->
                 // Content-Variante ohne die 16-dp-Textränder: fünf Tabs passen so in 336 dp.
                 Tab(
                     selected = tab == selectedTab,

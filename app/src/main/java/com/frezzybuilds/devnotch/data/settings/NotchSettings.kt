@@ -8,6 +8,7 @@ import com.frezzybuilds.devnotch.ui.BeamStyle
 import com.frezzybuilds.devnotch.ui.BeamPalette
 import androidx.core.content.edit
 import com.frezzybuilds.devnotch.service.EdgeSide
+import com.frezzybuilds.devnotch.service.LockscreenMode
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
 import com.frezzybuilds.devnotch.service.isTablet
 import com.frezzybuilds.devnotch.ui.media.EdgeTheme
@@ -151,11 +152,24 @@ class NotchSettings(context: Context) {
             if (key == KEY_DISPLAY_MODE) onChange(displayMode)
         }.also(prefs::registerOnSharedPreferenceChangeListener)
 
+    /** Allgemeiner Listener für mehrere Schlüssel (Referenz halten, mit [removeListener] lösen). */
+    fun addListener(keys: Set<String>, onChange: () -> Unit): SharedPreferences.OnSharedPreferenceChangeListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key in keys) onChange()
+        }.also(prefs::registerOnSharedPreferenceChangeListener)
+
+    var lockscreenMode: LockscreenMode
+        get() = prefs.getString(KEY_LOCKSCREEN_MODE, null)
+            ?.let { name -> LockscreenMode.entries.firstOrNull { it.name == name } }
+            ?: LockscreenMode.SHOW
+        set(value) = prefs.edit { putString(KEY_LOCKSCREEN_MODE, value.name) }
+
     fun removeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
         prefs.unregisterOnSharedPreferenceChangeListener(listener)
 
-    private companion object {
-        const val KEY_DISPLAY_MODE = "display_mode"
+    companion object {
+        const val KEY_LOCKSCREEN_MODE = "lockscreen_mode"
+        private const val KEY_DISPLAY_MODE = "display_mode"
         const val KEY_NOTCH_ENABLED = "notch_enabled"
         const val KEY_OEM_HINT_DONE = "oem_hint_done"
         const val KEY_EDGE_AUTO_MINIMIZE = "edge_auto_minimize"
