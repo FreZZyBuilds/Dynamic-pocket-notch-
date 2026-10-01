@@ -1,7 +1,21 @@
 package com.frezzybuilds.devnotch.ui.focus
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
+import com.frezzybuilds.devnotch.ui.theme.Brand
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -13,9 +27,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -28,9 +40,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-private val StartColor = Color(0xFF03DAC6)
-private val PauseColor = Color(0xFFCF6679)
-private val TrackColor = Color(0xFF2A2A2A)
+private val TrackColor = Color(0xFF1E1E26)
+private val PauseSurface = Color(0xFF24242E)
 
 /** Tab-Einstieg: liest die StateFlows des ViewModels und rendert [FocusTimerContent]. */
 @Composable
@@ -61,10 +72,8 @@ fun FocusTimerContent(
         animationSpec = tween(durationMillis = 1000, easing = LinearEasing),
         label = "timerProgress"
     )
-    val accent by animateColorAsState(
-        targetValue = if (isRunning) PauseColor else StartColor,
-        label = "timerAccent"
-    )
+    // Läuft der Timer, leuchtet der Ring heller (Glow-Stärke 0…1).
+    val glow by animateFloatAsState(if (isRunning) 1f else 0.35f, tween(400), label = "timerGlow")
 
     // Schmale Drawer-Spalte: Ring über den Buttons statt daneben.
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -74,8 +83,8 @@ fun FocusTimerContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
             ) {
-                TimerRing(progress, accent, remainingSeconds)
-                TimerControls(isRunning, accent, totalSeconds, onToggleTimer, onPreset)
+                TimerRing(progress, glow, remainingSeconds)
+                TimerControls(isRunning, totalSeconds, onToggleTimer, onPreset)
             }
         } else {
             Row(
@@ -83,27 +92,36 @@ fun FocusTimerContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally)
             ) {
-                TimerRing(progress, accent, remainingSeconds)
-                TimerControls(isRunning, accent, totalSeconds, onToggleTimer, onPreset)
+                TimerRing(progress, glow, remainingSeconds)
+                TimerControls(isRunning, totalSeconds, onToggleTimer, onPreset)
             }
         }
     }
 }
 
 @Composable
-private fun TimerRing(progress: Float, accent: Color, remainingSeconds: Long) {
+private fun TimerRing(progress: Float, glow: Float, remainingSeconds: Long) {
     Box(contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(
-            progress = { progress },
-            modifier = Modifier.size(132.dp),
-            color = accent,
-            trackColor = TrackColor,
-            strokeWidth = 8.dp,
-            strokeCap = StrokeCap.Round
-        )
+        // Ring im Markenverlauf (Magenta → Violett → Cyan) mit weichem Leuchten darunter.
+        Canvas(Modifier.size(132.dp)) {
+            val stroke = 8.dp.toPx()
+            val inset = stroke / 2 + 4.dp.toPx()
+            val arcSize = Size(size.width - 2 * inset, size.height - 2 * inset)
+            val topLeft = Offset(inset, inset)
+            drawArc(TrackColor, 0f, 360f, false, topLeft, arcSize, style = Stroke(stroke))
+            if (progress > 0f) {
+                // Verlauf startet oben (−90°) und läuft im Uhrzeigersinn mit dem Fortschritt.
+                rotate(-90f) {
+                    val brush = Brush.sweepGradient(Brand.Colors + Brand.Colors.first())
+                    drawArc(brush, 0f, 360f * progress, false, topLeft, arcSize, alpha = 0.25f * glow, style = Stroke(stroke * 2.6f, cap = StrokeCap.Round))
+                    drawArc(brush, 0f, 360f * progress, false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+                }
+            }
+        }
         Text(
             text = formatMmSs(remainingSeconds),
             style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.SemiBold,
             color = Color.White
         )
     }
@@ -112,7 +130,6 @@ private fun TimerRing(progress: Float, accent: Color, remainingSeconds: Long) {
 @Composable
 private fun TimerControls(
     isRunning: Boolean,
-    accent: Color,
     totalSeconds: Long,
     onToggleTimer: () -> Unit,
     onPreset: (minutes: Int) -> Unit
@@ -121,12 +138,22 @@ private fun TimerControls(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Button(
-            onClick = onToggleTimer,
-            colors = ButtonDefaults.buttonColors(containerColor = accent),
-            modifier = Modifier.width(128.dp)
+        // Start im Markenverlauf; läuft der Timer, wird daraus ein ruhiger Pause-Knopf.
+        Box(
+            Modifier
+                .width(128.dp)
+                .height(40.dp)
+                .clip(CircleShape)
+                .background(if (isRunning) SolidColor(PauseSurface) else Brand.Horizontal)
+                .clickable(role = Role.Button, onClick = onToggleTimer),
+            contentAlignment = Alignment.Center
         ) {
-            Text(if (isRunning) "Pause" else "Start", color = Color.Black)
+            Text(
+                if (isRunning) "Pause" else "Start",
+                color = if (isRunning) Color.White else Color.Black,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold
+            )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PresetButton(FocusTimerViewModel.DEFAULT_MINUTES, totalSeconds, onPreset)

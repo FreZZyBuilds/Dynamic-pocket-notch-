@@ -1,6 +1,7 @@
 package com.frezzybuilds.devnotch.feature.aiusage
 
 import androidx.compose.foundation.clickable
+import com.frezzybuilds.devnotch.ui.EmptyState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,7 +48,7 @@ fun usageColor(costUsd: Double, limitUsd: Double): Color {
 
 /** Verbindet das Widget mit Repository und Einstellungen; aktualisiert beim Öffnen, wenn veraltet. */
 @Composable
-fun AiUsagePanel(modifier: Modifier = Modifier) {
+fun AiUsagePanel(modifier: Modifier = Modifier, onSetup: (() -> Unit)? = null) {
     val container = LocalContext.current.appContainer
     val state by container.aiUsageRepository.state.collectAsStateWithLifecycle()
     val display by remember { container.aiUsageSettings.displayFlow() }
@@ -59,6 +60,7 @@ fun AiUsagePanel(modifier: Modifier = Modifier) {
         state = state,
         monthlyLimitUsd = display.limitUsd,
         onRefresh = { scope.launch { container.aiUsageRepository.refresh() } },
+        onSetup = onSetup,
         modifier = modifier
     )
 }
@@ -72,8 +74,21 @@ fun AiUsageWidget(
     state: AiUsageState,
     monthlyLimitUsd: Double,
     onRefresh: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Nicht eingerichtet: einladender Leere-Zustand mit Sprung in die Einstellungen. */
+    onSetup: (() -> Unit)? = null
 ) {
+    if (!state.configured && onSetup != null) {
+        EmptyState(
+            icon = "✦",
+            title = "KI-Kosten im Blick",
+            text = "Verbinde OpenAI, Anthropic, OpenRouter, Gemini oder Ollama – deine Monatskosten erscheinen hier.",
+            action = "Anbieter verbinden",
+            onAction = onSetup,
+            modifier = modifier
+        )
+        return
+    }
     val cost = state.totalCostUsd
     val progress = if (monthlyLimitUsd > 0) (cost / monthlyLimitUsd).coerceIn(0.0, 1.0).toFloat() else 0f
     val accent = usageColor(cost, monthlyLimitUsd)

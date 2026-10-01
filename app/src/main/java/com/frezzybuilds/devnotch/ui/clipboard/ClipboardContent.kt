@@ -1,6 +1,7 @@
 package com.frezzybuilds.devnotch.ui.clipboard
 
 import android.content.Context
+import com.frezzybuilds.devnotch.ui.EmptyState
 import com.frezzybuilds.devnotch.ui.RequestOverlayFocus
 import android.os.Build
 import android.view.HapticFeedbackConstants
@@ -68,7 +69,8 @@ fun ClipboardContent(onLeave: () -> Unit = {}) {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Leer: Die Karte unten erklärt alles – Zähler und „Leeren“ wären nur Rauschen.
+        if (history.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 if (isPro) "${history.size} Einträge · Tippen zum Kopieren"
                 else "Letzte ${history.size}/${ProPlan.FREE_CLIPBOARD_ENTRIES} · Tippen zum Kopieren",
@@ -101,10 +103,10 @@ fun ClipboardContent(onLeave: () -> Unit = {}) {
             )
         }
         if (history.isEmpty()) {
-            Text(
-                "Noch nichts gespeichert. Kopierte Texte erscheinen hier.",
-                color = Color.Gray,
-                style = MaterialTheme.typography.bodySmall
+            EmptyState(
+                icon = "⧉",
+                title = "Dein Kopier-Verlauf",
+                text = "Kopiere Text in einer beliebigen App und öffne diesen Tab – der Eintrag landet hier. Ein Tipp kopiert ihn erneut."
             )
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {

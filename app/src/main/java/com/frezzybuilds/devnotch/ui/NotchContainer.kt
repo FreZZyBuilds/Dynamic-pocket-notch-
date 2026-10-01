@@ -1,6 +1,34 @@
 package com.frezzybuilds.devnotch.ui
 
 import androidx.compose.animation.animateContentSize
+import com.frezzybuilds.devnotch.peek.PeekCenter
+import com.frezzybuilds.devnotch.peek.Peek
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.Image
+import androidx.compose.animation.core.LinearEasing
+import com.frezzybuilds.devnotch.ui.theme.Brand
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.runtime.State
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
 import com.frezzybuilds.devnotch.feature.billing.ProGate
 import com.frezzybuilds.devnotch.feature.billing.ProFeature
 import androidx.compose.animation.core.Spring
@@ -22,13 +50,13 @@ import androidx.compose.foundation.shape.AbsoluteRoundedCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
 import com.frezzybuilds.devnotch.service.EdgeSide
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -117,10 +145,16 @@ fun NotchContainer(
     /** Zählt Zurück-Tasten des fokussierten Overlays hoch; jede Änderung klappt die Notch ein. */
     backPresses: Int = 0,
     /** Einklapp-Animation ist fertig – erst jetzt darf der Service das Fenster verkleinern. */
-    onCollapseSettled: () -> Unit = {}
+    onCollapseSettled: () -> Unit = {},
+    /** Peek beginnt/endet – der Service passt die Fenstergröße einmalig an. */
+    onPeekChange: (Boolean) -> Unit = {}
 ) {
     var isExpanded by remember { mutableStateOf(false) }
-    var selectedTab by remember { mutableStateOf(NotchTab.DEV) }
+    // Erster Eindruck mit sofortigem Nutzen: ohne GitHub-Token startet die Notch im Timer.
+    val startContext = LocalContext.current
+    var selectedTab by remember {
+        mutableStateOf(if (startContext.appContainer.gitHubSettings.token.isNullOrBlank()) NotchTab.TIMER else NotchTab.DEV)
+    }
 
     // ViewModel hängt am ViewModelStore des Service: Der Timer läuft auch eingeklappt weiter.
     val focusTimer: FocusTimerViewModel = viewModel { FocusTimerViewModel() }
@@ -129,6 +163,12 @@ fun NotchContainer(
     val timerRunning by focusTimer.isRunning.collectAsStateWithLifecycle()
     // Eingeklappt nur anzeigen, wenn der Timer läuft oder angebrochen pausiert ist.
     val showTimerInPill = timerRunning || timerRemaining != timerTotal
+    // Abgelaufener Anteil, gleitend wie der Ring im Timer-Tab; gelesen erst beim Zeichnen.
+    val timerElapsed = animateFloatAsState(
+        targetValue = if (timerTotal > 0) 1f - timerRemaining.toFloat() / timerTotal else 0f,
+        animationSpec = tween(1_000, easing = LinearEasing),
+        label = "pillTimer"
+    )
     val nowPlaying by MediaNotificationListener.nowPlaying.collectAsStateWithLifecycle()
 
     // AI-Kosten: eingeklappt optional neben dem Timer; dann regelmäßig (alle 15 min) auffrischen.
@@ -147,8 +187,45 @@ fun NotchContainer(
     }
 
     fun setExpanded(expanded: Boolean) {
+        // Wer aufklappt, sieht ohnehin alles – ein laufender Peek ist damit erledigt.
+        if (expanded) PeekCenter.current.value?.let(PeekCenter::dismiss)
         isExpanded = expanded
         onExpandRequest(expanded)
+    }
+
+    // --- Peeks: kurze Live-Einblendungen der eingeklappten Pille (nur Notch oben) -----------
+    val peek by PeekCenter.current.collectAsStateWithLifecycle()
+    val activePeek = peek.takeIf { layout.mode == NotchLayoutMode.NOTCH_TOP && !isExpanded }
+    val peekHaptic = LocalHapticFeedback.current
+    // Lebensdauer unabhängig von der Anzeige: Ein Peek aus dem Edge-Modus oder bei offener
+    // Notch läuft trotzdem ab und taucht später nicht unpassend auf.
+    LaunchedEffect(peek) {
+        val current = peek ?: return@LaunchedEffect
+        delay(current.durationMs)
+        PeekCenter.dismiss(current)
+    }
+    LaunchedEffect(activePeek) {
+        onPeekChange(activePeek != null)
+        val shown = activePeek ?: return@LaunchedEffect
+        peekHaptic.performHapticFeedback(
+            if (shown is Peek.TimerDone) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove
+        )
+    }
+    val timerRingVisible = layout.mode == NotchLayoutMode.NOTCH_TOP && !isExpanded &&
+        activePeek == null && showTimerInPill
+
+    // Timer abgelaufen → Peek.
+    LaunchedEffect(focusTimer) { focusTimer.finished.collect { PeekCenter.show(Peek.TimerDone) } }
+    // Neuer Titel (nicht beim ersten Anzeigen, nur während Wiedergabe) → Peek mit Cover.
+    val trackKey = nowPlaying?.let { it.packageName + "|" + it.title }
+    var lastTrackKey by remember { mutableStateOf(trackKey) }
+    LaunchedEffect(trackKey) {
+        val current = nowPlaying
+        val showsPill = layout.mode == NotchLayoutMode.NOTCH_TOP && !isExpanded
+        if (showsPill && trackKey != null && trackKey != lastTrackKey && current?.isPlaying == true) {
+            PeekCenter.show(Peek.TrackChanged(current.title, current.artist, current.artwork))
+        }
+        lastTrackKey = trackKey
     }
 
     // Fokus nur, solange aufgeklappt UND ein sichtbarer Bereich ihn braucht (Notizen, Eingabe-
@@ -180,10 +257,20 @@ fun NotchContainer(
     )
     val edgeMini = edgeMedia != null && edgePlayer.minimized && !isExpanded
 
-    val (collapsedWidth, collapsedHeight) =
+    val (pillWidth, pillHeight) =
         collapsedSize(layout, hasMedia = nowPlaying != null, minimized = edgeMini)
+    val peekConfig = LocalConfiguration.current
+    val (collapsedWidth, collapsedHeight) = if (activePeek != null) {
+        ExpandedSize.peek(peekConfig.screenWidthDp, pillHeight.value).let { (w, h) -> w.dp to h.dp }
+    } else {
+        pillWidth to pillHeight
+    }
     val cornerRadius by animateDpAsState(
-        targetValue = if (isExpanded) 24.dp else minOf(collapsedWidth, collapsedHeight) / 2,
+        targetValue = when {
+            isExpanded -> 24.dp
+            activePeek != null -> 30.dp
+            else -> minOf(collapsedWidth, collapsedHeight) / 2
+        },
         animationSpec = notchSpring(),
         label = "notchCorner"
     )
@@ -212,10 +299,33 @@ fun NotchContainer(
     val haptic = LocalHapticFeedback.current
     val dragThreshold = with(LocalDensity.current) { GestureThreshold.toPx() }
 
+    // Squish beim Drücken (nur eingeklappt) und Neon-Rand, der beim Aufklappen einblendet.
+    val pillInteraction = remember { MutableInteractionSource() }
+    val pressed by pillInteraction.collectIsPressedAsState()
+    val squish = animateFloatAsState(
+        targetValue = if (pressed && !isExpanded) 0.94f else 1f,
+        animationSpec = spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMedium),
+        label = "pillSquish"
+    )
+    val rim = animateFloatAsState(
+        targetValue = when {
+            isExpanded -> 1f
+            activePeek != null -> 0.7f
+            else -> 0f
+        },
+        animationSpec = tween(if (isExpanded) 420 else 160),
+        label = "neonRim"
+    )
+
     CompositionLocalProvider(LocalOverlayFocus provides overlayFocus) {
-        MaterialTheme(colorScheme = darkColorScheme()) {
+        MaterialTheme(colorScheme = Brand.NotchScheme) {
             Box(
                 modifier = Modifier
+                    // Antippen: Die Pille „gibt nach“ und federt zurück.
+                    .graphicsLayer {
+                        scaleX = squish.value
+                        scaleY = squish.value
+                    }
                     .animateContentSize(animationSpec = notchSpring()) { _, _ ->
                         if (!isExpanded) onCollapseSettled()
                     }
@@ -226,6 +336,12 @@ fun NotchContainer(
                     .clip(if (edgeMini) RectangleShape else notchShape(layout, cornerRadius))
                     // Bubble: transparentes Fenster, die Kreisform zeichnet EdgeMiniBubble selbst.
                     .background(if (edgeMini) Color.Transparent else NotchBlack)
+                    // Aufgeklappt: violetter Schimmer von oben und Neon-Rand wie im App-Icon.
+                    .then(if (edgeMini) Modifier else Modifier.neonFrame(notchShape(layout, cornerRadius), rim))
+                    // Fokus-Timer läuft: Fortschritt als Lichtlinie einmal rund um die Pille.
+                    .then(
+                        if (timerRingVisible) Modifier.pillProgress(timerElapsed) else Modifier
+                    )
                     // Wischen: Notch nach unten auf / nach oben zu; Edge zur Mitte auf / zum Rand zu.
                     // Die eingeklappte Bubble hat eigene Gesten (Verschieben), daher dort nicht.
                     .then(
@@ -239,7 +355,14 @@ fun NotchContainer(
                         ) { action -> setExpanded(action == NotchGestureAction.EXPAND) }
                     )
                     // Nur eingeklappt klickbar, sonst schluckt die Box Taps im Dashboard.
-                    .clickable(enabled = !isExpanded) { setExpanded(true) },
+                    .clickable(
+                        enabled = !isExpanded,
+                        interactionSource = pillInteraction,
+                        indication = null
+                    ) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        setExpanded(true)
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 if (isExpanded && layout.mode == NotchLayoutMode.EDGE_SIDE && drawer.split) {
@@ -272,6 +395,17 @@ fun NotchContainer(
                             // Inhalt unter Statusleiste und Kamera; darüber bleibt die Fläche schwarz.
                             .padding(top = topInset)
                     )
+                } else if (activePeek != null) {
+                    PeekContent(
+                        peek = activePeek,
+                        pillHeight = pillHeight,
+                        lensGap = lensGap(layout),
+                        // Feste Endgröße + unbounded: Der Inhalt wird beim Wachsen aufgedeckt.
+                        modifier = Modifier
+                            .wrapContentSize(Alignment.TopCenter, unbounded = true)
+                            .size(collapsedWidth, collapsedHeight)
+                            .staggerIn(0)
+                    )
                 } else if (layout.mode == NotchLayoutMode.NOTCH_TOP) {
                     val playing = nowPlaying?.takeIf { it.isPlaying }
                     val timerText = if (showTimerInPill) "⏱ ${formatMmSs(timerRemaining)}" else null
@@ -284,7 +418,7 @@ fun NotchContainer(
                     fun render(item: PillItem) = when (item) {
                         is PillItem.Timer -> PillLabel(item.text)
                         is PillItem.Cost -> PillLabel(item.text, costColor)
-                        PillItem.MusicGlyph -> PillLabel("♪")
+                        PillItem.MusicGlyph -> MiniArtwork(playing)
                         PillItem.MusicTitle -> playing?.let { MarqueeTitle(it) }
                     }
                     CollapsedPillContent(
@@ -358,23 +492,38 @@ private fun Dashboard(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.padding(12.dp)) {
-        DashboardHeader(nowPlaying, onClose)
+        Box(Modifier.staggerIn(0)) { DashboardHeader(nowPlaying, onClose) }
 
         TabRow(
             selectedTabIndex = selectedTab.ordinal,
             containerColor = Color.Transparent,
-            contentColor = Color.White
+            contentColor = Color.White,
+            // Indikator im Markenverlauf statt Standard-Lila, Trennlinie kaum sichtbar.
+            indicator = { positions ->
+                if (selectedTab.ordinal < positions.size) {
+                    Box(
+                        with(TabRowDefaults) { Modifier.tabIndicatorOffset(positions[selectedTab.ordinal]) }
+                            .padding(horizontal = 14.dp)
+                            .height(2.5.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Brand.Horizontal)
+                    )
+                }
+            },
+            divider = { HorizontalDivider(color = Color.White.copy(alpha = 0.08f)) },
+            modifier = Modifier.staggerIn(1)
         ) {
             NotchTab.entries.forEach { tab ->
                 // Content-Variante ohne die 16-dp-Textränder: fünf Tabs passen so in 336 dp.
                 Tab(
                     selected = tab == selectedTab,
                     onClick = { onSelectTab(tab) },
-                    unselectedContentColor = Color.Gray
+                    unselectedContentColor = Color.White.copy(alpha = 0.45f)
                 ) {
                     Text(
                         tab.title,
                         style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (tab == selectedTab) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(horizontal = 2.dp, vertical = 14.dp)
@@ -383,19 +532,58 @@ private fun Dashboard(
             }
         }
 
-        Box(
+        // Tab-Wechsel gleitet in Richtung des neuen Tabs statt hart umzuschalten.
+        AnimatedContent(
+            targetState = selectedTab,
+            transitionSpec = {
+                val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
+                (slideInHorizontally(tween(260)) { width -> direction * width / 6 } + fadeIn(tween(220, delayMillis = 40))) togetherWith
+                    (slideOutHorizontally(tween(200)) { width -> -direction * width / 6 } + fadeOut(tween(140))) using
+                    SizeTransform(clip = false)
+            },
+            label = "tabContent",
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = 8.dp)
-        ) {
-            when (selectedTab) {
-                NotchTab.AI -> ProGate(ProFeature.AI_TRACKER, onLeave = onClose) { AiStatsTabContent() }
-                NotchTab.TIMER -> FocusTimerTab(focusTimer)
-                NotchTab.CLIP -> ClipboardContent(onLeave = onClose)
-                NotchTab.DEV -> DevTabContent(onLaunched = onClose)
-                NotchTab.NOTES -> NotesContent(onLeaveForExternalApp = onClose)
+                .staggerIn(2)
+        ) { tab ->
+            Box(Modifier.fillMaxSize()) {
+                when (tab) {
+                    NotchTab.AI -> ProGate(ProFeature.AI_TRACKER, onLeave = onClose) { AiStatsTabContent(onLeave = onClose) }
+                    NotchTab.TIMER -> FocusTimerTab(focusTimer)
+                    NotchTab.CLIP -> ClipboardContent(onLeave = onClose)
+                    NotchTab.DEV -> DevTabContent(onLaunched = onClose)
+                    NotchTab.NOTES -> NotesContent(onLeaveForExternalApp = onClose)
+                }
             }
         }
+    }
+}
+
+/**
+ * Aufgeklappt: zarter violetter Schimmer von oben und ein Neon-Rand im Markenverlauf. [rim]
+ * (0…1) wird erst beim Zeichnen gelesen – das Ein-/Ausblenden kostet keine Recomposition.
+ */
+private fun Modifier.neonFrame(shape: Shape, rim: State<Float>): Modifier = drawWithContent {
+    val strength = rim.value
+    if (strength > 0f) {
+        drawRect(
+            Brush.radialGradient(
+                listOf(Brand.Violet.copy(alpha = 0.22f * strength), Color.Transparent),
+                center = Offset(size.width / 2f, 0f),
+                radius = size.width * 0.75f
+            )
+        )
+    }
+    drawContent()
+    if (strength > 0f) {
+        drawOutline(
+            shape.createOutline(size, layoutDirection, this),
+            brush = Brand.Horizontal,
+            alpha = 0.9f * strength,
+            // Die Hälfte liegt außerhalb des Clips – sichtbar bleibt ein feiner 1-dp-Rand.
+            style = Stroke(width = 2.dp.toPx())
+        )
     }
 }
 
@@ -487,3 +675,51 @@ private fun notchShape(layout: NotchLayout, radius: Dp): Shape =
         layout.edgeSide == EdgeSide.RIGHT -> AbsoluteRoundedCornerShape(topLeft = radius, bottomLeft = radius)
         else -> AbsoluteRoundedCornerShape(topRight = radius, bottomRight = radius)
     }
+
+/** Kleines rundes Cover links neben der Kamera; ohne Cover eine Note im Markenverlauf. */
+@Composable
+private fun MiniArtwork(nowPlaying: NowPlaying?) {
+    val art = nowPlaying?.artwork
+    val shape = CircleShape
+    if (art != null) {
+        val image = remember(art) { art.asImageBitmap() }
+        Image(
+            image,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(20.dp).clip(shape)
+        )
+    } else {
+        Box(Modifier.size(20.dp).clip(shape).background(Brand.Horizontal), contentAlignment = Alignment.Center) {
+            Text("♪", color = Color.Black, style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+/**
+ * Fortschritt des Fokus-Timers als Linie im Markenverlauf rund um die Pille, beginnend oben in
+ * der Mitte im Uhrzeigersinn. [elapsed] (0…1) wird erst beim Zeichnen gelesen.
+ */
+private fun Modifier.pillProgress(elapsed: State<Float>): Modifier = drawWithContent {
+    drawContent()
+    val fraction = elapsed.value.coerceIn(0f, 1f)
+    if (fraction <= 0f) return@drawWithContent
+    val stroke = 2.dp.toPx()
+    val inset = stroke / 2
+    val w = size.width
+    val h = size.height
+    val r = (h / 2 - inset).coerceAtLeast(0f)
+    val path = Path().apply {
+        moveTo(w / 2, inset)
+        lineTo(w - inset - r, inset)
+        arcTo(Rect(w - inset - 2 * r, inset, w - inset, h - inset), -90f, 180f, false)
+        lineTo(inset + r, h - inset)
+        arcTo(Rect(inset, inset, inset + 2 * r, h - inset), 90f, 180f, false)
+        lineTo(w / 2, inset)
+    }
+    val measure = PathMeasure().apply { setPath(path, false) }
+    val segment = Path()
+    measure.getSegment(0f, measure.length * fraction, segment, true)
+    drawPath(segment, Brand.Horizontal, style = Stroke(width = stroke, cap = StrokeCap.Round))
+}
+

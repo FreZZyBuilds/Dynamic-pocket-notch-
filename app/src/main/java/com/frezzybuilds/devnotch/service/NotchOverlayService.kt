@@ -7,8 +7,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.content.res.Configuration
@@ -16,6 +18,7 @@ import android.graphics.PixelFormat
 import android.graphics.Point
 import android.graphics.Rect
 import android.hardware.display.DisplayManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -50,6 +53,8 @@ import com.frezzybuilds.devnotch.MainActivity
 import com.frezzybuilds.devnotch.R
 import com.frezzybuilds.devnotch.appContainer
 import com.frezzybuilds.devnotch.data.clipboard.ClipboardListener
+import com.frezzybuilds.devnotch.peek.Peek
+import com.frezzybuilds.devnotch.peek.PeekCenter
 import com.frezzybuilds.devnotch.ui.ExpandedSize
 import com.frezzybuilds.devnotch.ui.NotchContainer
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -100,10 +105,31 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
      */
     private var windowExpanded = false
     private val mainHandler = Handler(Looper.getMainLooper())
+    /** Ein Peek wird angezeigt (Pille kurz nach unten gewachsen) bzw. das Fenster hat Peek-Größe. */
+    private var peeking = false
+    private var windowPeek = false
+
     private val shrinkWindow = Runnable {
+        var changed = false
         if (!expanded && windowExpanded) {
             windowExpanded = false
-            applyLayout()
+            changed = true
+        }
+        if (!peeking && windowPeek) {
+            windowPeek = false
+            changed = true
+        }
+        if (changed) applyLayout()
+    }
+
+    /** Ladekabel angesteckt → Lade-Peek mit Akkustand. */
+    private val powerReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != Intent.ACTION_POWER_CONNECTED) return
+            val percent = getSystemService(BatteryManager::class.java)
+                ?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                ?.takeIf { it in 0..100 }
+            PeekCenter.show(Peek.Charging(percent))
         }
     }
 
@@ -142,6 +168,14 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
 
         clipboardListener = ClipboardListener(this, appContainer.clipboardRepository, lifecycleScope)
         clipboardListener.start()
+
+        // System-Broadcast, für dynamisch registrierte Empfänger weiterhin zugestellt.
+        ContextCompat.registerReceiver(
+            this,
+            powerReceiver,
+            IntentFilter(Intent.ACTION_POWER_CONNECTED),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -180,6 +214,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         appContainer.notchSettings.removeListener(displayModeListener)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         mainHandler.removeCallbacks(shrinkWindow)
+        unregisterReceiver(powerReceiver)
         composeView?.let { windowManager.removeView(it) }
         composeView = null
         viewModelStore.clear()
@@ -233,6 +268,19 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                     onCollapseSettled = {
                         mainHandler.removeCallbacks(shrinkWindow)
                         shrinkWindow.run()
+                    },
+                    onPeekChange = { active ->
+                        if (active != peeking) {
+                            peeking = active
+                            if (active) {
+                                // Erst das Fenster vergrößern, dann wächst die Pille darin.
+                                mainHandler.removeCallbacks(shrinkWindow)
+                                windowPeek = true
+                            } else {
+                                mainHandler.postDelayed(shrinkWindow, SHRINK_FALLBACK_MS)
+                            }
+                            applyLayout()
+                        }
                     },
                     onEdgeDrag = ::onEdgeDrag,
                     onEdgeDragEnd = ::onEdgeDragEnd,
@@ -319,9 +367,13 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                     flags = flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS.inv()
                 }
             }
-            // Aufgeklappt feste Größe (Animation läuft im Fenster), sonst passend zum Inhalt.
+            // Aufgeklappt/Peek feste Größe (Animation läuft im Fenster), sonst passend zum Inhalt.
             if (windowExpanded) {
                 val (w, h) = expandedSizePx()
+                width = w
+                height = h
+            } else if (windowPeek && notchLayout.mode == NotchLayoutMode.NOTCH_TOP) {
+                val (w, h) = peekSizePx()
                 width = w
                 height = h
             } else {
@@ -350,6 +402,13 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         NotchLayoutMode.NOTCH_TOP -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
         NotchLayoutMode.EDGE_SIDE ->
             (if (edgeSide == EdgeSide.LEFT) Gravity.LEFT else Gravity.RIGHT) or Gravity.CENTER_VERTICAL
+    }
+
+    /** Peek-Fenstergröße in Pixeln – dieselbe Rechnung wie im NotchContainer. */
+    private fun peekSizePx(): Pair<Int, Int> {
+        val density = resources.displayMetrics.density
+        val (w, h) = ExpandedSize.peek(resources.configuration.screenWidthDp, notchLayout.pill.height / density)
+        return (w * density).roundToInt() to (h * density).roundToInt()
     }
 
     /** Aufgeklappte Fenstergröße in Pixeln – dieselbe Rechnung wie im NotchContainer. */

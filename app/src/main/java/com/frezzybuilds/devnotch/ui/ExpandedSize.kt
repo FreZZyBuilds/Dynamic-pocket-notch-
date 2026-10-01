@@ -19,6 +19,17 @@ object ExpandedSize {
     fun dashboardWidthDp(screenWidthDp: Int): Int =
         minOf(DASHBOARD_MAX_WIDTH_DP, screenWidthDp - 2 * SIDE_MARGIN_DP)
 
+    /** Peek: Pille wächst nach unten – Zeile mit der Linse plus eine Textzeile darunter. */
+    const val PEEK_MAX_WIDTH_DP = 320
+    const val PEEK_EXTRA_HEIGHT_DP = 46
+
+    fun peekWidthDp(screenWidthDp: Int): Int =
+        minOf(PEEK_MAX_WIDTH_DP, screenWidthDp - 2 * SIDE_MARGIN_DP)
+
+    /** @return Breite und Höhe des Peeks in dp; [pillHeightDp] ist die eingeklappte Pillenhöhe. */
+    fun peek(screenWidthDp: Int, pillHeightDp: Float): Pair<Float, Float> =
+        peekWidthDp(screenWidthDp).toFloat() to pillHeightDp + PEEK_EXTRA_HEIGHT_DP
+
     /**
      * @param topInsetDp Abstand für Statusleiste/Kamera über dem Dashboard-Inhalt (nur Notch).
      * @return Breite und Höhe in dp.

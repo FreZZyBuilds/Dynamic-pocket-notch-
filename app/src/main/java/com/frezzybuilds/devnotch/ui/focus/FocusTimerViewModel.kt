@@ -5,7 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -33,6 +36,10 @@ class FocusTimerViewModel(
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
 
+    /** Meldet jedes Ablaufen des Timers (für den „Fokuszeit vorbei“-Peek). */
+    private val _finished = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val finished: SharedFlow<Unit> = _finished.asSharedFlow()
+
     /** Exakte Restzeit in ms, damit Pausieren keine angebrochene Sekunde verliert. */
     private var remainingMillis = DEFAULT_MINUTES * 60_000L
     private var endAt = 0L
@@ -50,6 +57,7 @@ class FocusTimerViewModel(
                 _remainingTime.value = remainingMillis.toDisplaySeconds()
                 if (remainingMillis == 0L) {
                     _isRunning.value = false
+                    _finished.tryEmit(Unit)
                     break
                 }
                 // Genau zum nächsten Sekundenwechsel der Restzeit aufwachen.

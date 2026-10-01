@@ -2,6 +2,8 @@ package com.frezzybuilds.devnotch.data.clipboard
 
 import android.content.ClipboardManager
 import android.content.Context
+import com.frezzybuilds.devnotch.peek.Peek
+import com.frezzybuilds.devnotch.peek.PeekCenter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -25,9 +27,11 @@ class ClipboardListener(
 
     fun stop() = clipboard.removePrimaryClipChangedListener(this)
 
-    override fun onPrimaryClipChanged() = captureCurrentClip()
+    // Echter Kopiervorgang → zusätzlich kurz in der Notch bestätigen (Peek).
+    override fun onPrimaryClipChanged() = captureCurrentClip(announce = true)
 
-    fun captureCurrentClip() {
+    /** @param announce true nur bei echtem Kopieren, nicht beim Nachlesen (Clip-Tab geöffnet). */
+    fun captureCurrentClip(announce: Boolean = false) {
         val clip = runCatching { clipboard.primaryClip }.getOrNull() ?: return
         // Als sensibel markierte Inhalte (z. B. Passwörter aus Passwort-Managern) nie speichern.
         if (clip.description?.extras?.getBoolean(EXTRA_IS_SENSITIVE) == true) return
@@ -35,6 +39,7 @@ class ClipboardListener(
         val text = clip.getItemAt(0)?.coerceToText(appContext)?.toString()?.trim()
         if (text.isNullOrEmpty()) return
         scope.launch { repository.save(text) }
+        if (announce) PeekCenter.show(Peek.Copied(PeekCenter.previewOf(text)))
     }
 
     private companion object {

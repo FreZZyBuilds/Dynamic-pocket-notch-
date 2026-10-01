@@ -2,6 +2,7 @@ package com.frezzybuilds.devnotch.ui.focus
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -105,4 +106,21 @@ class FocusTimerViewModelTest {
         advanceTimeBy(60_000)
         assertEquals(5 * 60L, vm.remainingTime.value)
     }
+
+    @Test
+    fun `finishing emits exactly one finished event`() = timerTest { vm ->
+        val events = mutableListOf<Unit>()
+        val collector = backgroundScope.launch { vm.finished.collect { events += it } }
+        vm.resetTimer(minutes = 1)
+        vm.startTimer()
+        advanceTimeBy(30_000)
+        runCurrent()
+        assertEquals(0, events.size)
+        advanceTimeBy(31_000)
+        runCurrent()
+        assertEquals(1, events.size)
+        assertFalse(vm.isRunning.value)
+        collector.cancel()
+    }
 }
+

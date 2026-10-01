@@ -145,10 +145,11 @@ class SplitDrawerScreenshotTest {
         view.draw(Canvas(lockedImage))
         File("build/screenshots/phone_tab_ai_locked.png").outputStream().use { lockedImage.compress(Bitmap.CompressFormat.PNG, 100, it) }
 
-        // Mit Pro (Debug-Freischaltung): Statuszeile + Widget (ohne Keys: Einrichtungshinweis).
+        // Mit Pro (Debug-Freischaltung), ohne Keys: einladender Leere-Zustand mit Einrichten-Button.
         ApplicationProvider.getApplicationContext<Context>().appContainer.proAccess.setDebugUnlock(true)
         compose.waitForIdle()
-        compose.onNodeWithText("AI Usage").assertExists()
+        compose.onNodeWithText("KI-Kosten im Blick").assertExists()
+        compose.onNodeWithText("Anbieter verbinden").assertExists()
         val aiImage = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
         view.draw(Canvas(aiImage))
         File("build/screenshots/phone_tab_ai.png").outputStream().use { aiImage.compress(Bitmap.CompressFormat.PNG, 100, it) }

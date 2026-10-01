@@ -46,6 +46,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -97,10 +101,15 @@ class MainActivity : ComponentActivity() {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         paywallFeature = Paywall.featureFrom(intent)
+        setupSection = Setup.sectionFrom(intent)
         setContent {
             DevNotchTheme {
                 Scaffold { padding ->
-                    SetupScreen(Modifier.padding(padding)) { feature ->
+                    SetupScreen(
+                        Modifier.padding(padding),
+                        focusSection = setupSection,
+                        onSectionShown = { setupSection = null }
+                    ) { feature ->
                         paywallFeature = feature
                         showPaywall = true
                     }
@@ -120,6 +129,9 @@ class MainActivity : ComponentActivity() {
     private var paywallFeature by mutableStateOf<ProFeature?>(null)
     private var showPaywall by mutableStateOf(false)
 
+    // Einrichten-Wunsch aus der Notch (Setup.open): zur passenden Karte scrollen.
+    private var setupSection by mutableStateOf<Setup.Section?>(null)
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -127,6 +139,7 @@ class MainActivity : ComponentActivity() {
             paywallFeature = it
             showPaywall = true
         }
+        Setup.sectionFrom(intent)?.let { setupSection = it }
     }
 
     override fun onResume() {
@@ -136,8 +149,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// BringIntoViewRequester: Sprung aus der Notch zur passenden Karte.
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SetupScreen(modifier: Modifier = Modifier, onOpenPaywall: (ProFeature?) -> Unit = {}) {
+fun SetupScreen(
+    modifier: Modifier = Modifier,
+    focusSection: Setup.Section? = null,
+    onSectionShown: () -> Unit = {},
+    onOpenPaywall: (ProFeature?) -> Unit = {}
+) {
     val context = LocalContext.current
     val settings = context.appContainer.notchSettings
 
@@ -260,9 +280,20 @@ fun SetupScreen(modifier: Modifier = Modifier, onOpenPaywall: (ProFeature?) -> U
 
         ProStatusCard(onOpenPaywall)
 
-        GitHubCard()
+        val gitHubRequester = remember { BringIntoViewRequester() }
+        val aiRequester = remember { BringIntoViewRequester() }
+        LaunchedEffect(focusSection) {
+            when (focusSection) {
+                Setup.Section.GITHUB -> gitHubRequester.bringIntoView()
+                Setup.Section.AI -> aiRequester.bringIntoView()
+                null -> return@LaunchedEffect
+            }
+            onSectionShown()
+        }
 
-        AiUsageCard()
+        GitHubCard(Modifier.bringIntoViewRequester(gitHubRequester))
+
+        AiUsageCard(Modifier.bringIntoViewRequester(aiRequester))
     }
 
     if (showBatteryDialog) {
@@ -338,14 +369,14 @@ private fun DisplayModeDialog(
 }
 
 @Composable
-private fun GitHubCard() {
+private fun GitHubCard(modifier: Modifier = Modifier) {
     val settings = LocalContext.current.appContainer.gitHubSettings
     var token by remember { mutableStateOf(settings.token.orEmpty()) }
     var username by remember { mutableStateOf(settings.username.orEmpty()) }
     var saved by remember { mutableStateOf(token to username) }
     val isSaved = saved == (token to username) && token.isNotBlank()
 
-    Card(Modifier.fillMaxWidth()) {
+    Card(modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -451,7 +482,7 @@ private fun ProStatusCard(onOpenPaywall: (ProFeature?) -> Unit) {
  * eingeklappt in der Notch erscheinen soll. Speichern löst sofort eine Abfrage aus.
  */
 @Composable
-private fun AiUsageCard() {
+private fun AiUsageCard(modifier: Modifier = Modifier) {
     val container = LocalContext.current.appContainer
     val settings = container.aiUsageSettings
     val scope = rememberCoroutineScope()
@@ -465,7 +496,7 @@ private fun AiUsageCard() {
     var showInPill by remember { mutableStateOf(settings.showInPill) }
     var saved by remember { mutableStateOf(false) }
 
-    Card(Modifier.fillMaxWidth()) {
+    Card(modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("KI-Token-Tracker · Pro", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(

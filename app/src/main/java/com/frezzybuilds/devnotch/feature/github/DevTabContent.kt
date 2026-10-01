@@ -1,6 +1,8 @@
 package com.frezzybuilds.devnotch.feature.github
 
 import androidx.compose.foundation.background
+import com.frezzybuilds.devnotch.ui.EmptyState
+import com.frezzybuilds.devnotch.Setup
 import com.frezzybuilds.devnotch.feature.billing.ProGate
 import com.frezzybuilds.devnotch.feature.billing.ProFeature
 import androidx.compose.foundation.clickable
@@ -64,14 +66,14 @@ fun DevTabContent(onLaunched: () -> Unit = {}) {
             }
         }
         when (lastDevSection) {
-            DevSection.GITHUB -> ProGate(ProFeature.GITHUB_HEATMAP, onLeave = onLaunched) { GitHubSection() }
+            DevSection.GITHUB -> ProGate(ProFeature.GITHUB_HEATMAP, onLeave = onLaunched) { GitHubSection(onLeave = onLaunched) }
             DevSection.PROJECTS -> ProjectShortcutsContent(onLaunched = onLaunched)
         }
     }
 }
 
 @Composable
-private fun GitHubSection() {
+private fun GitHubSection(onLeave: () -> Unit) {
     val context = LocalContext.current
     val container = context.appContainer
     val viewModel = viewModel { GitHubViewModel(container.gitHubService, container.gitHubSettings) }
@@ -88,11 +90,23 @@ private fun GitHubSection() {
                     color = Color.White,
                     modifier = Modifier.size(24.dp).align(Alignment.Center)
                 )
-                GitHubUiState.NoToken -> Message(
-                    "Kein GitHub-Token. In der DevNotch-App unter „GitHub“ hinterlegen.",
-                    onRetry = viewModel::refresh
+                GitHubUiState.NoToken -> EmptyState(
+                    icon = "</>",
+                    title = "GitHub verbinden",
+                    text = "Deine Contributions der letzten 16 Wochen und offene PRs – direkt in der Notch.",
+                    action = "Jetzt verbinden",
+                    onAction = {
+                        Setup.open(context, Setup.Section.GITHUB)
+                        onLeave()
+                    }
                 )
-                is GitHubUiState.Error -> Message(s.message, onRetry = viewModel::refresh)
+                is GitHubUiState.Error -> EmptyState(
+                    icon = "!",
+                    title = "GitHub gerade nicht erreichbar",
+                    text = s.message,
+                    action = "Erneut versuchen",
+                    onAction = viewModel::refresh
+                )
                 is GitHubUiState.Success -> Profile(s.profile, onRefresh = viewModel::refresh)
             }
         }
@@ -150,10 +164,3 @@ private fun Profile(profile: GitHubProfile, onRefresh: () -> Unit) {
     }
 }
 
-@Composable
-private fun Message(text: String, onRetry: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(text, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-        TextButton(onClick = onRetry) { Text("Erneut versuchen") }
-    }
-}

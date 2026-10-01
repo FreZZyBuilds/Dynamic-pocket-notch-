@@ -1,6 +1,7 @@
 package com.frezzybuilds.devnotch.ui
 
 import android.content.Context
+import com.frezzybuilds.devnotch.Setup
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
@@ -30,13 +31,17 @@ import java.util.Date
  * (ersetzt den früheren Overview-Tab).
  */
 @Composable
-fun AiStatsTabContent() {
+fun AiStatsTabContent(onLeave: () -> Unit = {}) {
+    val context = LocalContext.current
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.verticalScroll(rememberScrollState())
     ) {
         StatusLine()
-        AiUsagePanel()
+        AiUsagePanel(onSetup = {
+            Setup.open(context, Setup.Section.AI)
+            onLeave()
+        })
     }
 }
 
