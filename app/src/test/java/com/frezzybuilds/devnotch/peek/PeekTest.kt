@@ -59,7 +59,7 @@ class PeekTest {
             NotchContainer(
                 layout = NotchLayout(NotchLayoutMode.NOTCH_TOP, pill = PillGeometry(120, 36, 0, 8)),
                 onExpandRequest = {},
-                onPeekChange = { peekChanges += it }
+                onPeekChange = { peekChanges += (it != null) }
             )
         }
         compose.waitForIdle()

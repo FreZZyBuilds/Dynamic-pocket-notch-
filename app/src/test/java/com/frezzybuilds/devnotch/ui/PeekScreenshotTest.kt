@@ -129,4 +129,47 @@ class PeekScreenshotTest {
         compose.waitForIdle()
         save(view, "dashboard_clip_empty")
     }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w380dp-h760dp-xxhdpi")
+    fun renderNotificationsAndLiveViews() {
+        lateinit var view: View
+        val message = com.frezzybuilds.devnotch.notify.NotchNotification(
+            key = "1", packageName = "org.telegram.messenger", appLabel = "Telegram", title = "Lena",
+            text = "Bist du heute Abend beim Meetup? Ich bring den Laptop mit 🙂",
+            actions = listOf(com.frezzybuilds.devnotch.notify.NotchAction("Als gelesen", null))
+        )
+        val call = com.frezzybuilds.devnotch.notify.LiveActivity.Call("c", "dialer", null, "Mama", null, ringing = true, since = 0, answer = null, decline = null, hangUp = null)
+        val nav = com.frezzybuilds.devnotch.notify.LiveActivity.Navigation("n", "maps", null, "Maps", "In 200 m rechts abbiegen", "Hauptstraße · Ankunft 14:32", null)
+        val progress = com.frezzybuilds.devnotch.notify.LiveActivity.Progress("p", "chrome", null, "Chrome", "video.mp4", 0.45f, null)
+        compose.setContent {
+            view = LocalView.current
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme(colorScheme = Brand.NotchScheme) {
+                    Column(
+                        Modifier.fillMaxSize().background(Color(0xFF2B2F77)).padding(top = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        listOf(Peek.Notification(message, 5_000), Peek.LiveCall(call)).forEach { peek ->
+                            Box(
+                                Modifier.size(320.dp, 35.dp + peek.extraHeightDp.dp).clip(RoundedCornerShape(30.dp)).background(Color.Black)
+                            ) { PeekContent(peek, pillHeight = 35.dp, lensGap = 28.dp) }
+                        }
+                        listOf(call.copy(ringing = false, since = 1L), nav, progress).forEach { live ->
+                            Box(Modifier.size(150.dp, 35.dp).clip(RoundedCornerShape(18.dp)).background(Color.Black)) {
+                                LivePill(live, lensGap = 28.dp)
+                            }
+                        }
+                        Box(Modifier.size(340.dp, 120.dp).background(Color.Black).padding(10.dp)) {
+                            LiveCard(nav, onSend = {})
+                        }
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        save(view, "notifications_live")
+    }
 }
+

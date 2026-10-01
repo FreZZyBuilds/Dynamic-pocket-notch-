@@ -1,0 +1,108 @@
+package com.frezzybuilds.devnotch.notify
+
+import android.app.Notification
+import com.frezzybuilds.devnotch.peek.Peek
+import com.frezzybuilds.devnotch.peek.PeekCenter
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class NotifyTest {
+
+    private val own = "com.frezzybuilds.devnotch"
+    private fun msg(pkg: String = "org.telegram.messenger", title: String = "Lena", text: String? = "Bist du da?") =
+        NotchNotification(key = "k-$pkg-$title", packageName = pkg, appLabel = "Telegram", title = title, text = text)
+
+    @After
+    fun clear() {
+        PeekCenter.current.value?.let(PeekCenter::dismiss)
+        NotificationHub.clearLive()
+    }
+
+    @Test
+    fun `rules filter what may peek`() {
+        val prefs = NotifyPrefs()
+        assertTrue(NotificationRules.shouldPeek(msg(), prefs, dndActive = false, ownPackage = own))
+        assertFalse(NotificationRules.shouldPeek(msg(), prefs.copy(enabled = false), false, own))
+        assertFalse(NotificationRules.shouldPeek(msg(pkg = own), prefs, false, own))
+        assertFalse(NotificationRules.shouldPeek(msg(), prefs.copy(blockedApps = setOf("org.telegram.messenger")), false, own))
+        assertFalse(NotificationRules.shouldPeek(msg().copy(ongoing = true), prefs, false, own))
+        assertTrue(NotificationRules.shouldPeek(msg().copy(ongoing = true), prefs.copy(skipOngoing = false), false, own))
+        assertFalse(NotificationRules.shouldPeek(msg().copy(silent = true), prefs, false, own))
+        assertFalse("Nicht stören", NotificationRules.shouldPeek(msg(), prefs, dndActive = true, ownPackage = own))
+        assertTrue(NotificationRules.shouldPeek(msg(), prefs.copy(respectDnd = false), dndActive = true, ownPackage = own))
+        assertFalse(NotificationRules.shouldPeek(msg().copy(isMedia = true), prefs, false, own))
+        assertFalse(NotificationRules.shouldPeek(msg().copy(isGroupSummary = true), prefs, false, own))
+    }
+
+    @Test
+    fun `lock screen redaction`() {
+        val n = msg()
+        assertEquals(n, NotificationRules.redact(n, locked = false, lockContent = LockContent.HIDDEN))
+        assertNull(NotificationRules.redact(n, locked = true, lockContent = LockContent.HIDDEN))
+        val appOnly = NotificationRules.redact(n, locked = true, lockContent = LockContent.APP_ONLY)!!
+        assertEquals("Telegram", appOnly.title)
+        assertFalse(appOnly.text!!.contains("Bist du da"))
+        assertEquals(n, NotificationRules.redact(n, locked = true, lockContent = LockContent.FULL))
+    }
+
+    @Test
+    fun `live parsers recognise calls, navigation, timers and progress`() {
+        val prefs = LivePrefs()
+        val ringing = msg(title = "Mama").copy(category = Notification.CATEGORY_CALL, actions = listOf(NotchAction("Ablehnen", null), NotchAction("Annehmen", null)))
+        val call = LiveParsers.parse(ringing, prefs) as LiveActivity.Call
+        assertTrue(call.ringing)
+        assertEquals("Mama", call.caller)
+
+        val ongoing = msg(title = "Mama").copy(category = Notification.CATEGORY_CALL, usesChronometer = true, whenTime = 1_000L, actions = listOf(NotchAction("Auflegen", null)))
+        val active = LiveParsers.parse(ongoing, prefs) as LiveActivity.Call
+        assertFalse(active.ringing)
+        assertEquals(1_000L, active.since)
+
+        val maps = msg(pkg = "com.google.android.apps.maps", title = "In 200 m rechts abbiegen", text = "Hauptstraße").copy(ongoing = true)
+        val nav = LiveParsers.parse(maps, prefs) as LiveActivity.Navigation
+        assertEquals("In 200 m rechts abbiegen", nav.instruction)
+        assertNull("Navigation abgeschaltet", LiveParsers.parse(maps, prefs.copy(navigation = false)))
+
+        val stopwatch = msg(pkg = "com.sec.android.app.clockpackage", title = "Stoppuhr").copy(ongoing = true, usesChronometer = true, whenTime = 5_000L)
+        assertTrue(LiveParsers.parse(stopwatch, prefs) is LiveActivity.Timer)
+
+        val download = msg(pkg = "com.android.chrome", title = "video.mp4").copy(ongoing = true, progress = 45, progressMax = 100)
+        assertEquals(0.45f, (LiveParsers.parse(download, prefs) as LiveActivity.Progress).fraction, 0.001f)
+
+        assertNull(LiveParsers.parse(msg(), prefs))
+        assertTrue(LiveParsers.primary(listOf(LiveParsers.parse(download, prefs)!!, call)) is LiveActivity.Call)
+    }
+
+    @Test
+    fun `hub peeks normal notifications and tracks live views`() {
+        val prefs = NotifyPrefs()
+        NotificationHub.onPosted(msg(), prefs, dndActive = false, ownPackage = own)
+        val peek = PeekCenter.current.value as Peek.Notification
+        assertEquals("Lena", peek.notification.title)
+        assertEquals(5_000L, peek.durationMs)
+
+        val maps = msg(pkg = "com.google.android.apps.maps", title = "In 200 m rechts abbiegen").copy(ongoing = true)
+        NotificationHub.onPosted(maps, prefs, false, own)
+        assertTrue(NotificationHub.primaryLive.value is LiveActivity.Navigation)
+        NotificationHub.onRemoved(maps.key)
+        assertNull(NotificationHub.primaryLive.value)
+
+        // Vorhandene Benachrichtigungen beim Verbinden: keine Peeks für Altes.
+        PeekCenter.dismiss(peek)
+        NotificationHub.onPosted(msg(title = "Alt"), prefs, false, own, initialScan = true)
+        assertNull(PeekCenter.current.value)
+    }
+
+    @Test
+    fun `short instruction for the pill`() {
+        assertEquals("200 m", com.frezzybuilds.devnotch.ui.shortInstruction("In 200 m rechts abbiegen"))
+        assertEquals("1,5 km", com.frezzybuilds.devnotch.ui.shortInstruction("Nach 1,5 km links"))
+        assertEquals("Rechts halten", com.frezzybuilds.devnotch.ui.shortInstruction("Rechts halten"))
+        assertEquals("1:15", com.frezzybuilds.devnotch.ui.formatDuration(75_000))
+        assertEquals("1:02:05", com.frezzybuilds.devnotch.ui.formatDuration(3_725_000))
+    }
+}

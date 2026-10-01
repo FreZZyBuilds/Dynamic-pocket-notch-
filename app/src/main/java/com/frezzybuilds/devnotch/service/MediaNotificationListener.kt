@@ -12,6 +12,10 @@ import android.os.Handler
 import android.os.Looper
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import com.frezzybuilds.devnotch.appContainer
+import com.frezzybuilds.devnotch.notify.NotchNotification
+import com.frezzybuilds.devnotch.notify.NotificationController
+import com.frezzybuilds.devnotch.notify.NotificationHub
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.scale
 import androidx.palette.graphics.Palette
@@ -66,7 +70,12 @@ class MediaNotificationListener : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
-        runCatching { activeNotifications }.getOrNull()?.forEach(::rememberMediaNotification)
+        NotificationHub.controller = NotificationController { key -> runCatching { cancelNotification(key) } }
+        NotificationHub.onAppSeen = { pkg, label -> applicationContext.appContainer.notchSettings.rememberSeenApp(pkg, label) }
+        runCatching { activeNotifications }.getOrNull()?.forEach { sbn ->
+            rememberMediaNotification(sbn)
+            routeNotification(sbn, initialScan = true)
+        }
         val manager = getSystemService(MediaSessionManager::class.java)
         try {
             manager.addOnActiveSessionsChangedListener(sessionsListener, component(), mainHandler)
@@ -79,6 +88,8 @@ class MediaNotificationListener : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         release()
+        NotificationHub.controller = null
+        NotificationHub.clearLive()
         // Das System trennt Listener gelegentlich (z. B. nach App-Updates) – wieder verbinden.
         runCatching { requestRebind(component()) }
         super.onListenerDisconnected()
@@ -91,11 +102,24 @@ class MediaNotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        if (rememberMediaNotification(sbn)) publish()
+        if (rememberMediaNotification(sbn)) publish() else routeNotification(sbn, initialScan = false)
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         if (mediaNotifications.remove(sbn.packageName) != null) publish()
+        NotificationHub.onRemoved(sbn.key)
+    }
+
+    /**
+     * Alle übrigen Benachrichtigungen: Live-Ansichten (Anruf, Navigation …) und Peeks nach den
+     * Einstellungen. Nur im Arbeitsspeicher, nichts wird gespeichert oder übertragen.
+     */
+    private fun routeNotification(sbn: StatusBarNotification, initialScan: Boolean) {
+        val prefs = applicationContext.appContainer.notchSettings.notifyPrefs
+        val notification = NotchNotification.from(this, sbn, runCatching { currentRanking }.getOrNull()) ?: return
+        if (notification.isMedia) return
+        val dnd = runCatching { currentInterruptionFilter != INTERRUPTION_FILTER_ALL }.getOrDefault(false)
+        NotificationHub.onPosted(notification, prefs, dnd, packageName, initialScan)
     }
 
     private fun component() = ComponentName(this, MediaNotificationListener::class.java)

@@ -1,6 +1,12 @@
 package com.frezzybuilds.devnotch.ui
 
 import androidx.compose.animation.core.Animatable
+import com.frezzybuilds.devnotch.notify.NotchNotification
+import com.frezzybuilds.devnotch.notify.LiveActivity
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.clickable
+import android.app.PendingIntent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.runtime.State
@@ -53,7 +59,16 @@ import com.frezzybuilds.devnotch.ui.theme.Brand
  * rechts Wert – die Linse bleibt frei), darunter Titel und Untertitel.
  */
 @Composable
-fun PeekContent(peek: Peek, pillHeight: Dp, lensGap: Dp, modifier: Modifier = Modifier) {
+fun PeekContent(
+    peek: Peek,
+    pillHeight: Dp,
+    lensGap: Dp,
+    modifier: Modifier = Modifier,
+    /** Benachrichtigung/Anruf: Intent auslösen (Öffnen, Aktion, Annehmen …). */
+    onSend: (PendingIntent?) -> Unit = {},
+    /** Benachrichtigung schließen. */
+    onDismiss: () -> Unit = {}
+) {
     val spec = peekSpec(peek)
     Box(modifier.fillMaxSize().then(if (peek is Peek.Charging) Modifier.chargeSweep() else Modifier)) {
         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
@@ -71,7 +86,18 @@ fun PeekContent(peek: Peek, pillHeight: Dp, lensGap: Dp, modifier: Modifier = Mo
                 modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE)
             )
             spec.subtitle?.let {
-                Text(it, color = Color.White.copy(alpha = 0.55f), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                Text(
+                    it,
+                    color = Color.White.copy(alpha = 0.6f),
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = if (peek is Peek.Notification) 2 else 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            when (peek) {
+                is Peek.Notification -> NotificationActions(peek.notification, onSend, onDismiss)
+                is Peek.LiveCall -> CallButtons(peek.call, onSend)
+                else -> Unit
             }
             if (peek is Peek.Charging && peek.percent != null) {
                 // Akkustand als Leiste im Grün-Verlauf.
@@ -129,6 +155,42 @@ private fun peekSpec(peek: Peek): PeekSpec = when (peek) {
         subtitle = "Zeit für eine kurze Pause",
         leading = { Pulsing { Badge("⏱", Brand.Horizontal) } },
         trailing = { Text("00:00", color = Brand.Magenta, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
+    )
+    is Peek.Notification -> PeekSpec(
+        title = peek.notification.title,
+        subtitle = peek.notification.text,
+        leading = {
+            val icon = peek.notification.icon
+            if (icon != null) {
+                val image = remember(icon) { icon.asImageBitmap() }
+                Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(26.dp).clip(CircleShape))
+            } else {
+                Badge(peek.notification.appLabel.take(1).uppercase(), Brand.Horizontal)
+            }
+        },
+        trailing = {
+            Text(
+                peek.notification.appLabel,
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    )
+    is Peek.LiveCall -> PeekSpec(
+        title = peek.call.caller,
+        subtitle = "Eingehender Anruf",
+        leading = {
+            val avatar = peek.call.avatar
+            if (avatar != null) {
+                val image = remember(avatar) { avatar.asImageBitmap() }
+                Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(26.dp).clip(CircleShape))
+            } else {
+                Pulsing { Badge("📞", Brush.linearGradient(listOf(Brand.Charge, Color(0xFF00C853)))) }
+            }
+        },
+        trailing = { Pulsing { Text("● ● ●", color = Brand.Charge, style = MaterialTheme.typography.labelSmall) } }
     )
     is Peek.TrackChanged -> PeekSpec(
         title = peek.title,
@@ -216,3 +278,56 @@ private fun Modifier.chargeSweep(): Modifier {
         }
     }
 }
+
+/** Aktionen einer Benachrichtigung: bis zu zwei App-Aktionen, „Öffnen“ und Schließen. */
+@Composable
+private fun NotificationActions(n: NotchNotification, onSend: (PendingIntent?) -> Unit, onDismiss: () -> Unit) {
+    // Aktionen mit Texteingabe (Antworten) öffnen die App – Inline-Antworten sind vorbereitet.
+    val direct = n.actions.filter { !it.needsInput && it.intent != null && it.title.isNotBlank() }.take(2)
+    Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        direct.forEach { action -> ActionChip(action.title, highlighted = false) { onSend(action.intent) } }
+        ActionChip("Öffnen", highlighted = true) { onSend(n.contentIntent) }
+        ActionChip("✕", highlighted = false, onClick = onDismiss)
+    }
+}
+
+/** Eingehender Anruf: Ablehnen (rot) und Annehmen (grün). */
+@Composable
+private fun CallButtons(call: LiveActivity.Call, onSend: (PendingIntent?) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        CallButton("Ablehnen", Color(0xFFFF4D4D), Modifier.weight(1f)) { onSend(call.decline ?: call.contentIntent) }
+        CallButton("Annehmen", Brand.Charge, Modifier.weight(1f)) { onSend(call.answer ?: call.contentIntent) }
+    }
+}
+
+@Composable
+private fun CallButton(label: String, color: Color, modifier: Modifier, onClick: () -> Unit) {
+    Box(
+        modifier
+            .height(30.dp)
+            .clip(CircleShape)
+            .background(color)
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { Text(label, color = Color.Black, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
+}
+
+@Composable
+fun ActionChip(label: String, highlighted: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .clip(CircleShape)
+            .background(if (highlighted) Color.White else Color.White.copy(alpha = 0.12f))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 5.dp)
+    ) {
+        Text(
+            label,
+            color = if (highlighted) Color.Black else Color.White,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
+    }
+}
+

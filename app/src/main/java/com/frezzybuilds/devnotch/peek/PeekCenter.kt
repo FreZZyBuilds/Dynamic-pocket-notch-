@@ -13,6 +13,9 @@ sealed interface Peek {
     /** Anzeigedauer, danach schrumpft die Pille zurück. */
     val durationMs: Long
 
+    /** Zusätzliche Höhe unter der Linsen-Zeile (dp). */
+    val extraHeightDp: Int get() = 46
+
     /** Ladekabel angesteckt. [percent] null, wenn der Akkustand unbekannt ist. */
     data class Charging(val percent: Int?) : Peek {
         override val durationMs = 3_500L
@@ -26,6 +29,21 @@ sealed interface Peek {
     /** Fokus-Timer ist abgelaufen. */
     data object TimerDone : Peek {
         override val durationMs = 4_500L
+    }
+
+    /** Benachrichtigung einer App (Dauer aus den Einstellungen). */
+    data class Notification(
+        val notification: com.frezzybuilds.devnotch.notify.NotchNotification,
+        override val durationMs: Long
+    ) : Peek {
+        private val hasMore = !notification.text.isNullOrBlank() || notification.actions.isNotEmpty()
+        override val extraHeightDp: Int get() = if (hasMore) 96 else 52
+    }
+
+    /** Eingehender Anruf – bleibt groß, solange es klingelt (nicht in [PeekCenter] abgelegt). */
+    data class LiveCall(val call: com.frezzybuilds.devnotch.notify.LiveActivity.Call) : Peek {
+        override val durationMs = Long.MAX_VALUE
+        override val extraHeightDp: Int get() = 96
     }
 
     /** Neuer Titel läuft. */

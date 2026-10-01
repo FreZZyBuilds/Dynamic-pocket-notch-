@@ -1,6 +1,11 @@
 package com.frezzybuilds.devnotch.ui
 
 import androidx.compose.animation.animateContentSize
+import com.frezzybuilds.devnotch.notify.sendFromNotch
+import com.frezzybuilds.devnotch.notify.NotificationRules
+import com.frezzybuilds.devnotch.notify.NotificationHub
+import com.frezzybuilds.devnotch.notify.LiveActivity
+import android.app.PendingIntent
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import androidx.compose.ui.unit.LayoutDirection
@@ -160,7 +165,7 @@ fun NotchContainer(
     /** Einklapp-Animation ist fertig – erst jetzt darf der Service das Fenster verkleinern. */
     onCollapseSettled: () -> Unit = {},
     /** Peek beginnt/endet – der Service passt die Fenstergröße einmalig an. */
-    onPeekChange: (Boolean) -> Unit = {}
+    onPeekChange: (extraHeightDp: Int?) -> Unit = {}
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     // Erster Eindruck mit sofortigem Nutzen: ohne GitHub-Token startet die Notch im Timer.
@@ -222,9 +227,30 @@ fun NotchContainer(
 
     // --- Peeks: kurze Live-Einblendungen der eingeklappten Pille (nur Notch oben) -----------
     val peek by PeekCenter.current.collectAsStateWithLifecycle()
-    val activePeek = peek.takeIf {
+    // Live-Ansichten (Anruf, Navigation, Timer, Fortschritt) und Einstellungen für Benachrichtigungen.
+    val live by NotificationHub.primaryLive.collectAsStateWithLifecycle()
+    val notifySettings = LocalContext.current.appContainer.notchSettings
+    val notifyPrefs by remember { notifySettings.notifyPrefsFlow() }
+        .collectAsStateWithLifecycle(initialValue = notifySettings.notifyPrefs)
+    val ringingCall = (live as? LiveActivity.Call)?.takeIf { it.ringing }
+    val activePeek: Peek? = when {
+        layout.mode != NotchLayoutMode.NOTCH_TOP || isExpanded -> null
+        // Klingelt das Telefon, bleibt die Notch groß mit Annehmen/Ablehnen.
+        ringingCall != null -> Peek.LiveCall(ringingCall)
         // Gesperrt keine Textauszüge aus der Zwischenablage.
-        layout.mode == NotchLayoutMode.NOTCH_TOP && !isExpanded && !(locked && it is Peek.Copied)
+        locked && peek is Peek.Copied -> null
+        // Benachrichtigungen gesperrt nur so viel, wie eingestellt.
+        peek is Peek.Notification -> (peek as Peek.Notification).let { p ->
+            NotificationRules.redact(p.notification, locked, notifyPrefs.lockContent)?.let { p.copy(notification = it) }
+        }
+        else -> peek
+    }
+    val peekContext = LocalContext.current
+    /** Intent aus der Notch auslösen und danach aufräumen (Peek beenden, einklappen). */
+    fun sendIntent(intent: PendingIntent?) {
+        intent?.sendFromNotch(peekContext)
+        (peek as? Peek.Notification)?.let(PeekCenter::dismiss)
+        if (isExpanded) setExpanded(false)
     }
     val peekHaptic = LocalHapticFeedback.current
     // Lebensdauer unabhängig von der Anzeige: Ein Peek aus dem Edge-Modus oder bei offener
@@ -235,14 +261,17 @@ fun NotchContainer(
         PeekCenter.dismiss(current)
     }
     LaunchedEffect(activePeek) {
-        onPeekChange(activePeek != null)
+        onPeekChange(activePeek?.extraHeightDp)
         val shown = activePeek ?: return@LaunchedEffect
         peekHaptic.performHapticFeedback(
             if (shown is Peek.TimerDone) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove
         )
     }
-    val timerRingVisible = layout.mode == NotchLayoutMode.NOTCH_TOP && !isExpanded &&
-        activePeek == null && showTimerInPill
+    val pillIdle = layout.mode == NotchLayoutMode.NOTCH_TOP && !isExpanded && activePeek == null
+    // Fortschritt einer Live-Ansicht (Download, Lieferung …) läuft wie der Timer um die Pille.
+    val liveProgress = (live as? LiveActivity.Progress)?.takeIf { pillIdle }
+    val liveFraction = animateFloatAsState(liveProgress?.fraction ?: 0f, label = "liveProgress")
+    val timerRingVisible = pillIdle && (showTimerInPill || liveProgress != null)
 
     // Timer abgelaufen → Peek.
     LaunchedEffect(focusTimer) { focusTimer.finished.collect { PeekCenter.show(Peek.TimerDone) } }
@@ -291,7 +320,7 @@ fun NotchContainer(
         collapsedSize(layout, hasMedia = nowPlaying != null, minimized = edgeMini)
     val peekConfig = LocalConfiguration.current
     val (collapsedWidth, collapsedHeight) = if (activePeek != null) {
-        ExpandedSize.peek(peekConfig.screenWidthDp, pillHeight.value).let { (w, h) -> w.dp to h.dp }
+        ExpandedSize.peek(peekConfig.screenWidthDp, pillHeight.value, activePeek.extraHeightDp).let { (w, h) -> w.dp to h.dp }
     } else {
         pillWidth to pillHeight
     }
@@ -396,7 +425,7 @@ fun NotchContainer(
                     )
                     // Fokus-Timer läuft: Fortschritt als Lichtlinie einmal rund um die Pille.
                     .then(
-                        if (timerRingVisible) Modifier.pillProgress(timerElapsed) else Modifier
+                        if (timerRingVisible) Modifier.pillProgress(if (liveProgress != null) liveFraction else timerElapsed) else Modifier
                     )
                     // Wischen: Notch nach unten auf / nach oben zu; Edge zur Mitte auf / zum Rand zu.
                     // Die eingeklappte Bubble hat eigene Gesten (Verschieben), daher dort nicht.
@@ -417,7 +446,12 @@ fun NotchContainer(
                         indication = null
                     ) {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        setExpanded(true)
+                        // Tipp auf eine Benachrichtigung öffnet sie; sonst klappt die Notch auf.
+                        when (val shown = activePeek) {
+                            is Peek.Notification -> sendIntent(shown.notification.contentIntent)
+                            is Peek.LiveCall -> sendIntent(shown.call.contentIntent)
+                            else -> setExpanded(true)
+                        }
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -440,6 +474,8 @@ fun NotchContainer(
                     // statt während der Animation zusammengequetscht zu werden. Schmale Bildschirme
                     // im Edge-Modus nutzen dieselben Tabs in Drawer-Größe.
                     Dashboard(
+                        live = live,
+                        onSend = ::sendIntent,
                         tabs = if (locked) LockedTabs else NotchTab.entries,
                         selectedTab = if (locked) NotchTab.TIMER else selectedTab,
                         onSelectTab = { selectedTab = it },
@@ -457,12 +493,21 @@ fun NotchContainer(
                         peek = activePeek,
                         pillHeight = pillHeight,
                         lensGap = lensGap(layout),
+                        onSend = ::sendIntent,
+                        onDismiss = {
+                            (peek as? Peek.Notification)?.let {
+                                NotificationHub.dismiss(it.notification.key)
+                                PeekCenter.dismiss(it)
+                            }
+                        },
                         // Feste Endgröße + unbounded: Der Inhalt wird beim Wachsen aufgedeckt.
                         modifier = Modifier
                             .wrapContentSize(Alignment.TopCenter, unbounded = true)
                             .size(collapsedWidth, collapsedHeight)
                             .staggerIn(0)
                     )
+                } else if (layout.mode == NotchLayoutMode.NOTCH_TOP && live != null) {
+                    LivePill(live!!, lensGap(layout))
                 } else if (layout.mode == NotchLayoutMode.NOTCH_TOP) {
                     val playing = nowPlaying?.takeIf { it.isPlaying }
                     val timerText = if (showTimerInPill) "⏱ ${formatMmSs(timerRemaining)}" else null
@@ -541,6 +586,8 @@ fun NotchContainer(
 
 @Composable
 private fun Dashboard(
+    live: LiveActivity?,
+    onSend: (PendingIntent?) -> Unit,
     tabs: List<NotchTab>,
     selectedTab: NotchTab,
     onSelectTab: (NotchTab) -> Unit,
@@ -551,6 +598,9 @@ private fun Dashboard(
 ) {
     Column(modifier = modifier.padding(12.dp)) {
         Box(Modifier.staggerIn(0)) { DashboardHeader(nowPlaying, onClose) }
+        if (live != null) {
+            LiveCard(live, onSend, Modifier.padding(top = 6.dp).staggerIn(0))
+        }
 
         TabRow(
             selectedTabIndex = tabs.indexOf(selectedTab).coerceAtLeast(0),

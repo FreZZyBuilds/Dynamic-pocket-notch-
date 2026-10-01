@@ -1,0 +1,133 @@
+package com.frezzybuilds.devnotch.notify
+
+import android.app.ActivityOptions
+import android.app.Notification
+import android.app.PendingIntent
+import android.content.Context
+import android.graphics.Bitmap
+import android.os.Build
+import android.service.notification.NotificationListenerService
+import android.service.notification.StatusBarNotification
+import androidx.core.graphics.drawable.toBitmap
+
+/** Eine Aktion aus der Benachrichtigung (z. B. „Annehmen“, „Als gelesen markieren“). */
+data class NotchAction(
+    val title: String,
+    val intent: PendingIntent?,
+    /** Verlangt Texteingabe (Antworten) – öffnet dann die App statt direkt auszulösen. */
+    val needsInput: Boolean = false
+)
+
+/**
+ * Neutrales Abbild einer Benachrichtigung – nur, was die Notch braucht. Wird nie gespeichert
+ * oder übertragen; lebt nur im Arbeitsspeicher, solange die Benachrichtigung aktiv ist.
+ */
+data class NotchNotification(
+    val key: String,
+    val packageName: String,
+    val appLabel: String,
+    val title: String,
+    val text: String? = null,
+    /** Großes Icon (Avatar, Abbiege-Pfeil …) oder App-Icon. */
+    val icon: Bitmap? = null,
+    val postTime: Long = 0L,
+    val category: String? = null,
+    val ongoing: Boolean = false,
+    val contentIntent: PendingIntent? = null,
+    val actions: List<NotchAction> = emptyList(),
+    val progress: Int = 0,
+    val progressMax: Int = 0,
+    val progressIndeterminate: Boolean = false,
+    val usesChronometer: Boolean = false,
+    /** Notification.when – Startzeit eines Anrufs/einer Stoppuhr bzw. Ende eines Countdowns. */
+    val whenTime: Long = 0L,
+    val chronometerCountDown: Boolean = false,
+    val isGroupSummary: Boolean = false,
+    /** Stille/unwichtige Benachrichtigung (Wichtigkeit ≤ niedrig). */
+    val silent: Boolean = false,
+    val isMedia: Boolean = false,
+    /** CallStyle-Intents (Android 12+), falls die Telefon-App sie liefert. */
+    val answerIntent: PendingIntent? = null,
+    val declineIntent: PendingIntent? = null,
+    val hangUpIntent: PendingIntent? = null,
+    val isCallStyle: Boolean = false
+) {
+    val progressFraction: Float? =
+        if (progressMax > 0 && !progressIndeterminate) (progress.toFloat() / progressMax).coerceIn(0f, 1f) else null
+
+    companion object {
+        /** Liest eine StatusBarNotification aus (Framework-Typen bleiben hier gekapselt). */
+        fun from(context: Context, sbn: StatusBarNotification, ranking: NotificationListenerService.RankingMap?): NotchNotification? {
+            val n = sbn.notification ?: return null
+            val extras = n.extras ?: return null
+            val pm = context.packageManager
+            val appLabel = runCatching {
+                pm.getApplicationLabel(pm.getApplicationInfo(sbn.packageName, 0)).toString()
+            }.getOrDefault(sbn.packageName)
+            val title = (extras.getCharSequence(Notification.EXTRA_TITLE_BIG) ?: extras.getCharSequence(Notification.EXTRA_TITLE))
+                ?.toString()?.trim().orEmpty()
+            val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))
+                ?.toString()?.trim()
+            val icon = runCatching {
+                (n.getLargeIcon() ?: n.smallIcon)?.loadDrawable(context)?.toBitmap(96, 96)
+            }.getOrNull() ?: runCatching { pm.getApplicationIcon(sbn.packageName).toBitmap(96, 96) }.getOrNull()
+
+            val silent = ranking?.let { map ->
+                val r = NotificationListenerService.Ranking()
+                map.getRanking(sbn.key, r) && r.importance <= android.app.NotificationManager.IMPORTANCE_LOW
+            } ?: false
+            val template = extras.getString(Notification.EXTRA_TEMPLATE).orEmpty()
+
+            @Suppress("DEPRECATION")
+            fun intentExtra(key: String): PendingIntent? = runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) extras.getParcelable(key, PendingIntent::class.java)
+                else extras.getParcelable(key) as? PendingIntent
+            }.getOrNull()
+
+            return NotchNotification(
+                key = sbn.key,
+                packageName = sbn.packageName,
+                appLabel = appLabel,
+                title = title.ifEmpty { appLabel },
+                text = text?.takeIf { it.isNotEmpty() },
+                icon = icon,
+                postTime = sbn.postTime,
+                category = n.category,
+                ongoing = sbn.isOngoing,
+                contentIntent = n.contentIntent,
+                actions = n.actions.orEmpty().map { a ->
+                    NotchAction(a.title?.toString().orEmpty(), a.actionIntent, needsInput = !a.remoteInputs.isNullOrEmpty())
+                },
+                progress = extras.getInt(Notification.EXTRA_PROGRESS),
+                progressMax = extras.getInt(Notification.EXTRA_PROGRESS_MAX),
+                progressIndeterminate = extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE),
+                usesChronometer = extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER),
+                whenTime = n.`when`,
+                chronometerCountDown = extras.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN),
+                isGroupSummary = n.flags and Notification.FLAG_GROUP_SUMMARY != 0,
+                silent = silent,
+                isMedia = extras.containsKey(Notification.EXTRA_MEDIA_SESSION),
+                answerIntent = intentExtra("android.answerIntent"),
+                declineIntent = intentExtra("android.declineIntent"),
+                hangUpIntent = intentExtra("android.hangUpIntent"),
+                isCallStyle = template.endsWith("CallStyle")
+            )
+        }
+    }
+}
+
+/**
+ * Löst einen PendingIntent einer anderen App aus. Ab Android 14 muss der Sender den Start einer
+ * Activity aus dem Hintergrund ausdrücklich erlauben (DevNotch darf das als Overlay-App).
+ */
+fun PendingIntent.sendFromNotch(context: Context): Boolean = runCatching {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        val options = ActivityOptions.makeBasic()
+            .setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+            .toBundle()
+        send(context, 0, null, null, null, null, options)
+    } else {
+        send()
+    }
+    true
+}.getOrDefault(false)

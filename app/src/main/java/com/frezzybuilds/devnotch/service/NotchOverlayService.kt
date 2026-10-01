@@ -112,6 +112,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private var peeking = false
     private var windowPeek = false
 
+    /** Höhe des aktuellen Peeks unter der Linsen-Zeile (Benachrichtigungen sind höher). */
+    private var peekExtraHeightDp = ExpandedSize.PEEK_EXTRA_HEIGHT_DP
+
     private val shrinkWindow = Runnable {
         var changed = false
         if (!expanded && windowExpanded) {
@@ -312,8 +315,11 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                         mainHandler.removeCallbacks(shrinkWindow)
                         shrinkWindow.run()
                     },
-                    onPeekChange = { active ->
-                        if (active != peeking) {
+                    onPeekChange = { extraHeight ->
+                        val active = extraHeight != null
+                        val heightChanged = extraHeight != null && extraHeight != peekExtraHeightDp
+                        if (extraHeight != null) peekExtraHeightDp = extraHeight
+                        if (active != peeking || heightChanged) {
                             peeking = active
                             if (active) {
                                 // Erst das Fenster vergrößern, dann wächst die Pille darin.
@@ -467,7 +473,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     /** Peek-Fenstergröße in Pixeln – dieselbe Rechnung wie im NotchContainer. */
     private fun peekSizePx(): Pair<Int, Int> {
         val density = resources.displayMetrics.density
-        val (w, h) = ExpandedSize.peek(resources.configuration.screenWidthDp, notchLayout.pill.height / density)
+        val (w, h) = ExpandedSize.peek(resources.configuration.screenWidthDp, notchLayout.pill.height / density, peekExtraHeightDp)
         return (w * density).roundToInt() to (h * density).roundToInt()
     }
 

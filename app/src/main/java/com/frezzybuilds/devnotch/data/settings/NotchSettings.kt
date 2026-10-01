@@ -7,6 +7,9 @@ import com.frezzybuilds.devnotch.ui.BeamMode
 import com.frezzybuilds.devnotch.ui.BeamStyle
 import com.frezzybuilds.devnotch.ui.BeamPalette
 import androidx.core.content.edit
+import com.frezzybuilds.devnotch.notify.LivePrefs
+import com.frezzybuilds.devnotch.notify.LockContent
+import com.frezzybuilds.devnotch.notify.NotifyPrefs
 import com.frezzybuilds.devnotch.service.EdgeSide
 import com.frezzybuilds.devnotch.service.LockscreenMode
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
@@ -158,6 +161,80 @@ class NotchSettings(context: Context) {
             if (key in keys) onChange()
         }.also(prefs::registerOnSharedPreferenceChangeListener)
 
+    // --- Benachrichtigungen & Live-Ansichten ---------------------------------------------------
+    var notifyEnabled: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFY_ENABLED, true)
+        set(value) = prefs.edit { putBoolean(KEY_NOTIFY_ENABLED, value) }
+    var notifyDuration: Float
+        get() = prefs.getFloat(KEY_NOTIFY_DURATION, NotifyPrefs.DEFAULT_DURATION_SECONDS)
+        set(value) = prefs.edit { putFloat(KEY_NOTIFY_DURATION, value.coerceIn(NotifyPrefs.DURATION_RANGE)) }
+    var notifyLockContent: LockContent
+        get() = prefs.getString(KEY_NOTIFY_LOCK_CONTENT, null)
+            ?.let { name -> LockContent.entries.firstOrNull { it.name == name } }
+            ?: LockContent.APP_ONLY
+        set(value) = prefs.edit { putString(KEY_NOTIFY_LOCK_CONTENT, value.name) }
+    var notifySkipOngoing: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFY_SKIP_ONGOING, true)
+        set(value) = prefs.edit { putBoolean(KEY_NOTIFY_SKIP_ONGOING, value) }
+    var notifySkipSilent: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFY_SKIP_SILENT, true)
+        set(value) = prefs.edit { putBoolean(KEY_NOTIFY_SKIP_SILENT, value) }
+    var notifyRespectDnd: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFY_DND, true)
+        set(value) = prefs.edit { putBoolean(KEY_NOTIFY_DND, value) }
+    var notifyBlockedApps: Set<String>
+        get() = prefs.getStringSet(KEY_NOTIFY_BLOCKED, emptySet()).orEmpty().toSet()
+        set(value) = prefs.edit { putStringSet(KEY_NOTIFY_BLOCKED, value) }
+    var liveCalls: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_CALLS, true)
+        set(value) = prefs.edit { putBoolean(KEY_LIVE_CALLS, value) }
+    var liveNavigation: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_NAV, true)
+        set(value) = prefs.edit { putBoolean(KEY_LIVE_NAV, value) }
+    var liveTimers: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_TIMERS, true)
+        set(value) = prefs.edit { putBoolean(KEY_LIVE_TIMERS, value) }
+    var liveProgress: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_PROGRESS, true)
+        set(value) = prefs.edit { putBoolean(KEY_LIVE_PROGRESS, value) }
+
+    val notifyPrefs: NotifyPrefs
+        get() = NotifyPrefs(
+            enabled = notifyEnabled,
+            durationSeconds = notifyDuration,
+            lockContent = notifyLockContent,
+            skipOngoing = notifySkipOngoing,
+            skipSilent = notifySkipSilent,
+            respectDnd = notifyRespectDnd,
+            blockedApps = notifyBlockedApps,
+            live = LivePrefs(liveCalls, liveNavigation, liveTimers, liveProgress)
+        )
+
+    fun notifyPrefsFlow(): Flow<NotifyPrefs> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key in NOTIFY_PREF_KEYS) trySend(notifyPrefs)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(notifyPrefs)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    /** Apps, die Benachrichtigungen geschickt haben (Paket → Name), höchstens 60, neueste zuerst. */
+    val seenApps: Map<String, String>
+        get() = prefs.getString(KEY_NOTIFY_SEEN, null).orEmpty().lineSequence()
+            .mapNotNull { line -> line.split('\t').takeIf { it.size == 2 }?.let { it[0] to it[1] } }
+            .toMap(LinkedHashMap())
+
+    fun rememberSeenApp(packageName: String, label: String) {
+        val current = seenApps
+        if (current.keys.firstOrNull() == packageName) return
+        val updated = LinkedHashMap<String, String>().apply {
+            put(packageName, label)
+            current.forEach { (pkg, name) -> if (pkg != packageName && size < 60) put(pkg, name) }
+        }
+        prefs.edit { putString(KEY_NOTIFY_SEEN, updated.entries.joinToString("\n") { "${it.key}\t${it.value}" }) }
+    }
+
     var lockscreenMode: LockscreenMode
         get() = prefs.getString(KEY_LOCKSCREEN_MODE, null)
             ?.let { name -> LockscreenMode.entries.firstOrNull { it.name == name } }
@@ -169,6 +246,23 @@ class NotchSettings(context: Context) {
 
     companion object {
         const val KEY_LOCKSCREEN_MODE = "lockscreen_mode"
+        const val KEY_NOTIFY_ENABLED = "notify_enabled"
+        const val KEY_NOTIFY_DURATION = "notify_duration"
+        const val KEY_NOTIFY_LOCK_CONTENT = "notify_lock_content"
+        const val KEY_NOTIFY_SKIP_ONGOING = "notify_skip_ongoing"
+        const val KEY_NOTIFY_SKIP_SILENT = "notify_skip_silent"
+        const val KEY_NOTIFY_DND = "notify_dnd"
+        const val KEY_NOTIFY_BLOCKED = "notify_blocked"
+        const val KEY_NOTIFY_SEEN = "notify_seen_apps"
+        const val KEY_LIVE_CALLS = "live_calls"
+        const val KEY_LIVE_NAV = "live_navigation"
+        const val KEY_LIVE_TIMERS = "live_timers"
+        const val KEY_LIVE_PROGRESS = "live_progress"
+        val NOTIFY_PREF_KEYS = setOf(
+            KEY_NOTIFY_ENABLED, KEY_NOTIFY_DURATION, KEY_NOTIFY_LOCK_CONTENT, KEY_NOTIFY_SKIP_ONGOING,
+            KEY_NOTIFY_SKIP_SILENT, KEY_NOTIFY_DND, KEY_NOTIFY_BLOCKED,
+            KEY_LIVE_CALLS, KEY_LIVE_NAV, KEY_LIVE_TIMERS, KEY_LIVE_PROGRESS
+        )
         private const val KEY_DISPLAY_MODE = "display_mode"
         const val KEY_NOTCH_ENABLED = "notch_enabled"
         const val KEY_OEM_HINT_DONE = "oem_hint_done"

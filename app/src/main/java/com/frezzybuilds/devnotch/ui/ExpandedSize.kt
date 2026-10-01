@@ -27,8 +27,8 @@ object ExpandedSize {
         minOf(PEEK_MAX_WIDTH_DP, screenWidthDp - 2 * SIDE_MARGIN_DP)
 
     /** @return Breite und Höhe des Peeks in dp; [pillHeightDp] ist die eingeklappte Pillenhöhe. */
-    fun peek(screenWidthDp: Int, pillHeightDp: Float): Pair<Float, Float> =
-        peekWidthDp(screenWidthDp).toFloat() to pillHeightDp + PEEK_EXTRA_HEIGHT_DP
+    fun peek(screenWidthDp: Int, pillHeightDp: Float, extraHeightDp: Int = PEEK_EXTRA_HEIGHT_DP): Pair<Float, Float> =
+        peekWidthDp(screenWidthDp).toFloat() to pillHeightDp + extraHeightDp
 
     /**
      * @param topInsetDp Abstand für Statusleiste/Kamera über dem Dashboard-Inhalt (nur Notch).
