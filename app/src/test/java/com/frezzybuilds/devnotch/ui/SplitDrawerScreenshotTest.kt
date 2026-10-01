@@ -31,6 +31,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.performTextInput
 import com.frezzybuilds.devnotch.ui.focus.FocusTimerViewModel
 import com.frezzybuilds.devnotch.ui.media.EdgeHandle
 import org.junit.Rule
@@ -115,6 +117,11 @@ class SplitDrawerScreenshotTest {
         }
         compose.onRoot().performTouchInput { click(center) }
         compose.onNodeWithText("Notizen").performClick()
+        // Die erste Notiz legt der ViewModel asynchron in Room an.
+        compose.waitUntil(5_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size >= 2 }
+        val fields = compose.onAllNodes(hasSetTextAction())
+        fields[0].performTextInput("Sprint 42")
+        fields[1].performTextInput("- [x] Room-Migration\n- [ ] `./gradlew test`\n- Notch-Gesten prüfen")
         compose.waitForIdle()
         val image = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
         view.draw(Canvas(image))

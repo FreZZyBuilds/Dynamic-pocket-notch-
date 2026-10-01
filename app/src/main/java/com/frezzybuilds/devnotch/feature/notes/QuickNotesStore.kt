@@ -3,7 +3,10 @@ package com.frezzybuilds.devnotch.feature.notes
 import android.content.Context
 import androidx.core.content.edit
 
-/** Ein schneller Notizzettel im app-privaten Speicher (von Backups ausgeschlossen). */
+/**
+ * Früherer Einzel-Notizzettel (SharedPreferences). Wird nur noch gelesen, um den Text einmalig
+ * in die Room-Notizen zu übernehmen (NotesRepository.migrateLegacyScratchpad).
+ */
 class QuickNotesStore(context: Context) {
     private val prefs = context.getSharedPreferences("notes", Context.MODE_PRIVATE)
 

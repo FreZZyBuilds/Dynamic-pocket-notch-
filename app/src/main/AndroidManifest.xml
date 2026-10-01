@@ -72,6 +72,25 @@
             </intent-filter>
         </receiver>
 
+        <!-- Notiz-Export: .md-Dateien für ACTION_SEND freigeben -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.exports"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/export_paths" />
+        </provider>
+
+        <!-- Unsichtbar: öffnet „Speichern unter…“ (Drive/lokal) für den Overlay-Service -->
+        <activity
+            android:name=".feature.notes.ExportNoteActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true">

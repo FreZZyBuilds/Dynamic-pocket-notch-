@@ -40,6 +40,11 @@ class NotchSettings(context: Context) {
         get() = prefs.getBoolean(KEY_NOTCH_ENABLED, false)
         set(value) = prefs.edit { putBoolean(KEY_NOTCH_ENABLED, value) }
 
+    /** Hersteller-Hinweis (Xiaomi/Samsung) wurde als erledigt markiert. */
+    var oemHintDone: Boolean
+        get() = prefs.getBoolean(KEY_OEM_HINT_DONE, false)
+        set(value) = prefs.edit { putBoolean(KEY_OEM_HINT_DONE, value) }
+
     /** Edge-Player klappt nach einigen Sekunden ohne Interaktion zur runden Cover-Bubble ein. */
     var edgeAutoMinimize: Boolean
         get() = prefs.getBoolean(KEY_EDGE_AUTO_MINIMIZE, true)
@@ -101,6 +106,7 @@ class NotchSettings(context: Context) {
     private companion object {
         const val KEY_DISPLAY_MODE = "display_mode"
         const val KEY_NOTCH_ENABLED = "notch_enabled"
+        const val KEY_OEM_HINT_DONE = "oem_hint_done"
         const val KEY_EDGE_AUTO_MINIMIZE = "edge_auto_minimize"
         const val KEY_EDGE_MINIMIZE_DELAY = "edge_minimize_delay"
         const val KEY_EDGE_SHOW_ON_TRACK = "edge_show_on_track"

@@ -70,6 +70,8 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
 import com.frezzybuilds.devnotch.service.NotchOverlayService
+import com.frezzybuilds.devnotch.service.OemGuide
+import com.frezzybuilds.devnotch.service.openSettings
 import com.frezzybuilds.devnotch.service.isTablet
 import com.frezzybuilds.devnotch.ui.theme.DevNotchTheme
 
@@ -215,6 +217,8 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             )
         }
 
+        OemHintCard(settings)
+
         GitHubCard()
     }
 
@@ -327,6 +331,51 @@ private fun GitHubCard() {
                 saved = token to username
             }) {
                 Text(if (isSaved) "Gespeichert ✓" else "Speichern")
+            }
+        }
+    }
+}
+
+/**
+ * Nur auf Xiaomi/Samsung: Diese Hersteller beenden Hintergrund-Apps zusätzlich zur
+ * Android-Akku-Optimierung. Schritt-für-Schritt-Anleitung plus Direktsprung in deren Einstellungen.
+ */
+@Composable
+private fun OemHintCard(settings: NotchSettings) {
+    val context = LocalContext.current
+    val guide = remember { OemGuide.forDevice(Build.MANUFACTURER, Build.BRAND) } ?: return
+    var done by remember { mutableStateOf(settings.oemHintDone) }
+
+    Card(Modifier.fillMaxWidth()) {
+        if (done) {
+            ListItem(
+                headlineContent = { Text("${guide.vendor}: Hintergrund freigegeben") },
+                supportingContent = { Text("Verschwindet die Notch trotzdem, die Schritte erneut prüfen.") },
+                trailingContent = {
+                    TextButton(onClick = {
+                        done = false
+                        settings.oemHintDone = false
+                    }) { Text("Anzeigen") }
+                }
+            )
+            return@Card
+        }
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Wichtig für ${guide.vendor}", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Dein Gerät beendet Apps im Hintergrund zusätzlich zur Akku-Optimierung. " +
+                    "Damit die Notch dauerhaft läuft:",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            guide.steps.forEachIndexed { index, step ->
+                Text("${index + 1}. $step", style = MaterialTheme.typography.bodyMedium)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { guide.openSettings(context) }) { Text("Einstellungen öffnen") }
+                TextButton(onClick = {
+                    done = true
+                    settings.oemHintDone = true
+                }) { Text("Erledigt") }
             }
         }
     }

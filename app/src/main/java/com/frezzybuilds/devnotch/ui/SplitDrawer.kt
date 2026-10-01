@@ -19,7 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.frezzybuilds.devnotch.feature.github.DevTabContent
-import com.frezzybuilds.devnotch.feature.notes.QuickNotesContent
+import com.frezzybuilds.devnotch.feature.notes.NotesContent
 import com.frezzybuilds.devnotch.service.NowPlaying
 import com.frezzybuilds.devnotch.ui.clipboard.ClipboardContent
 import com.frezzybuilds.devnotch.ui.focus.FocusTimerTab
@@ -73,7 +73,7 @@ fun SplitDrawer(
             DrawerColumn(DrawerPane.Right, rightPane, onSelectRight, Modifier.weight(1f)) { pane ->
                 when (pane) {
                     DrawerPane.CLIP -> ClipboardContent()
-                    else -> QuickNotesContent()
+                    else -> NotesContent(onLeaveForExternalApp = onClose)
                 }
             }
         }
