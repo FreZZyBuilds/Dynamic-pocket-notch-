@@ -1,6 +1,7 @@
 package com.frezzybuilds.devnotch.feature.notes
 
 import androidx.compose.foundation.background
+import com.frezzybuilds.devnotch.ui.RequestOverlayFocus
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,6 +65,8 @@ fun NotesContent(
     modifier: Modifier = Modifier,
     onLeaveForExternalApp: () -> Unit = {}
 ) {
+    // Textfelder: Overlay-Fenster fokussierbar machen, sonst erscheint keine Bildschirmtastatur.
+    RequestOverlayFocus()
     val context = LocalContext.current
     val viewModel = viewModel { NotesViewModel(context.appContainer.notesRepository) }
     val notes by viewModel.notes.collectAsStateWithLifecycle()

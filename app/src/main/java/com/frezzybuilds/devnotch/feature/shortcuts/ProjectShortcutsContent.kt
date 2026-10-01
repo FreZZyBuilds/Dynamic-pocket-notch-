@@ -1,6 +1,7 @@
 package com.frezzybuilds.devnotch.feature.shortcuts
 
 import android.app.Application
+import com.frezzybuilds.devnotch.ui.RequestOverlayFocus
 import com.frezzybuilds.devnotch.feature.billing.Paywall
 import com.frezzybuilds.devnotch.feature.billing.ProFeature
 import com.frezzybuilds.devnotch.feature.billing.ProLimits
@@ -225,6 +226,8 @@ private fun AddTile(locked: Boolean, onClick: () -> Unit) {
 /** Hinzufügen direkt im Panel: installierte App wählen oder eigene URL eintragen. */
 @Composable
 private fun AddShortcutPane(viewModel: ShortcutsViewModel, onDone: () -> Unit, modifier: Modifier = Modifier) {
+    // App-Suche und URL-Feld brauchen die Bildschirmtastatur.
+    RequestOverlayFocus()
     var urlMode by remember { mutableStateOf(false) }
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {

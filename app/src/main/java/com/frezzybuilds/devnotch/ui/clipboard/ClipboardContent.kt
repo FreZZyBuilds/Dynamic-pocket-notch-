@@ -1,6 +1,7 @@
 package com.frezzybuilds.devnotch.ui.clipboard
 
 import android.content.Context
+import com.frezzybuilds.devnotch.ui.RequestOverlayFocus
 import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.View
@@ -49,6 +50,8 @@ private val CopiedBackground = Color(0xFF123524)
  */
 @Composable
 fun ClipboardContent(onLeave: () -> Unit = {}) {
+    // Android 10+: Zwischenablage nur mit Fensterfokus lesbar (siehe captureCurrentClip).
+    RequestOverlayFocus()
     val context = LocalContext.current
     val isPro by context.appContainer.proAccess.isPro.collectAsStateWithLifecycle()
     val view = LocalView.current

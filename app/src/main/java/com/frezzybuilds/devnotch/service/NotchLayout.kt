@@ -11,8 +11,12 @@ enum class NotchLayoutMode(val label: String, val description: String) {
     EDGE_SIDE("Edge Dock (Tablet/Phone Side)", "Schmale Leiste am rechten Bildschirmrand")
 }
 
-/** Kameralinse in Bildschirm-Pixeln, bezogen auf die aktuelle Rotation. */
-data class CameraLens(val centerX: Int, val centerY: Int, val diameter: Int) {
+/**
+ * Kameralinse in Bildschirm-Pixeln, bezogen auf die aktuelle Rotation.
+ * [width] ist die Breite der gesamten Aussparung – bei Punch-Holes = [diameter], bei breiten
+ * Notches (Emulator „Tall/Wide cutout“, ältere Geräte) deutlich größer.
+ */
+data class CameraLens(val centerX: Int, val centerY: Int, val diameter: Int, val width: Int = diameter) {
     companion object {
         /**
          * Leitet die Linse aus dem Bounding-Rect der Aussparung ab. Manche Geräte melden ein Rect,
@@ -24,7 +28,8 @@ data class CameraLens(val centerX: Int, val centerY: Int, val diameter: Int) {
             return CameraLens(
                 centerX = (left + right) / 2,
                 centerY = bottom - diameter / 2,
-                diameter = diameter
+                diameter = diameter,
+                width = right - left
             )
         }
     }
@@ -89,14 +94,32 @@ object NotchGeometry {
     const val NO_CUTOUT_TOP_OFFSET_DP = 8f
 
     /**
+     * Linse, um die sich die Pille zentrieren lässt – oder null, wenn eine darum zentrierte
+     * Pille über den Bildschirmrand ragen würde (Eck-Aussparung, Punch-Hole dicht am Rand wie
+     * beim Galaxy S10). Dann sitzt die Pille wie auf Geräten ohne Aussparung oben in der Mitte.
+     */
+    fun usableLens(lens: CameraLens?, screenWidth: Int, density: Float): CameraLens? {
+        if (lens == null) return null
+        val half = pillWidthAround(lens, density) / 2
+        return lens.takeIf { it.centerX - half >= 0 && it.centerX + half <= screenWidth }
+    }
+
+    private fun pillWidthAround(lens: CameraLens, density: Float): Int =
+        maxOf(dp(PILL_WIDTH_DP, density), lens.width + 2 * dp(LENS_MARGIN_HORIZONTAL_DP, density)).roundUpToEven()
+
+    private fun dp(value: Float, density: Float) = (value * density).roundToInt()
+
+    /**
      * Ohne Linse: 120×35 dp, horizontal zentriert, 8 dp von oben.
-     * Mit Linse: mindestens 120×35 dp, Mittelpunkt der Pille = Mittelpunkt der Linse.
+     * Mit Linse: mindestens 120×35 dp und so breit wie die Aussparung plus Rand,
+     * Mittelpunkt der Pille = Mittelpunkt der Linse (siehe [usableLens] für Randfälle).
      * Breite und Höhe sind gerade, damit links/rechts und oben/unten exakt gleich viel Rand bleibt.
      */
     fun collapsedPill(lens: CameraLens?, screenWidth: Int, density: Float): PillGeometry {
-        fun dp(value: Float) = (value * density).roundToInt()
+        fun dp(value: Float) = dp(value, density)
 
-        if (lens == null) {
+        val usable = usableLens(lens, screenWidth, density)
+        if (usable == null) {
             return PillGeometry(
                 width = dp(PILL_WIDTH_DP).roundUpToEven(),
                 height = dp(PILL_HEIGHT_DP).roundUpToEven(),
@@ -104,15 +127,15 @@ object NotchGeometry {
                 y = dp(NO_CUTOUT_TOP_OFFSET_DP)
             )
         }
-        val width = maxOf(dp(PILL_WIDTH_DP), lens.diameter + 2 * dp(LENS_MARGIN_HORIZONTAL_DP)).roundUpToEven()
-        val height = maxOf(dp(PILL_HEIGHT_DP), lens.diameter + 2 * dp(LENS_MARGIN_VERTICAL_DP)).roundUpToEven()
+        val width = pillWidthAround(usable, density)
+        val height = maxOf(dp(PILL_HEIGHT_DP), usable.diameter + 2 * dp(LENS_MARGIN_VERTICAL_DP)).roundUpToEven()
         return PillGeometry(
             width = width,
             height = height,
             // CENTER_HORIZONTAL: Fenstermitte = Bildschirmmitte + x → x = Linse − Bildschirmmitte.
-            x = lens.centerX - screenWidth / 2,
+            x = usable.centerX - screenWidth / 2,
             // Kann negativ sein, wenn die Linse sehr nah an der Kante sitzt (Pille ragt minimal raus).
-            y = lens.centerY - height / 2
+            y = usable.centerY - height / 2
         )
     }
 

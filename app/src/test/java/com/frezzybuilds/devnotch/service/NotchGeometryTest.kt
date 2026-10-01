@@ -36,11 +36,12 @@ class NotchGeometryTest {
 
     @Test
     fun `off-center punch hole shifts the window by the lens offset`() {
-        // Linse links oben, Mittelpunkt (120, 70)
-        val lens = CameraLens.fromBounds(98, 48, 142, 92)
+        // Linse links oben, Mittelpunkt (200, 70) – Pille (330 px) passt noch ganz ins Bild.
+        val lens = CameraLens.fromBounds(178, 48, 222, 92)
         val pill = NotchGeometry.collapsedPill(lens, screenWidth, density)
 
-        assertEquals(120 - 540, pill.x)
+        assertEquals(200 - 540, pill.x)
+        assertEquals(35, pill.left())
         assertEquals(lens.centerX - pill.left(), pill.right() - lens.centerX)
         assertEquals(lens.centerY - pill.y, pill.bottom() - lens.centerY)
     }
@@ -62,5 +63,44 @@ class NotchGeometryTest {
 
         assertEquals(200 + 2 * 66, pill.width)  // 24 dp Rand je Seite, > 120 dp Minimum
         assertEquals(200 + 2 * 22, pill.height) // 8 dp Rand oben/unten, > 35 dp Minimum
+    }
+
+    @Test
+    fun `punch hole too close to the edge falls back to the centered pill`() {
+        // Galaxy-S10-artig: Linse oben rechts, Mittelpunkt (972, 60) – zentrierte Pille ragte
+        // 57 px über den rechten Rand.
+        val lens = CameraLens.fromBounds(950, 38, 994, 82)
+        assertEquals(null, NotchGeometry.usableLens(lens, screenWidth, density))
+
+        val pill = NotchGeometry.collapsedPill(lens, screenWidth, density)
+        assertEquals(NotchGeometry.collapsedPill(null, screenWidth, density), pill)
+        assertEquals(0, pill.x)
+    }
+
+    @Test
+    fun `corner cutout (emulator) falls back to the centered pill`() {
+        // „Corner display cutout“: Aussparung bündig in der Ecke oben links.
+        val lens = CameraLens.fromBounds(0, 0, 120, 120)
+        assertEquals(null, NotchGeometry.usableLens(lens, screenWidth, density))
+        assertEquals(0, NotchGeometry.collapsedPill(lens, screenWidth, density).x)
+    }
+
+    @Test
+    fun `wide notch - pill covers the whole cutout plus margin`() {
+        // „Tall/Wide display cutout“: 400 × 110 px mittig oben.
+        val lens = CameraLens.fromBounds(340, 0, 740, 110)
+        assertEquals(110, lens.diameter)
+        assertEquals(400, lens.width)
+
+        val pill = NotchGeometry.collapsedPill(lens, screenWidth, density)
+        assertEquals(400 + 2 * 66, pill.width) // 24 dp Rand je Seite
+        assertEquals(0, pill.x)
+        assertEquals(lens.centerX - pill.left(), pill.right() - lens.centerX)
+    }
+
+    @Test
+    fun `round punch hole keeps width equal to diameter`() {
+        val lens = CameraLens.fromBounds(518, 38, 562, 82)
+        assertEquals(lens.diameter, lens.width)
     }
 }

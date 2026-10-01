@@ -24,6 +24,7 @@ import android.view.Gravity
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
@@ -69,7 +70,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
 
     private lateinit var windowManager: WindowManager
     private lateinit var layoutParams: WindowManager.LayoutParams
-    private var composeView: ComposeView? = null
+    /** Wurzel des Overlay-Fensters (enthält die ComposeView, fängt die Zurück-Taste ab). */
+    private var composeView: OverlayRootView? = null
     private lateinit var clipboardListener: ClipboardListener
     private lateinit var displayModeListener: SharedPreferences.OnSharedPreferenceChangeListener
 
@@ -78,6 +80,17 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         NotchLayout(NotchLayoutMode.NOTCH_TOP, pill = PillGeometry(0, 0, 0, 0))
     )
     private var expanded = false
+
+    /**
+     * Fenster fokussierbar? Nur aufgeklappt UND wenn der sichtbare Inhalt Fokus braucht
+     * (Notizen/Eingabefelder für die Bildschirmtastatur, Clip-Tab für die Zwischenablage) –
+     * siehe [com.frezzybuilds.devnotch.ui.OverlayFocus]. Sonst gehen Tasten und Tastatur an
+     * die App dahinter.
+     */
+    private var windowFocusable = false
+
+    /** Zurück-Tasten im fokussierten Overlay; NotchContainer klappt bei jeder Änderung ein. */
+    private var backPresses by mutableIntStateOf(0)
 
     /** Edge-Modus: Andock-Rand, Versatz nach innen (nur beim Ziehen/Einrasten) und vertikal. */
     private var edgeSide = EdgeSide.RIGHT
@@ -163,6 +176,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
+            // Tastatur (Notizen) verschiebt das Fenster, statt das Eingabefeld zu verdecken –
+            // wichtig im Edge-Modus, wo der Drawer mittig sitzt.
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -170,21 +186,35 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         }
         updatePosition()
 
-        val view = ComposeView(this).apply {
-            setViewTreeLifecycleOwner(this@NotchOverlayService)
-            setViewTreeViewModelStoreOwner(this@NotchOverlayService)
-            setViewTreeSavedStateRegistryOwner(this@NotchOverlayService)
+        val content = ComposeView(this).apply {
             setContent {
                 NotchContainer(
                     layout = notchLayout,
                     onExpandRequest = { isExpanded ->
                         expanded = isExpanded
+                        // Einklappen gibt den Fokus sofort zurück – nicht erst nach der
+                        // Recomposition, damit Eingaben direkt wieder an die App dahinter gehen.
+                        if (!isExpanded) windowFocusable = false
                         applyLayout()
                     },
                     onEdgeDrag = ::onEdgeDrag,
-                    onEdgeDragEnd = ::onEdgeDragEnd
+                    onEdgeDragEnd = ::onEdgeDragEnd,
+                    onFocusableChange = { wantsFocus ->
+                        val next = wantsFocus && expanded
+                        if (next != windowFocusable) {
+                            windowFocusable = next
+                            applyLayout()
+                        }
+                    },
+                    backPresses = backPresses
                 )
             }
+        }
+        val view = OverlayRootView(this, onBack = { backPresses++ }).apply {
+            setViewTreeLifecycleOwner(this@NotchOverlayService)
+            setViewTreeViewModelStoreOwner(this@NotchOverlayService)
+            setViewTreeSavedStateRegistryOwner(this@NotchOverlayService)
+            addView(content)
         }
         // Ab Android 10 ist die Zwischenablage nur mit Fokus lesbar: Sobald die aufgeklappte
         // Notch Fokus bekommt, den aktuellen Inhalt nachträglich in die Historie übernehmen.
@@ -241,8 +271,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                     flags = flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS.inv()
                 }
             }
-            // Aufgeklappt: fokussierbar (z. B. für Eingaben), eingeklappt: Fokus bleibt bei der App.
-            flags = if (expanded) {
+            // Fokussierbar nur bei Bedarf (siehe [windowFocusable]); eingeklappt nie.
+            flags = if (OverlayWindowFlags.isFocusable(expanded, windowFocusable)) {
                 flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
             } else {
                 flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
@@ -328,7 +358,12 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private fun List<Rect>.topmost(maxTop: Int): Rect? =
         filter { !it.isEmpty && it.top <= maxTop }.minByOrNull { it.top }
 
-    private fun Rect.toLens() = CameraLens.fromBounds(left, top, right, bottom)
+    /** Linse aus der Aussparung – null, wenn die Pille nicht zentriert darum passt (Ecke/Rand). */
+    private fun Rect.toLens(): CameraLens? = NotchGeometry.usableLens(
+        CameraLens.fromBounds(left, top, right, bottom),
+        screenWidth(),
+        resources.displayMetrics.density
+    )
 
     /** Tablets immer im Edge-Layout, sonst wie in den Einstellungen gewählt. */
     private fun effectiveMode(): NotchLayoutMode =
