@@ -50,7 +50,12 @@ data class NotchLayout(
     val pill: PillGeometry,
     val edgeSide: EdgeSide = EdgeSide.RIGHT,
     /** Aktuelle Ausrichtung (Configuration.ORIENTATION_LANDSCAPE) – bestimmt die Drawer-Größe. */
-    val landscape: Boolean = false
+    val landscape: Boolean = false,
+    /**
+     * Notch aufgeklappt: Pixel vom oberen Fensterrand bis unter Statusleiste/Kamera. Overlays liegen
+     * unter der Statusleiste – der Inhalt beginnt erst darunter, die Fläche darüber bleibt schwarz.
+     */
+    val expandedTopInset: Int = 0
 )
 
 /**
@@ -138,6 +143,14 @@ object NotchGeometry {
             y = usable.centerY - height / 2
         )
     }
+
+    /**
+     * Aufgeklapptes Dashboard: Abstand vom oberen Fensterrand bis unter Statusleiste bzw. Pille.
+     * Das Fenster beginnt bei max(pill.y, 0); Overlays liegen unter der Statusleiste, deren
+     * Uhrzeit und Symbole sonst über Titel und Tabs stünden.
+     */
+    fun expandedTopInset(pill: PillGeometry, statusBarHeight: Int): Int =
+        (maxOf(statusBarHeight, pill.y + pill.height) - maxOf(pill.y, 0)).coerceAtLeast(0)
 
     private fun Int.roundUpToEven() = if (this % 2 == 0) this else this + 1
 }

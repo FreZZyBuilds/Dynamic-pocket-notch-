@@ -1,6 +1,10 @@
 package com.frezzybuilds.devnotch.ui.media
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.State
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -201,8 +205,10 @@ fun EdgeMiniBubble(
     val colors = rememberEdgeColors(nowPlaying, theme)
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val tracker = remember { DragTracker() }
-    val ringAngle = if (LocalInspectionMode.current || !nowPlaying.isPlaying) {
-        0f
+    // Als State, gelesen erst in drawBehind: Der Ring dreht sich nur per Neuzeichnen, ohne die
+    // Bubble 60× pro Sekunde neu zu komponieren.
+    val ringAngle: State<Float> = if (LocalInspectionMode.current || !nowPlaying.isPlaying) {
+        remember { mutableFloatStateOf(0f) }
     } else {
         val transition = rememberInfiniteTransition(label = "bubbleRing")
         transition.animateFloat(
@@ -210,7 +216,7 @@ fun EdgeMiniBubble(
             targetValue = 360f,
             animationSpec = infiniteRepeatable(tween(4_000, easing = LinearEasing)),
             label = "ringAngle"
-        ).value
+        )
     }
     val ringColors = colors.gradient + colors.gradient.first()
 
@@ -231,7 +237,7 @@ fun EdgeMiniBubble(
             }
             .semantics { onClick(label = "Edge-Player öffnen") { onClick(); true } }
             .drawBehind {
-                rotate(ringAngle) { drawCircle(Brush.sweepGradient(ringColors)) }
+                rotate(ringAngle.value) { drawCircle(Brush.sweepGradient(ringColors)) }
             }
             .padding(3.dp),
         contentAlignment = Alignment.Center
@@ -329,6 +335,11 @@ private fun Equalizer(playing: Boolean, color: Color) {
         EqualizerBars(listOf(0.55f, 1f, 0.7f).map { if (playing) it else 0.25f }, color)
         return
     }
+    // Pausiert: Standbild, keine Endlosanimation (spart Akku, das Overlay zeichnet nicht neu).
+    if (!playing) {
+        EqualizerBars(listOf(0.25f, 0.25f, 0.25f), color)
+        return
+    }
     val transition = rememberInfiniteTransition(label = "equalizer")
     val durations = listOf(420, 560, 360)
     val heights = durations.mapIndexed { i, duration ->
@@ -339,7 +350,34 @@ private fun Equalizer(playing: Boolean, color: Color) {
             label = "bar$i"
         )
     }
-    EqualizerBars(heights.map { if (playing) it.value else 0.25f }, color)
+    AnimatedEqualizerBars(heights, color)
+}
+
+/**
+ * Balken mit voller Höhe, per graphicsLayer von unten skaliert: Die Animationswerte werden erst
+ * in der Layer-Phase gelesen – kein Recomposition/Relayout pro Bild.
+ */
+@Composable
+private fun AnimatedEqualizerBars(heights: List<State<Float>>, color: Color) {
+    Row(
+        modifier = Modifier.height(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        heights.forEach { height ->
+            Box(
+                Modifier
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .graphicsLayer {
+                        scaleY = height.value
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                    }
+                    .clip(RoundedCornerShape(1.5.dp))
+                    .background(color.copy(alpha = 0.9f))
+            )
+        }
+    }
 }
 
 @Composable

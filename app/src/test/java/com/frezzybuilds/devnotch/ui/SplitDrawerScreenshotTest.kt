@@ -9,6 +9,7 @@ import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -284,4 +285,62 @@ class SplitDrawerScreenshotTest {
 
     private fun context(): android.content.Context =
         androidx.test.core.app.ApplicationProvider.getApplicationContext()
+
+    /**
+     * Smartphone mit nur 360 dp Breite (Samsung, großer Bildschirmzoom): Das Dashboard muss ganz
+     * sichtbar sein, der Inhalt unter der (hier simulierten) Statusleiste beginnen.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h420dp-xxhdpi")
+    fun renderNarrowPhoneDashboard() {
+        lateinit var view: View
+        val statusBarPx = 108 // 36 dp bei xxhdpi
+        val pill = PillGeometry(width = 360, height = 105, x = 0, y = 12)
+        compose.setContent {
+            view = LocalView.current
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                Box(
+                    Modifier.fillMaxSize().background(Color(0xFF3A3F8F)),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    NotchContainer(
+                        layout = NotchLayout(
+                            NotchLayoutMode.NOTCH_TOP,
+                            pill = pill,
+                            expandedTopInset = com.frezzybuilds.devnotch.service.NotchGeometry.expandedTopInset(pill, statusBarPx)
+                        ),
+                        onExpandRequest = {}
+                    )
+                    // Simulierte Statusleiste (liegt auf dem Gerät über dem Overlay).
+                    Row(
+                        Modifier
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .size(328.dp, 20.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        androidx.compose.material3.Text("20:39", color = Color.White)
+                        androidx.compose.material3.Text("46 %", color = Color.White)
+                    }
+                }
+            }
+        }
+        // Auf die Pille tippen (oben mittig), Feder-Animation zu Ende laufen lassen.
+        compose.onRoot().performTouchInput { click(androidx.compose.ui.geometry.Offset(centerX, 50f)) }
+        compose.mainClock.advanceTimeBy(1_500)
+        compose.waitForIdle()
+        val image = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(image))
+        File("build/screenshots/phone_narrow_dashboard.png").apply { parentFile?.mkdirs() }.outputStream().use {
+            image.compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
+        // Nichts abgeschnitten: alle Dashboard-Inhalte liegen innerhalb der Bildschirmbreite.
+        val nodes = compose.onAllNodesWithText("DevNotch").fetchSemanticsNodes()
+        org.junit.Assert.assertTrue(nodes.isNotEmpty())
+        nodes.forEach { node ->
+            org.junit.Assert.assertTrue(
+                "abgeschnitten: ${node.boundsInRoot}",
+                node.boundsInRoot.left >= 0f && node.boundsInRoot.right <= view.width
+            )
+        }
+    }
 }

@@ -79,8 +79,6 @@ import com.frezzybuilds.devnotch.ui.focus.FocusTimerViewModel
 
 private val NotchBlack = Color(0xFF000000)
 private val PillWidth = 120.dp
-private val DashboardWidth = 360.dp
-private val DashboardHeight = 280.dp
 /** Schlanke, vertikale Griffleiste im eingeklappten Edge-Modus. */
 private val EdgeHandleWidth = 12.dp
 private val EdgeHandleHeight = 100.dp
@@ -117,7 +115,9 @@ fun NotchContainer(
     /** Fenster fokussierbar machen (true) oder Fokus an die App dahinter zurückgeben (false). */
     onFocusableChange: (Boolean) -> Unit = {},
     /** Zählt Zurück-Tasten des fokussierten Overlays hoch; jede Änderung klappt die Notch ein. */
-    backPresses: Int = 0
+    backPresses: Int = 0,
+    /** Einklapp-Animation ist fertig – erst jetzt darf der Service das Fenster verkleinern. */
+    onCollapseSettled: () -> Unit = {}
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(NotchTab.DEV) }
@@ -195,10 +195,17 @@ fun NotchContainer(
         configuration.screenHeightDp,
         landscape = layout.landscape
     )
-    val (expandedWidth, expandedHeight) = when (layout.mode) {
-        NotchLayoutMode.NOTCH_TOP -> DashboardWidth to DashboardHeight
-        NotchLayoutMode.EDGE_SIDE -> drawer.width to drawer.height
+    val density = LocalDensity.current
+    val topInset = with(density) {
+        if (layout.mode == NotchLayoutMode.NOTCH_TOP) layout.expandedTopInset.toDp() else 0.dp
     }
+    val (expandedWidth, expandedHeight) = ExpandedSize.of(
+        layout.mode,
+        configuration.screenWidthDp,
+        configuration.screenHeightDp,
+        layout.landscape,
+        topInset.value
+    ).let { (w, h) -> w.dp to h.dp }
     var leftPane by remember { mutableStateOf(DrawerPane.DEV) }
     var rightPane by remember { mutableStateOf(DrawerPane.NOTES) }
 
@@ -209,7 +216,9 @@ fun NotchContainer(
         MaterialTheme(colorScheme = darkColorScheme()) {
             Box(
                 modifier = Modifier
-                    .animateContentSize(animationSpec = notchSpring())
+                    .animateContentSize(animationSpec = notchSpring()) { _, _ ->
+                        if (!isExpanded) onCollapseSettled()
+                    }
                     .then(
                         if (isExpanded) Modifier.size(expandedWidth, expandedHeight)
                         else Modifier.size(collapsedWidth, collapsedHeight)
@@ -260,6 +269,8 @@ fun NotchContainer(
                         modifier = Modifier
                             .wrapContentSize(Alignment.TopCenter, unbounded = true)
                             .size(expandedWidth, expandedHeight)
+                            // Inhalt unter Statusleiste und Kamera; darüber bleibt die Fläche schwarz.
+                            .padding(top = topInset)
                     )
                 } else if (layout.mode == NotchLayoutMode.NOTCH_TOP) {
                     val playing = nowPlaying?.takeIf { it.isPlaying }

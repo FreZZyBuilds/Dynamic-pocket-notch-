@@ -17,12 +17,15 @@ import android.graphics.Point
 import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.view.Display
 import android.view.Gravity
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
+import android.widget.FrameLayout
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +50,7 @@ import com.frezzybuilds.devnotch.MainActivity
 import com.frezzybuilds.devnotch.R
 import com.frezzybuilds.devnotch.appContainer
 import com.frezzybuilds.devnotch.data.clipboard.ClipboardListener
+import com.frezzybuilds.devnotch.ui.ExpandedSize
 import com.frezzybuilds.devnotch.ui.NotchContainer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.math.roundToInt
@@ -88,6 +92,23 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
      * die App dahinter.
      */
     private var windowFocusable = false
+
+    /**
+     * Fenster hat die feste Aufgeklappt-Größe. Wird beim Aufklappen sofort gesetzt und erst nach
+     * der Einklapp-Animation zurückgenommen: So ändert sich die Fenstergröße pro Vorgang nur
+     * zweimal statt in jedem Animationsbild (WRAP_CONTENT + animateContentSize ruckelte).
+     */
+    private var windowExpanded = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val shrinkWindow = Runnable {
+        if (!expanded && windowExpanded) {
+            windowExpanded = false
+            applyLayout()
+        }
+    }
+
+    /** Die ComposeView im Overlay-Fenster; ihre Gravity hält den Inhalt an Kamera bzw. Rand. */
+    private var contentView: ComposeView? = null
 
     /** Zurück-Tasten im fokussierten Overlay; NotchContainer klappt bei jeder Änderung ein. */
     private var backPresses by mutableIntStateOf(0)
@@ -158,6 +179,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         clipboardListener.stop()
         appContainer.notchSettings.removeListener(displayModeListener)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        mainHandler.removeCallbacks(shrinkWindow)
         composeView?.let { windowManager.removeView(it) }
         composeView = null
         viewModelStore.clear()
@@ -173,7 +195,10 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 // Berührungen außerhalb der Notch gehen an die App dahinter, auch wenn fokussierbar.
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                // Ausdrücklich angefordert. Android übernimmt es für Fenster ohne Eltern-Fenster
+                // ohnehin aus der App-Einstellung (Standard: an) – so hängt es nicht davon ab.
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT
         ).apply {
             // Tastatur (Notizen) verschiebt das Fenster, statt das Eingabefeld zu verdecken –
@@ -192,10 +217,22 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                     layout = notchLayout,
                     onExpandRequest = { isExpanded ->
                         expanded = isExpanded
-                        // Einklappen gibt den Fokus sofort zurück – nicht erst nach der
-                        // Recomposition, damit Eingaben direkt wieder an die App dahinter gehen.
-                        if (!isExpanded) windowFocusable = false
+                        if (isExpanded) {
+                            mainHandler.removeCallbacks(shrinkWindow)
+                            windowExpanded = true
+                        } else {
+                            // Einklappen gibt den Fokus sofort zurück – nicht erst nach der
+                            // Recomposition, damit Eingaben direkt wieder an die App dahinter gehen.
+                            windowFocusable = false
+                            // Normalerweise meldet onCollapseSettled das Ende der Animation;
+                            // Sicherheitsnetz, falls keine Größenänderung mehr animiert wird.
+                            mainHandler.postDelayed(shrinkWindow, SHRINK_FALLBACK_MS)
+                        }
                         applyLayout()
+                    },
+                    onCollapseSettled = {
+                        mainHandler.removeCallbacks(shrinkWindow)
+                        shrinkWindow.run()
                     },
                     onEdgeDrag = ::onEdgeDrag,
                     onEdgeDragEnd = ::onEdgeDragEnd,
@@ -214,8 +251,12 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             setViewTreeLifecycleOwner(this@NotchOverlayService)
             setViewTreeViewModelStoreOwner(this@NotchOverlayService)
             setViewTreeSavedStateRegistryOwner(this@NotchOverlayService)
-            addView(content)
+            addView(content, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ))
         }
+        contentView = content
         // Ab Android 10 ist die Zwischenablage nur mit Fokus lesbar: Sobald die aufgeklappte
         // Notch Fokus bekommt, den aktuellen Inhalt nachträglich in die Historie übernehmen.
         view.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
@@ -252,8 +293,10 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                     // aufgeklapptes Dashboard) horizontal auf die Linse zentriert.
                     gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
                     x = pill.x
-                    if (expanded) {
-                        // Dashboard nie über die Oberkante schieben, System hält es im Bildschirm.
+                    if (windowExpanded) {
+                        // Dashboard nie über Ober- oder Seitenkante schieben.
+                        val maxShift = ((screenWidth() - expandedSizePx().first) / 2).coerceAtLeast(0)
+                        x = pill.x.coerceIn(-maxShift, maxShift)
                         y = maxOf(pill.y, 0)
                         flags = flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS.inv()
                     } else {
@@ -267,8 +310,30 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                     val edge = if (edgeSide == EdgeSide.LEFT) Gravity.LEFT else Gravity.RIGHT
                     gravity = edge or Gravity.CENTER_VERTICAL
                     x = edgeX.roundToInt()
-                    y = edgeY.roundToInt()
+                    y = if (windowExpanded) {
+                        // Drawer vollständig sichtbar halten, egal wo die Bubble angedockt ist.
+                        EdgeDock.clampY(edgeY.roundToInt(), expandedSizePx().second, screenHeight())
+                    } else {
+                        edgeY.roundToInt()
+                    }
                     flags = flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS.inv()
+                }
+            }
+            // Aufgeklappt feste Größe (Animation läuft im Fenster), sonst passend zum Inhalt.
+            if (windowExpanded) {
+                val (w, h) = expandedSizePx()
+                width = w
+                height = h
+            } else {
+                width = WindowManager.LayoutParams.WRAP_CONTENT
+                height = WindowManager.LayoutParams.WRAP_CONTENT
+            }
+            // Inhalt im (größeren) Fenster dort verankern, wo die Pille/Bubble sitzt.
+            (contentView?.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+                val anchor = contentGravity()
+                if (lp.gravity != anchor) {
+                    lp.gravity = anchor
+                    contentView?.layoutParams = lp
                 }
             }
             // Fokussierbar nur bei Bedarf (siehe [windowFocusable]); eingeklappt nie.
@@ -278,6 +343,27 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                 flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             }
         }
+    }
+
+    @SuppressLint("RtlHardcoded")
+    private fun contentGravity(): Int = when (notchLayout.mode) {
+        NotchLayoutMode.NOTCH_TOP -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        NotchLayoutMode.EDGE_SIDE ->
+            (if (edgeSide == EdgeSide.LEFT) Gravity.LEFT else Gravity.RIGHT) or Gravity.CENTER_VERTICAL
+    }
+
+    /** Aufgeklappte Fenstergröße in Pixeln – dieselbe Rechnung wie im NotchContainer. */
+    private fun expandedSizePx(): Pair<Int, Int> {
+        val density = resources.displayMetrics.density
+        val config = resources.configuration
+        val (w, h) = ExpandedSize.of(
+            notchLayout.mode,
+            config.screenWidthDp,
+            config.screenHeightDp,
+            notchLayout.landscape,
+            if (notchLayout.mode == NotchLayoutMode.NOTCH_TOP) notchLayout.expandedTopInset / density else 0f
+        )
+        return (w * density).roundToInt() to (h * density).roundToInt()
     }
 
     /** Bubble folgt dem Finger (Deltas in Bildschirm-Pixeln). */
@@ -369,13 +455,31 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private fun effectiveMode(): NotchLayoutMode =
         AdaptiveLayout.effectiveMode(appContainer.notchSettings.displayMode, isTablet())
 
-    private fun layoutFor(mode: NotchLayoutMode, lens: CameraLens?) = NotchLayout(
-        mode = mode,
-        lens = lens,
-        pill = NotchGeometry.collapsedPill(lens, screenWidth(), resources.displayMetrics.density),
-        edgeSide = edgeSide,
-        landscape = isLandscape()
-    )
+    private fun layoutFor(mode: NotchLayoutMode, lens: CameraLens?): NotchLayout {
+        val pill = NotchGeometry.collapsedPill(lens, screenWidth(), resources.displayMetrics.density)
+        return NotchLayout(
+            mode = mode,
+            lens = lens,
+            pill = pill,
+            edgeSide = edgeSide,
+            landscape = isLandscape(),
+            expandedTopInset = NotchGeometry.expandedTopInset(pill, statusBarHeight())
+        )
+    }
+
+    /** Höhe der Statusleiste: aus den Fenster-Insets und der System-Ressource. */
+    @SuppressLint("DiscouragedApi", "InternalInsetResource")
+    private fun statusBarHeight(): Int {
+        val fromInsets = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            composeView?.rootWindowInsets?.getInsets(android.view.WindowInsets.Type.statusBars())?.top ?: 0
+        } else {
+            0
+        }
+        // Insets sind relativ zum Fenster (das bei y > 0 liegen kann) – daher das Maximum.
+        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+        val fromResource = if (id > 0) resources.getDimensionPixelSize(id) else 0
+        return maxOf(fromInsets, fromResource)
+    }
 
     private fun screenWidth(): Int = screenSize().x
 
@@ -455,6 +559,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         const val CHANNEL_ID = "devnotch_service"
         private const val LEGACY_CHANNEL_ID = "notch_overlay"
         const val NOTIFICATION_ID = 1
+
+        /** Spätestens dann wird das Fenster nach dem Einklappen verkleinert (Feder ≈ 500 ms). */
+        private const val SHRINK_FALLBACK_MS = 900L
 
         /** „Beenden“ in der Benachrichtigung: stoppt und schaltet den Autostart ab. */
         const val ACTION_STOP = "com.frezzybuilds.devnotch.action.STOP"
