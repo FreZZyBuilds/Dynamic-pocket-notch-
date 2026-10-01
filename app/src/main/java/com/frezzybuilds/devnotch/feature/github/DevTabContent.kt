@@ -1,6 +1,8 @@
 package com.frezzybuilds.devnotch.feature.github
 
 import androidx.compose.foundation.background
+import com.frezzybuilds.devnotch.feature.billing.ProGate
+import com.frezzybuilds.devnotch.feature.billing.ProFeature
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -62,7 +64,7 @@ fun DevTabContent(onLaunched: () -> Unit = {}) {
             }
         }
         when (lastDevSection) {
-            DevSection.GITHUB -> GitHubSection()
+            DevSection.GITHUB -> ProGate(ProFeature.GITHUB_HEATMAP, onLeave = onLaunched) { GitHubSection() }
             DevSection.PROJECTS -> ProjectShortcutsContent(onLaunched = onLaunched)
         }
     }

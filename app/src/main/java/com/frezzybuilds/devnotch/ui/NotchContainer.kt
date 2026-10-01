@@ -1,6 +1,8 @@
 package com.frezzybuilds.devnotch.ui
 
 import androidx.compose.animation.animateContentSize
+import com.frezzybuilds.devnotch.feature.billing.ProGate
+import com.frezzybuilds.devnotch.feature.billing.ProFeature
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -129,8 +131,11 @@ fun NotchContainer(
     val aiUsage by container.aiUsageRepository.state.collectAsStateWithLifecycle()
     val aiDisplay by remember { container.aiUsageSettings.displayFlow() }
         .collectAsStateWithLifecycle(initialValue = container.aiUsageSettings.display)
-    LaunchedEffect(aiDisplay.showInPill) {
-        while (aiDisplay.showInPill) {
+    // KI-Token-Tracker ist Pro: ohne Abo weder Abfragen noch Betrag in der Pille.
+    val isPro by container.proAccess.isPro.collectAsStateWithLifecycle()
+    val showCostInPill = isPro && aiDisplay.showInPill
+    LaunchedEffect(showCostInPill) {
+        while (showCostInPill) {
             container.aiUsageRepository.refreshIfStale()
             delay(AI_REFRESH_INTERVAL_MS)
         }
@@ -238,7 +243,7 @@ fun NotchContainer(
             } else if (layout.mode == NotchLayoutMode.NOTCH_TOP) {
                 val playing = nowPlaying?.takeIf { it.isPlaying }
                 val timerText = if (showTimerInPill) "⏱ ${formatMmSs(timerRemaining)}" else null
-                val costText = aiUsage.takeIf { aiDisplay.showInPill && it.usages.isNotEmpty() }
+                val costText = aiUsage.takeIf { showCostInPill && it.usages.isNotEmpty() }
                     ?.let { formatUsd(it.totalCostUsd) }
                 val slots = PillLayout.slots(musicPlaying = playing != null, timerText = timerText, costText = costText)
                 val costColor = usageColor(aiUsage.totalCostUsd, aiDisplay.limitUsd)
@@ -351,9 +356,9 @@ private fun Dashboard(
                 .padding(top = 8.dp)
         ) {
             when (selectedTab) {
-                NotchTab.AI -> AiStatsTabContent()
+                NotchTab.AI -> ProGate(ProFeature.AI_TRACKER, onLeave = onClose) { AiStatsTabContent() }
                 NotchTab.TIMER -> FocusTimerTab(focusTimer)
-                NotchTab.CLIP -> ClipboardContent()
+                NotchTab.CLIP -> ClipboardContent(onLeave = onClose)
                 NotchTab.DEV -> DevTabContent(onLaunched = onClose)
                 NotchTab.NOTES -> NotesContent(onLeaveForExternalApp = onClose)
             }

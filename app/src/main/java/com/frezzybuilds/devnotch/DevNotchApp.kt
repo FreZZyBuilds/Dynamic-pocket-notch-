@@ -5,6 +5,8 @@ import android.content.Context
 import androidx.room.Room
 import com.frezzybuilds.devnotch.data.DevNotchDatabase
 import com.frezzybuilds.devnotch.data.createJsonHttpClient
+import com.frezzybuilds.devnotch.feature.billing.ProAccess
+import com.frezzybuilds.devnotch.feature.billing.RevenueCatBilling
 import com.frezzybuilds.devnotch.feature.aiusage.AiUsageApi
 import com.frezzybuilds.devnotch.feature.aiusage.AiUsageRepository
 import com.frezzybuilds.devnotch.feature.aiusage.AiUsageSettings
@@ -18,11 +20,25 @@ import com.frezzybuilds.devnotch.feature.notes.QuickNotesStore
 import io.ktor.client.engine.android.Android
 
 class DevNotchApp : Application() {
+    // Bewusst außerhalb des (lazy) Containers: RevenueCat startet in onCreate, ohne dass
+    // Datenbank, HTTP-Client & Co. schon beim Prozessstart gebaut werden.
+    val proAccess by lazy { ProAccess(this, debugBuild = BuildConfig.DEBUG) }
+    val billing by lazy { RevenueCatBilling(proAccess) }
+
     val container: AppContainer by lazy { AppContainer(this) }
+
+    override fun onCreate() {
+        super.onCreate()
+        // RevenueCat früh starten: Kaufstatus (Entitlement „pro“) steht dann bereit, wenn
+        // Notch oder Einstellungen ihn brauchen. Mit dem Platzhalter-Key läuft die App im Free-Modus.
+        billing.configure(this, BuildConfig.REVENUECAT_API_KEY, BuildConfig.DEBUG)
+    }
 }
 
 /** Minimale manuelle Dependency-Injection: eine Instanz pro Prozess. */
-class AppContainer(context: Context) {
+class AppContainer(app: DevNotchApp) {
+    private val context: Context = app
+
     private val database = Room.databaseBuilder(
         context,
         DevNotchDatabase::class.java,
@@ -34,7 +50,7 @@ class AppContainer(context: Context) {
 
     val notchSettings = NotchSettings(context)
 
-    val clipboardRepository = ClipboardRepository(context, database.clipboardDao())
+    val clipboardRepository = ClipboardRepository(context, database.clipboardDao()) { proAccess.isPro.value }
 
     val shortcutsRepository = ShortcutsRepository(context, database.projectShortcutDao())
 
@@ -48,6 +64,10 @@ class AppContainer(context: Context) {
         client = httpClient,
         token = gitHubSettings::token
     )
+
+    /** Pro-Status (RevenueCat-Entitlement; in Debug-Builds zusätzlich Test-Freischaltung). */
+    val proAccess: ProAccess = app.proAccess
+    val billing: RevenueCatBilling = app.billing
 
     val aiUsageSettings = AiUsageSettings(context)
     val aiUsageRepository = AiUsageRepository(AiUsageApi(httpClient), aiUsageSettings)

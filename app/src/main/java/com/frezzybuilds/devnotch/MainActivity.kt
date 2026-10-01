@@ -5,6 +5,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 import com.frezzybuilds.devnotch.feature.aiusage.AiProvider
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
@@ -79,6 +80,9 @@ import com.frezzybuilds.devnotch.service.OemGuide
 import com.frezzybuilds.devnotch.service.openSettings
 import com.frezzybuilds.devnotch.service.isTablet
 import com.frezzybuilds.devnotch.ui.theme.DevNotchTheme
+import com.frezzybuilds.devnotch.feature.billing.Paywall
+import com.frezzybuilds.devnotch.feature.billing.PaywallDialog
+import com.frezzybuilds.devnotch.feature.billing.ProFeature
 
 class MainActivity : ComponentActivity() {
 
@@ -92,18 +96,48 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+        paywallFeature = Paywall.featureFrom(intent)
         setContent {
             DevNotchTheme {
                 Scaffold { padding ->
-                    SetupScreen(Modifier.padding(padding))
+                    SetupScreen(Modifier.padding(padding)) { feature ->
+                        paywallFeature = feature
+                        showPaywall = true
+                    }
+                }
+                if (showPaywall) {
+                    PaywallDialog(highlight = paywallFeature) {
+                        showPaywall = false
+                        paywallFeature = null
+                    }
                 }
             }
         }
+        if (paywallFeature != null) showPaywall = true
+    }
+
+    // Paywall-Wunsch aus dem Overlay (Paywall.open) – singleTop liefert ihn hier ab.
+    private var paywallFeature by mutableStateOf<ProFeature?>(null)
+    private var showPaywall by mutableStateOf(false)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        Paywall.featureFrom(intent)?.let {
+            paywallFeature = it
+            showPaywall = true
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Kauf oder Lizenzwechsel außerhalb der App (z. B. im Play Store) übernehmen.
+        lifecycleScope.launch { appContainer.billing.refresh() }
     }
 }
 
 @Composable
-fun SetupScreen(modifier: Modifier = Modifier) {
+fun SetupScreen(modifier: Modifier = Modifier, onOpenPaywall: (ProFeature?) -> Unit = {}) {
     val context = LocalContext.current
     val settings = context.appContainer.notchSettings
 
@@ -224,6 +258,8 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
         OemHintCard(settings)
 
+        ProStatusCard(onOpenPaywall)
+
         GitHubCard()
 
         AiUsageCard()
@@ -314,7 +350,7 @@ private fun GitHubCard() {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("GitHub", style = MaterialTheme.typography.titleMedium)
+            Text("GitHub-Heatmap · Pro", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it },
@@ -388,6 +424,28 @@ private fun OemHintCard(settings: NotchSettings) {
     }
 }
 
+/** Free/Pro-Status: Free = Focus-Timer + Basis-Notch, Pro schaltet den Rest frei. */
+@Composable
+private fun ProStatusCard(onOpenPaywall: (ProFeature?) -> Unit) {
+    val proAccess = LocalContext.current.appContainer.proAccess
+    val isPro by proAccess.isPro.collectAsStateWithLifecycle()
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(if (isPro) "DevNotch Pro ✦ aktiv" else "DevNotch Free", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (isPro) "GitHub-Heatmap, KI-Token-Tracker, unbegrenzte Zwischenablage und Projekt-Shortcuts sind freigeschaltet."
+                else "Enthalten: Focus-Timer und Basis-Notch. Pro: GitHub-Heatmap, KI-Token-Tracker, " +
+                    "unbegrenzte Zwischenablage & Projekt-Shortcuts.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (!isPro) {
+                Button(onClick = { onOpenPaywall(null) }) { Text("Pro ansehen") }
+            }
+        }
+    }
+}
+
 /**
  * AI-Nutzung: Keys für OpenAI (Admin-Key) und OpenRouter, Monatslimit und ob der Betrag
  * eingeklappt in der Notch erscheinen soll. Speichern löst sofort eine Abfrage aus.
@@ -409,7 +467,7 @@ private fun AiUsageCard() {
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("AI-Nutzung", style = MaterialTheme.typography.titleMedium)
+            Text("KI-Token-Tracker · Pro", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = openAiKey,
                 onValueChange = { openAiKey = it; saved = false },

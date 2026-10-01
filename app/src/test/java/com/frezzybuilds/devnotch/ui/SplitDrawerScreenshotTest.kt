@@ -1,6 +1,9 @@
 package com.frezzybuilds.devnotch.ui
 
+import android.content.Context
 import android.graphics.Bitmap
+import androidx.test.core.app.ApplicationProvider
+import com.frezzybuilds.devnotch.appContainer
 import android.graphics.Canvas
 import android.view.View
 import androidx.compose.foundation.background
@@ -133,8 +136,16 @@ class SplitDrawerScreenshotTest {
         val out = File("build/screenshots/phone_tabs.png").apply { parentFile?.mkdirs() }
         out.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
 
-        // Tab „AI“: Statuszeile + Widget (ohne Keys: Einrichtungshinweis).
+        // Tab „AI“ ist Pro: ohne Abo nur die Sperr-Karte.
         compose.onNodeWithText("AI").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("✦ KI-Token-Tracker · Pro").assertExists()
+        val lockedImage = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(lockedImage))
+        File("build/screenshots/phone_tab_ai_locked.png").outputStream().use { lockedImage.compress(Bitmap.CompressFormat.PNG, 100, it) }
+
+        // Mit Pro (Debug-Freischaltung): Statuszeile + Widget (ohne Keys: Einrichtungshinweis).
+        ApplicationProvider.getApplicationContext<Context>().appContainer.proAccess.setDebugUnlock(true)
         compose.waitForIdle()
         compose.onNodeWithText("AI Usage").assertExists()
         val aiImage = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
@@ -199,6 +210,8 @@ class SplitDrawerScreenshotTest {
             .putFloat("monthly_limit", 20f)
             .putString("cache", """[{"provider":"OPENROUTER","costUsd":1.42,"tokens":null,"month":"$month","fetchedAt":${System.currentTimeMillis()}}]""")
             .commit()
+        // Der Betrag in der Pille gehört zum KI-Token-Tracker (Pro): Entitlement aktiv setzen.
+        context().appContainer.proAccess.onEntitlementChanged(true)
 
         lateinit var view: View
         compose.setContent {
@@ -255,8 +268,12 @@ class SplitDrawerScreenshotTest {
                 image.compress(Bitmap.CompressFormat.PNG, 100, it)
             }
         }
+        // Free: drei Standard-Kacheln = Limit erreicht, „+“ führt zur Paywall.
+        compose.onNodeWithText("+ ✦").assertExists()
         save("shortcuts_grid")
 
+        context().appContainer.proAccess.setDebugUnlock(true)
+        compose.waitForIdle()
         compose.onNodeWithText("+").performClick()
         compose.onNodeWithText("URL").performClick()
         compose.onAllNodes(hasSetTextAction())[1].performTextInput("localhost:3000")

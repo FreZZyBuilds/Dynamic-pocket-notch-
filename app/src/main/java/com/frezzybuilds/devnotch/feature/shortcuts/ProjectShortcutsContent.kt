@@ -1,6 +1,9 @@
 package com.frezzybuilds.devnotch.feature.shortcuts
 
 import android.app.Application
+import com.frezzybuilds.devnotch.feature.billing.Paywall
+import com.frezzybuilds.devnotch.feature.billing.ProFeature
+import com.frezzybuilds.devnotch.feature.billing.ProLimits
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -30,7 +33,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -69,6 +71,8 @@ fun ProjectShortcutsContent(modifier: Modifier = Modifier, onLaunched: () -> Uni
     val shortcuts by viewModel.shortcuts.collectAsStateWithLifecycle()
     var adding by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
+    val isPro by context.appContainer.proAccess.isPro.collectAsStateWithLifecycle()
+    val canAdd = ProLimits.canAddShortcut(isPro, shortcuts.size)
 
     if (adding) {
         AddShortcutPane(viewModel, onDone = { adding = false }, modifier = modifier)
@@ -101,7 +105,18 @@ fun ProjectShortcutsContent(modifier: Modifier = Modifier, onLaunched: () -> Uni
                     onDelete = { viewModel.delete(shortcut) }
                 )
             }
-            item(key = "add") { AddTile { adding = true; editing = false } }
+            item(key = "add") {
+                AddTile(locked = !canAdd) {
+                    editing = false
+                    if (canAdd) {
+                        adding = true
+                    } else {
+                        // Free: max. ProPlan.FREE_SHORTCUTS Kacheln – mehr gibt es mit Pro.
+                        Paywall.open(context, ProFeature.UNLIMITED_SHORTCUTS)
+                        onLaunched()
+                    }
+                }
+            }
         }
     }
 }
@@ -164,9 +179,10 @@ private fun EditButton(label: String, description: String, tint: Color = Color.W
 @Composable
 private fun ShortcutIcon(shortcut: ProjectShortcut) {
     val context = LocalContext.current
-    val icon by produceState<ImageBitmap?>(null, shortcut.target) {
+    var icon by remember(shortcut.target) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(shortcut.target) {
         if (shortcut.iconType == ShortcutType.SYSTEM_APP) {
-            value = withContext(Dispatchers.IO) {
+            icon = withContext(Dispatchers.IO) {
                 runCatching {
                     context.packageManager.getApplicationIcon(shortcut.target).toBitmap(96, 96).asImageBitmap()
                 }.getOrNull()
@@ -192,17 +208,17 @@ private fun monogram(shortcut: ProjectShortcut): String =
     shortcut.title.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "🌐"
 
 @Composable
-private fun AddTile(onClick: () -> Unit) {
+private fun AddTile(locked: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .clip(RoundedCornerShape(10.dp))
             .background(Color(0xFF1A1A1A))
-            .clickable(onClickLabel = "Shortcut hinzufügen", onClick = onClick)
+            .clickable(onClickLabel = if (locked) "Mehr Shortcuts mit Pro" else "Shortcut hinzufügen", onClick = onClick)
             .padding(vertical = 18.dp)
             .fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
-        Text("+", color = Accent, style = MaterialTheme.typography.titleLarge)
+        Text(if (locked) "+ ✦" else "+", color = Accent, style = MaterialTheme.typography.titleLarge)
     }
 }
 

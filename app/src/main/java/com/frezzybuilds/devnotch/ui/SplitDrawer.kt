@@ -1,6 +1,8 @@
 package com.frezzybuilds.devnotch.ui
 
 import androidx.compose.foundation.background
+import com.frezzybuilds.devnotch.feature.billing.ProGate
+import com.frezzybuilds.devnotch.feature.billing.ProFeature
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -62,7 +64,7 @@ fun SplitDrawer(
             DrawerColumn(DrawerPane.Left, leftPane, onSelectLeft, Modifier.weight(1f)) { pane ->
                 when (pane) {
                     DrawerPane.TIMER -> FocusTimerTab(focusTimer)
-                    DrawerPane.AI -> AiUsagePanel()
+                    DrawerPane.AI -> ProGate(ProFeature.AI_TRACKER, onLeave = onClose) { AiUsagePanel() }
                     else -> DevTabContent(onLaunched = onClose)
                 }
             }
@@ -75,7 +77,7 @@ fun SplitDrawer(
             )
             DrawerColumn(DrawerPane.Right, rightPane, onSelectRight, Modifier.weight(1f)) { pane ->
                 when (pane) {
-                    DrawerPane.CLIP -> ClipboardContent()
+                    DrawerPane.CLIP -> ClipboardContent(onLeave = onClose)
                     else -> NotesContent(onLeaveForExternalApp = onClose)
                 }
             }

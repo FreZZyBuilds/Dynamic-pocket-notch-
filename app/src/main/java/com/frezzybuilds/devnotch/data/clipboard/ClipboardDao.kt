@@ -15,7 +15,7 @@ abstract class ClipboardDao {
 
     /** REPLACE + Unique-Index auf `text`: Erneut kopierter Text wird neu (oben) eingefügt. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    protected abstract suspend fun insert(entry: ClipboardItem)
+    abstract suspend fun insert(entry: ClipboardItem)
 
     @Query(
         "DELETE FROM clips WHERE id NOT IN " +

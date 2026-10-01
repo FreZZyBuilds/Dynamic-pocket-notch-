@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -16,6 +18,17 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        // RevenueCat Public SDK Key (Google Play, beginnt mit "goog_"). Echter Key gehört in
+        // local.properties (nicht eingecheckt): revenuecat.apiKey=goog_xxx
+        // oder als Gradle-Property -Prevenuecat.apiKey=… (z. B. in CI).
+        val localProps = Properties().apply {
+            rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+        }
+        val revenueCatKey = localProps.getProperty("revenuecat.apiKey")
+            ?: (project.findProperty("revenuecat.apiKey") as String?)
+            ?: "goog_REPLACE_WITH_YOUR_REVENUECAT_KEY"
+        buildConfigField("String", "REVENUECAT_API_KEY", "\"$revenueCatKey\"")
     }
 
     buildTypes {
@@ -40,6 +53,7 @@ android {
         unitTests.all { it.systemProperty("robolectric.pixelCopyRenderMode", "hardware") }
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 }
@@ -70,6 +84,8 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.coil.compose)
     implementation(libs.androidx.palette.ktx)
+    implementation(libs.revenuecat.purchases)
+    implementation(libs.androidx.fragment.ktx)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

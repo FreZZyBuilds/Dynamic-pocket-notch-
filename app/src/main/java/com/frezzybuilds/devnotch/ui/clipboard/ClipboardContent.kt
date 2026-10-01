@@ -35,15 +35,22 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frezzybuilds.devnotch.appContainer
 import com.frezzybuilds.devnotch.data.clipboard.ClipboardItem
+import com.frezzybuilds.devnotch.feature.billing.Paywall
+import com.frezzybuilds.devnotch.feature.billing.ProFeature
+import com.frezzybuilds.devnotch.feature.billing.ProPlan
 import kotlinx.coroutines.delay
 
 private val ItemBackground = Color(0xFF1E1E1E)
 private val CopiedBackground = Color(0xFF123524)
 
-/** Die letzten 10 kopierten Texte; Tippen legt einen Eintrag zurück in die Zwischenablage. */
+/**
+ * Kopierte Texte (Free: die letzten 5, Pro: unbegrenzt); Tippen legt einen Eintrag zurück in
+ * die Zwischenablage. [onLeave] klappt die Notch ein, wenn die Paywall geöffnet wird.
+ */
 @Composable
-fun ClipboardContent() {
+fun ClipboardContent(onLeave: () -> Unit = {}) {
     val context = LocalContext.current
+    val isPro by context.appContainer.proAccess.isPro.collectAsStateWithLifecycle()
     val view = LocalView.current
     val viewModel = viewModel { ClipboardViewModel(context.appContainer.clipboardRepository) }
     val history by viewModel.history.collectAsStateWithLifecycle()
@@ -60,7 +67,8 @@ fun ClipboardContent() {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "Letzte ${history.size} Einträge · Tippen zum Kopieren",
+                if (isPro) "${history.size} Einträge · Tippen zum Kopieren"
+                else "Letzte ${history.size}/${ProPlan.FREE_CLIPBOARD_ENTRIES} · Tippen zum Kopieren",
                 color = Color.Gray,
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.weight(1f)
@@ -75,6 +83,19 @@ fun ClipboardContent() {
                         .padding(4.dp)
                 )
             }
+        }
+        if (!isPro) {
+            Text(
+                "✦ Unbegrenzter Verlauf mit Pro ›",
+                color = Color(0xFFB388FF),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier
+                    .clickable {
+                        Paywall.open(context, ProFeature.UNLIMITED_CLIPBOARD)
+                        onLeave()
+                    }
+                    .padding(vertical = 2.dp)
+            )
         }
         if (history.isEmpty()) {
             Text(
