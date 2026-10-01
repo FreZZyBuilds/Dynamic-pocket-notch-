@@ -317,6 +317,19 @@ fun NotchContainer(
         label = "neonRim"
     )
 
+    // Lichtlauf („Border Beam“) um die Notch – Modus und Farben live aus den Einstellungen.
+    val beamPrefs by remember { settings.beamPrefsFlow() }
+        .collectAsStateWithLifecycle(initialValue = settings.beamPrefs)
+    // Nicht um die Cover-Bubble und den schmalen Griff am Rand; der Timer-Ring hat Vorrang.
+    val beamShapeFits = !edgeMini && (layout.mode == NotchLayoutMode.NOTCH_TOP || isExpanded)
+    val beamOn = beamShapeFits && when (beamPrefs.mode) {
+        BeamMode.ALWAYS -> !timerRingVisible
+        BeamMode.EVENTS -> isExpanded || activePeek != null
+        BeamMode.OFF -> false
+    }
+    val beamStrength = animateFloatAsState(if (beamOn) 1f else 0f, tween(450), label = "beamStrength")
+    val beamPosition = rememberBeamPosition(running = beamOn)
+
     CompositionLocalProvider(LocalOverlayFocus provides overlayFocus) {
         MaterialTheme(colorScheme = Brand.NotchScheme) {
             Box(
@@ -338,6 +351,13 @@ fun NotchContainer(
                     .background(if (edgeMini) Color.Transparent else NotchBlack)
                     // Aufgeklappt: violetter Schimmer von oben und Neon-Rand wie im App-Icon.
                     .then(if (edgeMini) Modifier else Modifier.neonFrame(notchShape(layout, cornerRadius), rim))
+                    .then(
+                        if (beamShapeFits) {
+                            Modifier.borderBeam(notchShape(layout, cornerRadius), beamPosition, beamStrength, beamPrefs.palette.colors)
+                        } else {
+                            Modifier
+                        }
+                    )
                     // Fokus-Timer läuft: Fortschritt als Lichtlinie einmal rund um die Pille.
                     .then(
                         if (timerRingVisible) Modifier.pillProgress(timerElapsed) else Modifier

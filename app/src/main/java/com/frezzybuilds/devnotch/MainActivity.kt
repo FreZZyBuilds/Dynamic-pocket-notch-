@@ -1,6 +1,11 @@
 package com.frezzybuilds.devnotch
 
 import android.Manifest
+import androidx.compose.runtime.mutableFloatStateOf
+import com.frezzybuilds.devnotch.ui.rememberBeamPosition
+import com.frezzybuilds.devnotch.ui.borderBeam
+import com.frezzybuilds.devnotch.ui.BeamPalette
+import com.frezzybuilds.devnotch.ui.BeamMode
 import com.frezzybuilds.devnotch.ui.theme.Brand
 import com.frezzybuilds.devnotch.ui.staggerIn
 import com.frezzybuilds.devnotch.ui.glass.gradientText
@@ -319,6 +324,8 @@ fun SetupScreen(
             }
         }
 
+        BeamCard(settings, Modifier.staggerIn(4))
+
         Box(Modifier.staggerIn(4)) { OemHintCard(settings) }
 
         Box(Modifier.staggerIn(5)) { ProStatusCard(onOpenPaywall) }
@@ -349,6 +356,58 @@ fun SetupScreen(
             },
             onDismiss = { showBatteryDialog = false }
         )
+    }
+}
+
+/**
+ * Lichtlauf um die Notch: Modus und Farben wählen, mit Live-Vorschau. Änderungen wirken
+ * sofort in der laufenden Notch.
+ */
+@Composable
+private fun BeamCard(settings: NotchSettings, modifier: Modifier = Modifier) {
+    var mode by remember { mutableStateOf(settings.beamMode) }
+    var palette by remember { mutableStateOf(settings.beamPalette) }
+    GlassCard(modifier.fillMaxWidth()) {
+        Column(CardPadding, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(
+                icon = "✧",
+                title = "Lichtlauf",
+                subtitle = when (mode) {
+                    BeamMode.ALWAYS -> "Kreist ständig um die Notch (etwas mehr Akku)"
+                    BeamMode.EVENTS -> "Nur beim Aufklappen und bei Peeks"
+                    BeamMode.OFF -> "Aus"
+                }
+            )
+            // Live-Vorschau: schwarze Pille mit dem gewählten Lichtlauf.
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                val position = rememberBeamPosition(running = mode != BeamMode.OFF)
+                val strength = remember { mutableFloatStateOf(1f) }.also { it.floatValue = if (mode == BeamMode.OFF) 0f else 1f }
+                val shape = RoundedCornerShape(22.dp)
+                Box(
+                    Modifier
+                        .size(220.dp, 44.dp)
+                        .clip(shape)
+                        .background(Color.Black)
+                        .borderBeam(shape, position, strength, palette.colors)
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BeamMode.entries.forEach { option ->
+                    ModeChip(option.label, selected = option == mode, modifier = Modifier.weight(1f)) {
+                        mode = option
+                        settings.beamMode = option
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BeamPalette.entries.forEach { option ->
+                    ModeChip(option.label, selected = option == palette, modifier = Modifier.weight(1f)) {
+                        palette = option
+                        settings.beamPalette = option
+                    }
+                }
+            }
+        }
     }
 }
 

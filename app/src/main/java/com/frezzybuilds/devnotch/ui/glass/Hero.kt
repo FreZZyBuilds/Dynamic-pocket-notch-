@@ -1,6 +1,12 @@
 package com.frezzybuilds.devnotch.ui.glass
 
 import androidx.compose.animation.AnimatedContent
+import com.frezzybuilds.devnotch.ui.rememberBeamPosition
+import com.frezzybuilds.devnotch.ui.borderBeam
+import com.frezzybuilds.devnotch.ui.BeamMode
+import com.frezzybuilds.devnotch.appContainer
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -129,7 +135,7 @@ private fun NotchShowcase() {
                 .size(state.width, state.height)
                 .clip(RoundedCornerShape(if (state.height > PillHeight) 28.dp else PillHeight / 2))
                 .background(Color.Black)
-                .then(if (state == ShowcaseState.TIMER) Modifier.timerGlow() else Modifier)
+                .then(if (state == ShowcaseState.TIMER) Modifier.timerGlow() else Modifier.showcaseBeam(state))
         ) {
             AnimatedContent(
                 targetState = state,
@@ -164,6 +170,18 @@ private fun NotchShowcase() {
             )
         }
     }
+}
+
+/** Lichtlauf wie in der echten Notch, in der aktuell gewählten Palette. */
+@Composable
+private fun Modifier.showcaseBeam(state: ShowcaseState): Modifier {
+    val settings = LocalContext.current.appContainer.notchSettings
+    val prefs by remember { settings.beamPrefsFlow() }.collectAsStateWithLifecycle(initialValue = settings.beamPrefs)
+    val on = prefs.mode != BeamMode.OFF
+    val strength = remember { mutableFloatStateOf(1f) }.also { it.floatValue = if (on) 1f else 0f }
+    val position = rememberBeamPosition(running = on)
+    val shape = RoundedCornerShape(if (state.height > PillHeight) 28.dp else PillHeight / 2)
+    return borderBeam(shape, position, strength, prefs.palette.colors)
 }
 
 /** Timer-Zustand: Neon-Linie läuft um die Pille (Vorschau des echten Timer-Rings). */

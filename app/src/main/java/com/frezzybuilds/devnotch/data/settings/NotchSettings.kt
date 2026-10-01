@@ -2,6 +2,8 @@ package com.frezzybuilds.devnotch.data.settings
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.frezzybuilds.devnotch.ui.BeamMode
+import com.frezzybuilds.devnotch.ui.BeamPalette
 import androidx.core.content.edit
 import com.frezzybuilds.devnotch.service.EdgeSide
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
@@ -18,6 +20,8 @@ data class EdgePrefs(
     val showOnTrackChange: Boolean,
     val theme: EdgeTheme
 )
+
+data class BeamPrefs(val mode: BeamMode, val palette: BeamPalette)
 
 /** Persistente Einstellungen der Notch. Der Overlay-Service beobachtet Änderungen live. */
 class NotchSettings(context: Context) {
@@ -78,6 +82,31 @@ class NotchSettings(context: Context) {
         get() = prefs.getFloat(KEY_EDGE_OFFSET, 0f)
         set(value) = prefs.edit { putFloat(KEY_EDGE_OFFSET, value) }
 
+    /** Lichtlauf um die Notch: wann er kreist und in welchen Farben. */
+    var beamMode: BeamMode
+        get() = prefs.getString(KEY_BEAM_MODE, null)
+            ?.let { name -> BeamMode.entries.firstOrNull { it.name == name } }
+            ?: BeamMode.ALWAYS
+        set(value) = prefs.edit { putString(KEY_BEAM_MODE, value.name) }
+
+    var beamPalette: BeamPalette
+        get() = prefs.getString(KEY_BEAM_PALETTE, null)
+            ?.let { name -> BeamPalette.entries.firstOrNull { it.name == name } }
+            ?: BeamPalette.NEON
+        set(value) = prefs.edit { putString(KEY_BEAM_PALETTE, value.name) }
+
+    val beamPrefs: BeamPrefs get() = BeamPrefs(beamMode, beamPalette)
+
+    /** Änderungen wirken sofort in der laufenden Notch. */
+    fun beamPrefsFlow(): Flow<BeamPrefs> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_BEAM_MODE || key == KEY_BEAM_PALETTE) trySend(beamPrefs)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(beamPrefs)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     val edgePrefs: EdgePrefs
         get() = EdgePrefs(edgeAutoMinimize, edgeMinimizeDelaySeconds, edgeShowOnTrackChange, edgeTheme)
 
@@ -113,6 +142,8 @@ class NotchSettings(context: Context) {
         const val KEY_EDGE_THEME = "edge_theme"
         const val KEY_EDGE_SIDE = "edge_side"
         const val KEY_EDGE_OFFSET = "edge_offset"
+        const val KEY_BEAM_MODE = "beam_mode"
+        const val KEY_BEAM_PALETTE = "beam_palette"
         val EDGE_PREF_KEYS = setOf(
             KEY_EDGE_AUTO_MINIMIZE, KEY_EDGE_MINIMIZE_DELAY, KEY_EDGE_SHOW_ON_TRACK, KEY_EDGE_THEME
         )
