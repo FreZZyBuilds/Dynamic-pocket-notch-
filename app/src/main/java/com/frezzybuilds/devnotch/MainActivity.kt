@@ -1,6 +1,29 @@
 package com.frezzybuilds.devnotch
 
 import android.Manifest
+import com.frezzybuilds.devnotch.ui.theme.Brand
+import com.frezzybuilds.devnotch.ui.staggerIn
+import com.frezzybuilds.devnotch.ui.glass.gradientText
+import com.frezzybuilds.devnotch.ui.glass.StatusDot
+import com.frezzybuilds.devnotch.ui.glass.SetupStep
+import com.frezzybuilds.devnotch.ui.glass.SetupChecklist
+import com.frezzybuilds.devnotch.ui.glass.SectionHeader
+import com.frezzybuilds.devnotch.ui.glass.PowerOrb
+import com.frezzybuilds.devnotch.ui.glass.HeroHeader
+import com.frezzybuilds.devnotch.ui.glass.GradientButton
+import com.frezzybuilds.devnotch.ui.glass.GlassCard
+import com.frezzybuilds.devnotch.ui.glass.GlassButton
+import com.frezzybuilds.devnotch.ui.glass.Glass
+import com.frezzybuilds.devnotch.ui.glass.CardPadding
+import com.frezzybuilds.devnotch.ui.glass.AuroraBackground
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.border
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.activity.SystemBarStyle
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.rememberCoroutineScope
@@ -51,12 +74,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -83,7 +103,6 @@ import com.frezzybuilds.devnotch.service.NotchOverlayService
 import com.frezzybuilds.devnotch.service.OemGuide
 import com.frezzybuilds.devnotch.service.openSettings
 import com.frezzybuilds.devnotch.service.isTablet
-import com.frezzybuilds.devnotch.ui.theme.DevNotchTheme
 import com.frezzybuilds.devnotch.feature.billing.Paywall
 import com.frezzybuilds.devnotch.feature.billing.PaywallHost
 import com.frezzybuilds.devnotch.feature.billing.ProFeature
@@ -95,7 +114,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Immer dunkle Glas-Optik: helle Statusleisten-Symbole auf transparentem Grund.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        )
         // Ab Android 13 nötig, damit die Foreground-Service-Benachrichtigung sichtbar ist.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -103,8 +126,9 @@ class MainActivity : ComponentActivity() {
         paywallFeature = Paywall.featureFrom(intent)
         setupSection = Setup.sectionFrom(intent)
         setContent {
-            DevNotchTheme {
-                Scaffold { padding ->
+            MaterialTheme(colorScheme = Glass.AppScheme) {
+                AuroraBackground {
+                Scaffold(containerColor = Color.Transparent, contentColor = Color.White) { padding ->
                     SetupScreen(
                         Modifier.padding(padding),
                         focusSection = setupSection,
@@ -119,6 +143,7 @@ class MainActivity : ComponentActivity() {
                         showPaywall = false
                         paywallFeature = null
                     }
+                }
                 }
             }
         }
@@ -179,106 +204,124 @@ fun SetupScreen(
     var displayMode by remember { mutableStateOf(settings.displayMode) }
     // Tablets nutzen immer das Edge-Layout (siehe AdaptiveLayout).
     val isTablet = remember { context.isTablet() }
-    var showModeDialog by remember { mutableStateOf(false) }
+
+    fun toggleNotch() {
+        val enable = !isServiceRunning
+        // Merken für den Autostart nach dem Neustart (BootReceiver).
+        settings.notchEnabled = enable
+        if (enable) {
+            NotchOverlayService.start(context)
+            // Ohne Ausnahme kann Android die Notch im Leerlauf beenden.
+            if (!batteryExempt) showBatteryDialog = true
+        } else {
+            NotchOverlayService.stop(context)
+        }
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+            .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("DevNotch", style = MaterialTheme.typography.headlineMedium)
+        HeroHeader(Modifier.staggerIn(0))
 
-        Card(Modifier.fillMaxWidth()) {
-            if (!hasOverlayPermission) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("Overlay-Berechtigung fehlt", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "Damit die Notch über anderen Apps schweben kann, braucht DevNotch die " +
-                            "Berechtigung „Über anderen Apps einblenden“."
-                    )
-                    Button(onClick = { openOverlaySettings(context) }) {
-                        Text("Overlay-Berechtigung erteilen")
-                    }
-                }
-            } else {
-                ListItem(
-                    headlineContent = { Text("Notch aktiv") },
-                    supportingContent = {
-                        Text(if (isServiceRunning) "Läuft im Hintergrund" else "Gestoppt")
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = isServiceRunning,
-                            onCheckedChange = { enable ->
-                                // Merken für den Autostart nach dem Neustart (BootReceiver).
-                                settings.notchEnabled = enable
-                                if (enable) {
-                                    NotchOverlayService.start(context)
-                                    // Ohne Ausnahme kann Android die Notch im Leerlauf beenden.
-                                    if (!batteryExempt) showBatteryDialog = true
-                                } else {
-                                    NotchOverlayService.stop(context)
-                                }
-                            }
+        // Ein/Aus: großer Neon-Knopf, sobald die Overlay-Berechtigung da ist.
+        GlassCard(Modifier.fillMaxWidth().staggerIn(1), neon = isServiceRunning) {
+            Row(CardPadding, verticalAlignment = Alignment.CenterVertically) {
+                PowerOrb(
+                    active = isServiceRunning,
+                    onToggle = { if (hasOverlayPermission) toggleNotch() else openOverlaySettings(context) }
+                )
+                Spacer(Modifier.width(18.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StatusDot(isServiceRunning)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (isServiceRunning) "Notch läuft" else "Notch ist aus",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
                         )
                     }
-                )
+                    Text(
+                        when {
+                            !hasOverlayPermission -> "Tippe, um „Über anderen Apps einblenden“ zu erlauben."
+                            isServiceRunning -> "Läuft im Hintergrund – tippe zum Ausschalten."
+                            else -> "Tippe auf den Knopf, um sie zu starten."
+                        },
+                        color = Glass.TextSecondary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         }
 
-        Card(Modifier.fillMaxWidth()) {
-            ListItem(
-                headlineContent = { Text("Platzierung") },
-                supportingContent = {
-                    Text(
-                        if (isTablet) "${NotchLayoutMode.EDGE_SIDE.label} – auf Tablets automatisch"
-                        else displayMode.label
-                    )
-                },
-                modifier = Modifier.clickable { showModeDialog = true }
-            )
-            if (displayMode == NotchLayoutMode.EDGE_SIDE || isTablet) {
-                EdgePlayerSettings(settings)
+        SetupChecklist(
+            steps = listOf(
+                SetupStep(
+                    title = "Über Apps einblenden",
+                    done = hasOverlayPermission,
+                    doneText = "Die Notch darf über allen Apps schweben.",
+                    todoText = "Nötig, damit die Notch angezeigt wird.",
+                    action = "Erlauben",
+                    onAction = { openOverlaySettings(context) }
+                ),
+                SetupStep(
+                    title = "Benachrichtigungen",
+                    done = hasListenerAccess,
+                    doneText = "Mediensteuerung verfügbar.",
+                    todoText = "Für Musik-Steuerung und Song-Peeks.",
+                    action = "Erteilen",
+                    onAction = { openNotificationListenerSettings(context) }
+                ),
+                SetupStep(
+                    title = "Akku-Optimierung",
+                    done = batteryExempt,
+                    doneText = "Läuft zuverlässig im Hintergrund.",
+                    todoText = "Sonst kann Android die Notch beenden.",
+                    action = "Ausnehmen",
+                    onAction = { showBatteryDialog = true }
+                )
+            ),
+            modifier = Modifier.staggerIn(2)
+        )
+
+        GlassCard(Modifier.fillMaxWidth().staggerIn(3)) {
+            Column(CardPadding) {
+                SectionHeader(
+                    icon = "◐",
+                    title = "Platzierung",
+                    subtitle = if (isTablet) "${NotchLayoutMode.EDGE_SIDE.label} – auf Tablets automatisch" else displayMode.label
+                )
             }
-            HorizontalDivider()
-            ListItem(
-                headlineContent = { Text("Benachrichtigungszugriff") },
-                supportingContent = {
-                    Text(if (hasListenerAccess) "Erteilt – Mediensteuerung verfügbar" else "Für die Mediensteuerung nötig")
-                },
-                trailingContent = {
-                    if (!hasListenerAccess) {
-                        TextButton(onClick = { openNotificationListenerSettings(context) }) {
-                            Text("Erteilen")
+            if (!isTablet) {
+                Row(
+                    Modifier.padding(start = 18.dp, end = 18.dp, bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    NotchLayoutMode.entries.forEach { mode ->
+                        ModeChip(
+                            label = if (mode == NotchLayoutMode.NOTCH_TOP) "Notch oben" else "Am Rand",
+                            selected = mode == displayMode,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            displayMode = mode
+                            // Persistiert; ein laufender Service übernimmt die Änderung sofort.
+                            settings.displayMode = mode
                         }
                     }
                 }
-            )
-            HorizontalDivider()
-            ListItem(
-                headlineContent = { Text("Akku-Optimierung") },
-                supportingContent = {
-                    Text(
-                        if (batteryExempt) "Ausgenommen – Notch läuft zuverlässig im Hintergrund"
-                        else "Aktiv – Android kann die Notch im Leerlauf beenden"
-                    )
-                },
-                trailingContent = {
-                    if (!batteryExempt) {
-                        TextButton(onClick = { showBatteryDialog = true }) { Text("Ausnehmen") }
-                    }
-                }
-            )
+            }
+            AnimatedVisibility(visible = displayMode == NotchLayoutMode.EDGE_SIDE || isTablet) {
+                Column { EdgePlayerSettings(settings) }
+            }
         }
 
-        OemHintCard(settings)
+        Box(Modifier.staggerIn(4)) { OemHintCard(settings) }
 
-        ProStatusCard(onOpenPaywall)
+        Box(Modifier.staggerIn(5)) { ProStatusCard(onOpenPaywall) }
 
         val gitHubRequester = remember { BringIntoViewRequester() }
         val aiRequester = remember { BringIntoViewRequester() }
@@ -291,9 +334,11 @@ fun SetupScreen(
             onSectionShown()
         }
 
-        GitHubCard(Modifier.bringIntoViewRequester(gitHubRequester))
+        GitHubCard(Modifier.bringIntoViewRequester(gitHubRequester).staggerIn(6))
 
-        AiUsageCard(Modifier.bringIntoViewRequester(aiRequester))
+        AiUsageCard(Modifier.bringIntoViewRequester(aiRequester).staggerIn(7))
+
+        Spacer(Modifier.height(24.dp))
     }
 
     if (showBatteryDialog) {
@@ -305,68 +350,30 @@ fun SetupScreen(
             onDismiss = { showBatteryDialog = false }
         )
     }
+}
 
-    if (showModeDialog) {
-        DisplayModeDialog(
-            current = displayMode,
-            onConfirm = { mode ->
-                displayMode = mode
-                // Persistiert; ein laufender Service übernimmt die Änderung sofort.
-                settings.displayMode = mode
-                showModeDialog = false
-            },
-            onDismiss = { showModeDialog = false }
+/** Auswahl-Kachel für die Platzierung: aktiv mit Neon-Rand und Verlaufstext. */
+@Composable
+private fun ModeChip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        modifier
+            .clip(shape)
+            .background(if (selected) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.03f))
+            .border(if (selected) 1.5.dp else 1.dp, if (selected) Brand.Horizontal else SolidColor(Color.White.copy(alpha = 0.12f)), shape)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(vertical = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            style = if (selected) gradientText(MaterialTheme.typography.labelLarge) else MaterialTheme.typography.labelLarge,
+            color = if (selected) Color.Unspecified else Glass.TextSecondary,
+            fontWeight = FontWeight.SemiBold
         )
     }
 }
 
-/** RadioButton-Auswahldialog: Center Notch (Punch-Hole) vs. Edge Dock (Tablet/Phone Side). */
-@Composable
-private fun DisplayModeDialog(
-    current: NotchLayoutMode,
-    onConfirm: (NotchLayoutMode) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var selected by remember { mutableStateOf(current) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Platzierung") },
-        text = {
-            Column(Modifier.selectableGroup()) {
-                NotchLayoutMode.entries.forEach { mode ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(
-                                selected = mode == selected,
-                                onClick = { selected = mode },
-                                role = Role.RadioButton
-                            )
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // onClick = null: Die ganze Zeile ist klickbar (größere Touch-Fläche, TalkBack).
-                        RadioButton(selected = mode == selected, onClick = null)
-                        Column(Modifier.padding(start = 16.dp)) {
-                            Text(mode.label, style = MaterialTheme.typography.bodyLarge)
-                            Text(
-                                mode.description,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(selected) }) { Text("Übernehmen") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Abbrechen") }
-        }
-    )
-}
 
 @Composable
 private fun GitHubCard(modifier: Modifier = Modifier) {
@@ -376,12 +383,22 @@ private fun GitHubCard(modifier: Modifier = Modifier) {
     var saved by remember { mutableStateOf(token to username) }
     val isSaved = saved == (token to username) && token.isNotBlank()
 
-    Card(modifier.fillMaxWidth()) {
+    // Verbunden: kompakt mit „Bearbeiten“; sonst gleich die Felder.
+    var editing by remember { mutableStateOf(settings.token.isNullOrBlank()) }
+    GlassCard(modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = CardPadding.animateContentSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("GitHub-Heatmap · Pro", style = MaterialTheme.typography.titleMedium)
+            SectionHeader(
+                icon = "</>",
+                title = "GitHub-Heatmap",
+                subtitle = if (saved.first.isNotBlank()) "Verbunden${saved.second.takeIf { it.isNotBlank() }?.let { " als @$it" } ?: ""}" else "Pro · Contributions und offene PRs in der Notch"
+            )
+            if (!editing) {
+                GlassButton("Bearbeiten", onClick = { editing = true })
+                return@Column
+            }
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it },
@@ -399,13 +416,12 @@ private fun GitHubCard(modifier: Modifier = Modifier) {
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            OutlinedButton(onClick = {
+            GradientButton(if (isSaved) "Gespeichert ✓" else "Speichern", onClick = {
                 settings.token = token
                 settings.username = username
                 saved = token to username
-            }) {
-                Text(if (isSaved) "Gespeichert ✓" else "Speichern")
-            }
+                if (token.isNotBlank()) editing = false
+            })
         }
     }
 }
@@ -420,7 +436,7 @@ private fun OemHintCard(settings: NotchSettings) {
     val guide = remember { OemGuide.forDevice(Build.MANUFACTURER, Build.BRAND) } ?: return
     var done by remember { mutableStateOf(settings.oemHintDone) }
 
-    Card(Modifier.fillMaxWidth()) {
+    GlassCard(Modifier.fillMaxWidth(), neon = !done) {
         if (done) {
             ListItem(
                 headlineContent = { Text("${guide.vendor}: Hintergrund freigegeben") },
@@ -432,10 +448,10 @@ private fun OemHintCard(settings: NotchSettings) {
                     }) { Text("Anzeigen") }
                 }
             )
-            return@Card
+            return@GlassCard
         }
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Wichtig für ${guide.vendor}", style = MaterialTheme.typography.titleMedium)
+        Column(CardPadding, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SectionHeader(icon = "!", title = "Wichtig für ${guide.vendor}", subtitle = "Damit die Notch dauerhaft läuft")
             Text(
                 "Dein Gerät beendet Apps im Hintergrund zusätzlich zur Akku-Optimierung. " +
                     "Damit die Notch dauerhaft läuft:",
@@ -445,11 +461,11 @@ private fun OemHintCard(settings: NotchSettings) {
                 Text("${index + 1}. $step", style = MaterialTheme.typography.bodyMedium)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { guide.openSettings(context) }) { Text("Einstellungen öffnen") }
-                TextButton(onClick = {
+                GradientButton("Einstellungen öffnen", onClick = { guide.openSettings(context) })
+                GlassButton("Erledigt", onClick = {
                     done = true
                     settings.oemHintDone = true
-                }) { Text("Erledigt") }
+                })
             }
         }
     }
@@ -460,9 +476,13 @@ private fun OemHintCard(settings: NotchSettings) {
 private fun ProStatusCard(onOpenPaywall: (ProFeature?) -> Unit) {
     val proAccess = LocalContext.current.appContainer.proAccess
     val isPro by proAccess.isPro.collectAsStateWithLifecycle()
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(if (isPro) "DevNotch Pro ✦ aktiv" else "DevNotch Free", style = MaterialTheme.typography.titleMedium)
+    GlassCard(Modifier.fillMaxWidth(), neon = true) {
+        Column(CardPadding, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                if (isPro) "DevNotch Pro ✦ aktiv" else "DevNotch Pro ✦",
+                style = gradientText(MaterialTheme.typography.titleLarge),
+                fontWeight = FontWeight.Black
+            )
             Text(
                 if (isPro) "GitHub-Heatmap, KI-Token-Tracker, unbegrenzte Zwischenablage und Projekt-Shortcuts sind freigeschaltet."
                 else "Enthalten: Focus-Timer und Basis-Notch. Pro: GitHub-Heatmap, KI-Token-Tracker, " +
@@ -471,7 +491,7 @@ private fun ProStatusCard(onOpenPaywall: (ProFeature?) -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             if (!isPro) {
-                Button(onClick = { onOpenPaywall(null) }) { Text("Pro ansehen") }
+                GradientButton("Pro freischalten", onClick = { onOpenPaywall(null) })
             }
         }
     }
@@ -496,9 +516,40 @@ private fun AiUsageCard(modifier: Modifier = Modifier) {
     var showInPill by remember { mutableStateOf(settings.showInPill) }
     var saved by remember { mutableStateOf(false) }
 
-    Card(modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("KI-Token-Tracker · Pro", style = MaterialTheme.typography.titleMedium)
+    val connected = buildList {
+        if (openAiKey.isNotBlank()) add("OpenAI")
+        if (anthropicKey.isNotBlank()) add("Anthropic")
+        if (openRouterKey.isNotBlank()) add("OpenRouter")
+        if (geminiKey.isNotBlank()) add("Gemini")
+        if (ollamaUrl.isNotBlank()) add("Ollama")
+    }
+    var editing by remember { mutableStateOf(connected.isEmpty()) }
+    GlassCard(modifier.fillMaxWidth()) {
+        Column(CardPadding.animateContentSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionHeader(
+                icon = "✦",
+                title = "KI-Token-Tracker",
+                subtitle = if (connected.isEmpty()) "Pro · Monatskosten deiner KI-Anbieter" else "${connected.size} verbunden · Limit \$$limit"
+            )
+            if (connected.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    connected.forEach { name ->
+                        Text(
+                            "$name ✓",
+                            color = Brand.Cyan,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Brand.Cyan.copy(alpha = 0.12f))
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
+                }
+            }
+            if (!editing) {
+                GlassButton("Schlüssel bearbeiten", onClick = { editing = true })
+                return@Column
+            }
             OutlinedTextField(
                 value = openAiKey,
                 onValueChange = { openAiKey = it; saved = false },
@@ -573,9 +624,10 @@ private fun AiUsageCard(modifier: Modifier = Modifier) {
                 Text("Kosten in der Notch anzeigen", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 Switch(checked = showInPill, onCheckedChange = { showInPill = it; saved = false })
             }
-            OutlinedButton(
-                enabled = (limit.toDoubleOrNull() ?: 0.0) > 0,
+            GradientButton(
+                if (saved) "Gespeichert ✓" else "Speichern",
                 onClick = {
+                    if ((limit.toDoubleOrNull() ?: 0.0) <= 0) return@GradientButton
                     settings.setKey(AiProvider.OPENAI, openAiKey)
                     settings.setKey(AiProvider.OPENROUTER, openRouterKey)
                     settings.setKey(AiProvider.ANTHROPIC, anthropicKey)
@@ -585,9 +637,10 @@ private fun AiUsageCard(modifier: Modifier = Modifier) {
                     settings.monthlyLimitUsd = limit.toDouble()
                     settings.showInPill = showInPill
                     saved = true
+                    if (connected.isNotEmpty()) editing = false
                     scope.launch { container.aiUsageRepository.refresh() }
                 }
-            ) { Text(if (saved) "Gespeichert ✓" else "Speichern") }
+            )
         }
     }
 }
