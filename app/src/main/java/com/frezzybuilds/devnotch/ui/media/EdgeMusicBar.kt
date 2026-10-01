@@ -290,8 +290,8 @@ fun EdgeHandle(modifier: Modifier = Modifier) {
     ) {
         Box(
             Modifier
-                .width(4.dp)
-                .height(56.dp)
+                .width(3.dp)
+                .height(44.dp)
                 .clip(CircleShape)
                 .background(
                     Brush.verticalGradient(

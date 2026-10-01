@@ -43,7 +43,9 @@ data class NotchLayout(
     val mode: NotchLayoutMode,
     val lens: CameraLens? = null,
     val pill: PillGeometry,
-    val edgeSide: EdgeSide = EdgeSide.RIGHT
+    val edgeSide: EdgeSide = EdgeSide.RIGHT,
+    /** Aktuelle Ausrichtung (Configuration.ORIENTATION_LANDSCAPE) – bestimmt die Drawer-Größe. */
+    val landscape: Boolean = false
 )
 
 /**

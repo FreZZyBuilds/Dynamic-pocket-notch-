@@ -97,10 +97,10 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         edgeY = settings.edgeOffsetFraction * screenHeight()
         // Vor dem ersten Layout gibt es noch keine Window-Insets: detectCutoutBounds() nutzt
         // dann die Display-Aussparung (API 29+) und korrigiert sich, sobald Insets ankommen.
-        notchLayout = layoutFor(settings.displayMode, detectCutoutBounds()?.toLens())
+        notchLayout = layoutFor(effectiveMode(), detectCutoutBounds()?.toLens())
         // Umschalten in den Einstellungen wirkt sofort, ohne den Service neu zu starten.
-        displayModeListener = settings.addDisplayModeListener { mode ->
-            notchLayout = notchLayout.copy(mode = mode)
+        displayModeListener = settings.addDisplayModeListener {
+            notchLayout = notchLayout.copy(mode = effectiveMode())
             applyLayout()
         }
 
@@ -127,7 +127,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         // Bei Rotation wandern Aussparung und Bildschirmmitte mit; die Edge-Position ist relativ
         // zur Bildschirmhöhe gespeichert und passt daher auch im Querformat.
         edgeY = appContainer.notchSettings.edgeOffsetFraction * screenHeight()
-        notchLayout = layoutFor(notchLayout.mode, detectCutoutBounds()?.toLens())
+        // Ausrichtung und Tablet-Status neu lesen: Foldables wechseln beim Aufklappen zum Tablet.
+        notchLayout = layoutFor(effectiveMode(), detectCutoutBounds()?.toLens())
         applyLayout()
     }
 
@@ -321,11 +322,16 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
 
     private fun Rect.toLens() = CameraLens.fromBounds(left, top, right, bottom)
 
+    /** Tablets immer im Edge-Layout, sonst wie in den Einstellungen gewählt. */
+    private fun effectiveMode(): NotchLayoutMode =
+        AdaptiveLayout.effectiveMode(appContainer.notchSettings.displayMode, isTablet())
+
     private fun layoutFor(mode: NotchLayoutMode, lens: CameraLens?) = NotchLayout(
         mode = mode,
         lens = lens,
         pill = NotchGeometry.collapsedPill(lens, screenWidth(), resources.displayMetrics.density),
-        edgeSide = edgeSide
+        edgeSide = edgeSide,
+        landscape = isLandscape()
     )
 
     private fun screenWidth(): Int = screenSize().x

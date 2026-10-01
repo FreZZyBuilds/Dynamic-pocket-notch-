@@ -52,6 +52,7 @@ import com.frezzybuilds.devnotch.ui.media.EdgeHandle
 import com.frezzybuilds.devnotch.ui.media.EdgeMiniBubble
 import com.frezzybuilds.devnotch.ui.media.rememberEdgePlayerState
 import com.frezzybuilds.devnotch.appContainer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.animation.AnimatedContent
@@ -72,7 +73,9 @@ private val NotchBlack = Color(0xFF000000)
 private val PillWidth = 120.dp
 private val DashboardWidth = 360.dp
 private val DashboardHeight = 280.dp
-private val EdgeHandleWidth = 20.dp
+/** Schlanke, vertikale Griffleiste im eingeklappten Edge-Modus. */
+private val EdgeHandleWidth = 12.dp
+private val EdgeHandleHeight = 100.dp
 private val EdgeBarWidth = 60.dp
 private val EdgeBarHeight = 340.dp
 private val EdgeBubbleSize = 56.dp
@@ -140,6 +143,20 @@ fun NotchContainer(
         label = "notchCorner"
     )
 
+    // Edge-Modus: Drawer-Größe aus Bildschirm und Ausrichtung (Hoch-/Querformat).
+    val configuration = LocalConfiguration.current
+    val drawer = EdgeDrawerSpec.forScreen(
+        configuration.screenWidthDp,
+        configuration.screenHeightDp,
+        landscape = layout.landscape
+    )
+    val (expandedWidth, expandedHeight) = when (layout.mode) {
+        NotchLayoutMode.NOTCH_TOP -> DashboardWidth to DashboardHeight
+        NotchLayoutMode.EDGE_SIDE -> drawer.width to drawer.height
+    }
+    var leftPane by remember { mutableStateOf(DrawerPane.DEV) }
+    var rightPane by remember { mutableStateOf(DrawerPane.NOTES) }
+
     val haptic = LocalHapticFeedback.current
     val dragThreshold = with(LocalDensity.current) { GestureThreshold.toPx() }
 
@@ -148,7 +165,7 @@ fun NotchContainer(
             modifier = Modifier
                 .animateContentSize(animationSpec = notchSpring())
                 .then(
-                    if (isExpanded) Modifier.size(DashboardWidth, DashboardHeight)
+                    if (isExpanded) Modifier.size(expandedWidth, expandedHeight)
                     else Modifier.size(collapsedWidth, collapsedHeight)
                 )
                 .clip(if (edgeMini) RectangleShape else notchShape(layout, cornerRadius))
@@ -170,9 +187,24 @@ fun NotchContainer(
                 .clickable(enabled = !isExpanded) { setExpanded(true) },
             contentAlignment = Alignment.Center
         ) {
-            if (isExpanded) {
+            if (isExpanded && layout.mode == NotchLayoutMode.EDGE_SIDE && drawer.split) {
+                // Seitlicher Drawer als Split-Ansicht: links Dev/Pomodoro, rechts Notizen/Clipboard.
+                SplitDrawer(
+                    focusTimer = focusTimer,
+                    nowPlaying = nowPlaying,
+                    leftPane = leftPane,
+                    rightPane = rightPane,
+                    onSelectLeft = { leftPane = it },
+                    onSelectRight = { rightPane = it },
+                    onClose = { setExpanded(false) },
+                    modifier = Modifier
+                        .wrapContentSize(Alignment.Center, unbounded = true)
+                        .size(drawer.width, drawer.height)
+                )
+            } else if (isExpanded) {
                 // Feste Größe + unbounded: Das Dashboard wird beim Aufklappen „aufgedeckt“
-                // statt während der Animation zusammengequetscht zu werden.
+                // statt während der Animation zusammengequetscht zu werden. Schmale Bildschirme
+                // im Edge-Modus nutzen dieselben Tabs in Drawer-Größe.
                 Dashboard(
                     selectedTab = selectedTab,
                     onSelectTab = { selectedTab = it },
@@ -181,7 +213,7 @@ fun NotchContainer(
                     onClose = { setExpanded(false) },
                     modifier = Modifier
                         .wrapContentSize(Alignment.TopCenter, unbounded = true)
-                        .size(DashboardWidth, DashboardHeight)
+                        .size(expandedWidth, expandedHeight)
                 )
             } else if (layout.mode == NotchLayoutMode.NOTCH_TOP) {
                 val playing = nowPlaying?.takeIf { it.isPlaying }
@@ -266,26 +298,7 @@ private fun Dashboard(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.padding(12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Läuft (oder pausiert) Musik, wird die Kopfzeile zur Mediensteuerung – ohne
-            // zusätzliche Höhe im 280-dp-Dashboard.
-            if (nowPlaying != null) {
-                MediaHeader(nowPlaying, Modifier.weight(1f))
-            } else {
-                Text(
-                    "DevNotch",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            TextButton(onClick = onClose) {
-                Text("✕", color = Color.Gray)
-            }
-        }
+        DashboardHeader(nowPlaying, onClose)
 
         TabRow(
             selectedTabIndex = selectedTab.ordinal,
@@ -320,6 +333,29 @@ private fun Dashboard(
                 NotchTab.CLIP -> ClipboardContent()
                 NotchTab.DEV -> DevTabContent()
             }
+        }
+    }
+}
+
+/** Kopfzeile: Mediensteuerung, wenn Musik läuft (keine Extra-Höhe), sonst Titel; dazu ✕. */
+@Composable
+internal fun DashboardHeader(nowPlaying: NowPlaying?, onClose: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (nowPlaying != null) {
+            MediaHeader(nowPlaying, Modifier.weight(1f))
+        } else {
+            Text(
+                "DevNotch",
+                color = Color.White,
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        TextButton(onClick = onClose) {
+            Text("✕", color = Color.Gray)
         }
     }
 }
@@ -373,7 +409,7 @@ private fun collapsedSize(layout: NotchLayout, hasMedia: Boolean, minimized: Boo
         NotchLayoutMode.EDGE_SIDE -> when {
             minimized -> EdgeBubbleSize + EdgeBubbleGap to EdgeBubbleSize
             hasMedia -> EdgeBarWidth to EdgeBarHeight
-            else -> EdgeHandleWidth to PillWidth
+            else -> EdgeHandleWidth to EdgeHandleHeight
         }
     }
 }

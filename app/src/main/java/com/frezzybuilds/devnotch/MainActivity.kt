@@ -67,6 +67,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
 import com.frezzybuilds.devnotch.service.NotchOverlayService
+import com.frezzybuilds.devnotch.service.isTablet
 import com.frezzybuilds.devnotch.ui.theme.DevNotchTheme
 
 class MainActivity : ComponentActivity() {
@@ -109,6 +110,8 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     // Echter Service-Zustand statt lokaler Variable: stimmt auch nach Neustart der App.
     val isServiceRunning by NotchOverlayService.isRunning.collectAsStateWithLifecycle()
     var displayMode by remember { mutableStateOf(settings.displayMode) }
+    // Tablets nutzen immer das Edge-Layout (siehe AdaptiveLayout).
+    val isTablet = remember { context.isTablet() }
     var showModeDialog by remember { mutableStateOf(false) }
 
     Column(
@@ -157,10 +160,15 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         Card(Modifier.fillMaxWidth()) {
             ListItem(
                 headlineContent = { Text("Platzierung") },
-                supportingContent = { Text(displayMode.label) },
+                supportingContent = {
+                    Text(
+                        if (isTablet) "${NotchLayoutMode.EDGE_SIDE.label} – auf Tablets automatisch"
+                        else displayMode.label
+                    )
+                },
                 modifier = Modifier.clickable { showModeDialog = true }
             )
-            if (displayMode == NotchLayoutMode.EDGE_SIDE) {
+            if (displayMode == NotchLayoutMode.EDGE_SIDE || isTablet) {
                 EdgePlayerSettings(settings)
             }
             HorizontalDivider()

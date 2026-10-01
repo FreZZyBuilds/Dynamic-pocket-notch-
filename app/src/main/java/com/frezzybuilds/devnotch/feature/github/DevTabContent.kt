@@ -2,6 +2,8 @@ package com.frezzybuilds.devnotch.feature.github
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -118,7 +120,11 @@ private fun Profile(profile: GitHubProfile, onRefresh: () -> Unit) {
 @Composable
 private fun ShortcutRow() {
     val context = LocalContext.current
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    // In schmalen Drawer-Spalten seitlich scrollbar statt abgeschnitten.
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.horizontalScroll(rememberScrollState())
+    ) {
         DefaultDevShortcuts.forEach { shortcut ->
             AssistChip(
                 onClick = { shortcut.launch(context) },

@@ -7,6 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -65,42 +66,71 @@ fun FocusTimerContent(
         label = "timerAccent"
     )
 
-    Row(
-        modifier = Modifier.fillMaxSize(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally)
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.size(132.dp),
-                color = accent,
-                trackColor = TrackColor,
-                strokeWidth = 8.dp,
-                strokeCap = StrokeCap.Round
-            )
-            Text(
-                text = formatMmSs(remainingSeconds),
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color.White
-            )
-        }
-
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = onToggleTimer,
-                colors = ButtonDefaults.buttonColors(containerColor = accent),
-                modifier = Modifier.width(128.dp)
+    // Schmale Drawer-Spalte: Ring über den Buttons statt daneben.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (maxWidth < 300.dp) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
             ) {
-                Text(if (isRunning) "Pause" else "Start", color = Color.Black)
+                TimerRing(progress, accent, remainingSeconds)
+                TimerControls(isRunning, accent, totalSeconds, onToggleTimer, onPreset)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PresetButton(FocusTimerViewModel.DEFAULT_MINUTES, totalSeconds, onPreset)
-                PresetButton(FocusTimerViewModel.BREAK_MINUTES, totalSeconds, onPreset)
+        } else {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally)
+            ) {
+                TimerRing(progress, accent, remainingSeconds)
+                TimerControls(isRunning, accent, totalSeconds, onToggleTimer, onPreset)
             }
+        }
+    }
+}
+
+@Composable
+private fun TimerRing(progress: Float, accent: Color, remainingSeconds: Long) {
+    Box(contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.size(132.dp),
+            color = accent,
+            trackColor = TrackColor,
+            strokeWidth = 8.dp,
+            strokeCap = StrokeCap.Round
+        )
+        Text(
+            text = formatMmSs(remainingSeconds),
+            style = MaterialTheme.typography.headlineMedium,
+            color = Color.White
+        )
+    }
+}
+
+@Composable
+private fun TimerControls(
+    isRunning: Boolean,
+    accent: Color,
+    totalSeconds: Long,
+    onToggleTimer: () -> Unit,
+    onPreset: (minutes: Int) -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Button(
+            onClick = onToggleTimer,
+            colors = ButtonDefaults.buttonColors(containerColor = accent),
+            modifier = Modifier.width(128.dp)
+        ) {
+            Text(if (isRunning) "Pause" else "Start", color = Color.Black)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PresetButton(FocusTimerViewModel.DEFAULT_MINUTES, totalSeconds, onPreset)
+            PresetButton(FocusTimerViewModel.BREAK_MINUTES, totalSeconds, onPreset)
         }
     }
 }

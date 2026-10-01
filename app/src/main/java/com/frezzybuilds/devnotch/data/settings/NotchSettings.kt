@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.frezzybuilds.devnotch.service.EdgeSide
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
+import com.frezzybuilds.devnotch.service.isTablet
 import com.frezzybuilds.devnotch.ui.media.EdgeTheme
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -21,7 +22,7 @@ data class EdgePrefs(
 /** Persistente Einstellungen der Notch. Der Overlay-Service beobachtet Änderungen live. */
 class NotchSettings(context: Context) {
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-    private val isTablet = context.resources.configuration.smallestScreenWidthDp >= 600
+    private val isTablet = context.isTablet()
 
     /** Ohne gespeicherte Wahl: Tablets als Edge Bar, Smartphones am Punch-Hole. */
     var displayMode: NotchLayoutMode

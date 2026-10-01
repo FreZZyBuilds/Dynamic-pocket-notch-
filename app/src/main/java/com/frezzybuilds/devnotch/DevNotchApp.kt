@@ -9,6 +9,7 @@ import com.frezzybuilds.devnotch.data.settings.NotchSettings
 import com.frezzybuilds.devnotch.feature.github.GitHubService
 import com.frezzybuilds.devnotch.feature.github.GitHubSettings
 import com.frezzybuilds.devnotch.feature.github.createGitHubHttpClient
+import com.frezzybuilds.devnotch.feature.notes.QuickNotesStore
 import io.ktor.client.engine.android.Android
 
 class DevNotchApp : Application() {
@@ -26,6 +27,8 @@ class AppContainer(context: Context) {
     val notchSettings = NotchSettings(context)
 
     val clipboardRepository = ClipboardRepository(context, database.clipboardDao())
+
+    val quickNotesStore = QuickNotesStore(context)
 
     val gitHubSettings = GitHubSettings(context)
     val gitHubService = GitHubService(
