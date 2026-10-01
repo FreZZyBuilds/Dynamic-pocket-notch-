@@ -1,6 +1,9 @@
 package com.frezzybuilds.devnotch
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
+import android.os.PowerManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -101,11 +104,14 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     // remember { canDrawOverlays() } würde die frisch erteilte Berechtigung nicht bemerken.
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     var hasListenerAccess by remember { mutableStateOf(isNotificationListenerEnabled(context)) }
+    var batteryExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
     LifecycleResumeEffect(Unit) {
         hasOverlayPermission = Settings.canDrawOverlays(context)
         hasListenerAccess = isNotificationListenerEnabled(context)
+        batteryExempt = isIgnoringBatteryOptimizations(context)
         onPauseOrDispose { }
     }
+    var showBatteryDialog by remember { mutableStateOf(false) }
 
     // Echter Service-Zustand statt lokaler Variable: stimmt auch nach Neustart der App.
     val isServiceRunning by NotchOverlayService.isRunning.collectAsStateWithLifecycle()
@@ -148,8 +154,15 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                         Switch(
                             checked = isServiceRunning,
                             onCheckedChange = { enable ->
-                                if (enable) NotchOverlayService.start(context)
-                                else NotchOverlayService.stop(context)
+                                // Merken für den Autostart nach dem Neustart (BootReceiver).
+                                settings.notchEnabled = enable
+                                if (enable) {
+                                    NotchOverlayService.start(context)
+                                    // Ohne Ausnahme kann Android die Notch im Leerlauf beenden.
+                                    if (!batteryExempt) showBatteryDialog = true
+                                } else {
+                                    NotchOverlayService.stop(context)
+                                }
                             }
                         )
                     }
@@ -185,9 +198,34 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     }
                 }
             )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Akku-Optimierung") },
+                supportingContent = {
+                    Text(
+                        if (batteryExempt) "Ausgenommen – Notch läuft zuverlässig im Hintergrund"
+                        else "Aktiv – Android kann die Notch im Leerlauf beenden"
+                    )
+                },
+                trailingContent = {
+                    if (!batteryExempt) {
+                        TextButton(onClick = { showBatteryDialog = true }) { Text("Ausnehmen") }
+                    }
+                }
+            )
         }
 
         GitHubCard()
+    }
+
+    if (showBatteryDialog) {
+        BatteryOptimizationDialog(
+            onConfirm = {
+                showBatteryDialog = false
+                requestIgnoreBatteryOptimizations(context)
+            },
+            onDismiss = { showBatteryDialog = false }
+        )
     }
 
     if (showModeDialog) {
@@ -291,6 +329,45 @@ private fun GitHubCard() {
                 Text(if (isSaved) "Gespeichert ✓" else "Speichern")
             }
         }
+    }
+}
+
+/** Hinweis-Dialog vor dem System-Dialog: erklärt, warum die Ausnahme nötig ist. */
+@Composable
+private fun BatteryOptimizationDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Im Hintergrund aktiv bleiben") },
+        text = {
+            Text(
+                "Android beendet Apps mit Akku-Optimierung im Leerlauf – die Notch würde dann " +
+                    "verschwinden, bis du DevNotch wieder öffnest. Nimm DevNotch von der " +
+                    "Akku-Optimierung aus, damit sie dauerhaft läuft. Der Mehrverbrauch ist gering, " +
+                    "da die Notch nur zeichnet, wenn sich etwas ändert."
+            )
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Ausnehmen") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Später") } }
+    )
+}
+
+private fun isIgnoringBatteryOptimizations(context: Context): Boolean =
+    context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+
+/**
+ * Öffnet den System-Dialog „Akku-Optimierung ignorieren?“ direkt für DevNotch. Manche Hersteller
+ * blockieren diesen Intent – dann die allgemeine Liste der Akku-Optimierungen öffnen.
+ */
+@SuppressLint("BatteryLife")
+private fun requestIgnoreBatteryOptimizations(context: Context) {
+    val direct = Intent(
+        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+        Uri.parse("package:${context.packageName}")
+    )
+    try {
+        context.startActivity(direct)
+    } catch (_: ActivityNotFoundException) {
+        context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
     }
 }
 

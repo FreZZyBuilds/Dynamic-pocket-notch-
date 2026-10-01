@@ -31,6 +31,15 @@ class NotchSettings(context: Context) {
             ?: if (isTablet) NotchLayoutMode.EDGE_SIDE else NotchLayoutMode.NOTCH_TOP
         set(value) = prefs.edit { putString(KEY_DISPLAY_MODE, value.name) }
 
+    /**
+     * Hat der Nutzer die Notch eingeschaltet? Steuert den Autostart nach dem Booten
+     * (BootReceiver). Wird nur durch den Schalter in der App bzw. „Beenden“ in der
+     * Benachrichtigung geändert – nicht, wenn Android den Prozess beendet.
+     */
+    var notchEnabled: Boolean
+        get() = prefs.getBoolean(KEY_NOTCH_ENABLED, false)
+        set(value) = prefs.edit { putBoolean(KEY_NOTCH_ENABLED, value) }
+
     /** Edge-Player klappt nach einigen Sekunden ohne Interaktion zur runden Cover-Bubble ein. */
     var edgeAutoMinimize: Boolean
         get() = prefs.getBoolean(KEY_EDGE_AUTO_MINIMIZE, true)
@@ -91,6 +100,7 @@ class NotchSettings(context: Context) {
 
     private companion object {
         const val KEY_DISPLAY_MODE = "display_mode"
+        const val KEY_NOTCH_ENABLED = "notch_enabled"
         const val KEY_EDGE_AUTO_MINIMIZE = "edge_auto_minimize"
         const val KEY_EDGE_MINIMIZE_DELAY = "edge_minimize_delay"
         const val KEY_EDGE_SHOW_ON_TRACK = "edge_show_on_track"

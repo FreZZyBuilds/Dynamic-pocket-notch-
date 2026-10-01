@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -41,6 +42,7 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.frezzybuilds.devnotch.MainActivity
 import com.frezzybuilds.devnotch.R
 import com.frezzybuilds.devnotch.appContainer
 import com.frezzybuilds.devnotch.data.clipboard.ClipboardListener
@@ -111,6 +113,12 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Muss bei startForegroundService() innerhalb weniger Sekunden passieren.
         startInForeground()
+
+        if (intent?.action == ACTION_STOP) {
+            appContainer.notchSettings.notchEnabled = false
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         if (!Settings.canDrawOverlays(this)) {
             stopSelf()
@@ -351,20 +359,53 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private fun defaultDisplay(): Display? =
         getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
 
+    /**
+     * Diskrete, dauerhafte Benachrichtigung: Ohne Foreground-Service würde Android den Prozess im
+     * Leerlauf beenden und die Notch verschwände. Kanal mit minimaler Wichtigkeit – kein Ton,
+     * kein Statusleisten-Icon, kein App-Badge; nur in der eingeklappten Benachrichtigungsliste.
+     */
     private fun startInForeground() {
         val manager = getSystemService(NotificationManager::class.java)
+        // Kanal der Vorversion entfernen, sonst bleibt er verwaist in den App-Einstellungen.
+        manager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
         manager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
                 getString(R.string.overlay_channel_name),
                 NotificationManager.IMPORTANCE_MIN
-            )
+            ).apply {
+                description = getString(R.string.overlay_channel_description)
+                setShowBadge(false)
+                setSound(null, null)
+                enableVibration(false)
+                lockscreenVisibility = Notification.VISIBILITY_SECRET
+            }
+        )
+
+        val openApp = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        val stop = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, NotchOverlayService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE
         )
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(getString(R.string.overlay_notification_text))
             .setSmallIcon(android.R.drawable.ic_menu_view)
+            .setContentIntent(openApp)
+            .addAction(0, getString(R.string.overlay_notification_stop), stop)
             .setOngoing(true)
+            .setSilent(true)
+            .setShowWhen(false)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .build()
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -376,8 +417,12 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     }
 
     companion object {
-        private const val CHANNEL_ID = "notch_overlay"
-        private const val NOTIFICATION_ID = 1
+        const val CHANNEL_ID = "devnotch_service"
+        private const val LEGACY_CHANNEL_ID = "notch_overlay"
+        const val NOTIFICATION_ID = 1
+
+        /** „Beenden“ in der Benachrichtigung: stoppt und schaltet den Autostart ab. */
+        const val ACTION_STOP = "com.frezzybuilds.devnotch.action.STOP"
 
         private val running = MutableStateFlow(false)
 

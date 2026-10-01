@@ -22,7 +22,15 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
+import com.frezzybuilds.devnotch.service.NotchLayout
+import com.frezzybuilds.devnotch.service.NotchLayoutMode
 import com.frezzybuilds.devnotch.service.NowPlaying
+import com.frezzybuilds.devnotch.service.PillGeometry
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import com.frezzybuilds.devnotch.ui.focus.FocusTimerViewModel
 import com.frezzybuilds.devnotch.ui.media.EdgeHandle
 import org.junit.Rule
@@ -86,6 +94,31 @@ class SplitDrawerScreenshotTest {
         val image = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
         view.draw(Canvas(image))
         val out = File("build/screenshots/split_drawer.png").apply { parentFile?.mkdirs() }
+        out.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    /** Smartphone: aufgeklappte Notch mit fünf Tabs inkl. „Notizen“ – passen alle Beschriftungen? */
+    @Test
+    @Config(sdk = [34], qualifiers = "w400dp-h340dp-xhdpi")
+    fun renderPhoneDashboardTabs() {
+        lateinit var view: View
+        compose.setContent {
+            view = LocalView.current
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                Box(Modifier.background(Color(0xFF3A3F8F)).padding(20.dp)) {
+                    NotchContainer(
+                        layout = NotchLayout(NotchLayoutMode.NOTCH_TOP, pill = PillGeometry(240, 70, 0, 16)),
+                        onExpandRequest = {}
+                    )
+                }
+            }
+        }
+        compose.onRoot().performTouchInput { click(center) }
+        compose.onNodeWithText("Notizen").performClick()
+        compose.waitForIdle()
+        val image = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(image))
+        val out = File("build/screenshots/phone_tabs.png").apply { parentFile?.mkdirs() }
         out.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 }

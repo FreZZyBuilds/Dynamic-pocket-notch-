@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">DevNotch</string>
-    <string name="overlay_channel_name">Notch-Overlay</string>
-    <string name="overlay_notification_text">Dynamic Notch ist aktiv</string>
+    <string name="overlay_channel_name">DevNotch-Dienst</string>
+    <string name="overlay_channel_description">Hält die Notch im Hintergrund aktiv. Kann ausgeblendet werden.</string>
+    <string name="overlay_notification_text">Notch aktiv – tippen für Einstellungen</string>
+    <string name="overlay_notification_stop">Beenden</string>
 </resources>

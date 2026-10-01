@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frezzybuilds.devnotch.feature.github.DevTabContent
+import com.frezzybuilds.devnotch.feature.notes.QuickNotesContent
 import com.frezzybuilds.devnotch.service.NotchLayout
 import com.frezzybuilds.devnotch.service.MediaNotificationListener
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
@@ -88,7 +89,8 @@ private enum class NotchTab(val title: String) {
     DEV("Dev"),
     OVERVIEW("Overview"),
     TIMER("Timer"),
-    CLIP("Clip")
+    CLIP("Clip"),
+    NOTES("Notizen")
 }
 
 /** Eine Feder für Größe und Eckenradius, damit beides synchron „nachfedert“. */
@@ -306,19 +308,20 @@ private fun Dashboard(
             contentColor = Color.White
         ) {
             NotchTab.entries.forEach { tab ->
+                // Content-Variante ohne die 16-dp-Textränder: fünf Tabs passen so in 336 dp.
                 Tab(
                     selected = tab == selectedTab,
                     onClick = { onSelectTab(tab) },
-                    unselectedContentColor = Color.Gray,
-                    text = {
-                        Text(
-                            tab.title,
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                )
+                    unselectedContentColor = Color.Gray
+                ) {
+                    Text(
+                        tab.title,
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 2.dp, vertical = 14.dp)
+                    )
+                }
             }
         }
 
@@ -332,6 +335,7 @@ private fun Dashboard(
                 NotchTab.TIMER -> FocusTimerTab(focusTimer)
                 NotchTab.CLIP -> ClipboardContent()
                 NotchTab.DEV -> DevTabContent()
+                NotchTab.NOTES -> QuickNotesContent()
             }
         }
     }
