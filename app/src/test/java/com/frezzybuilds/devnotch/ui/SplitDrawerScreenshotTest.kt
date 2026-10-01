@@ -32,6 +32,7 @@ import com.frezzybuilds.devnotch.service.NowPlaying
 import com.frezzybuilds.devnotch.service.PillGeometry
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -227,6 +228,41 @@ class SplitDrawerScreenshotTest {
         view.draw(Canvas(image))
         val out = File("build/screenshots/pill_cost.png").apply { parentFile?.mkdirs() }
         out.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    /** Dev-Tab „Projekte“: Kachel-Raster, danach das URL-Formular des „+“-Buttons. */
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h260dp-xhdpi")
+    fun renderProjectShortcuts() {
+        lateinit var view: View
+        compose.setContent {
+            view = LocalView.current
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme(colorScheme = darkColorScheme()) {
+                    Box(Modifier.background(Color.Black).padding(12.dp)) {
+                        com.frezzybuilds.devnotch.feature.github.DevTabContent()
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText("Projekte").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("DevNotch").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitForIdle()
+        fun save(name: String) {
+            val image = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(image))
+            File("build/screenshots/$name.png").apply { parentFile?.mkdirs() }.outputStream().use {
+                image.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+        }
+        save("shortcuts_grid")
+
+        compose.onNodeWithText("+").performClick()
+        compose.onNodeWithText("URL").performClick()
+        compose.onAllNodes(hasSetTextAction())[1].performTextInput("localhost:3000")
+        compose.waitForIdle()
+        compose.onNodeWithText("http://localhost:3000").assertExists()
+        save("shortcuts_add_url")
     }
 
     private fun context(): android.content.Context =

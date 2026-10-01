@@ -18,7 +18,7 @@ class NotesStorageTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Test
-    fun `migration 1 to 2 keeps the clipboard history and adds notes`() = runTest {
+    fun `migration chain 1 to 3 keeps the clipboard history and adds notes and shortcuts`() = runTest {
         // Datenbank im Zustand von Version 1 (nur Clipboard), wie sie auf Geräten liegt.
         val file = context.getDatabasePath("migrate.db").apply { parentFile?.mkdirs(); delete() }
         SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
@@ -29,11 +29,12 @@ class NotesStorageTest {
         }
 
         val database = Room.databaseBuilder(context, DevNotchDatabase::class.java, "migrate.db")
-            .addMigrations(DevNotchDatabase.MIGRATION_1_2)
+            .addMigrations(DevNotchDatabase.MIGRATION_1_2, DevNotchDatabase.MIGRATION_2_3)
             .allowMainThreadQueries()
             .build()
 
         assertEquals(listOf("git status"), database.clipboardDao().observeAll().first().map { it.text })
+        assertEquals(0, database.projectShortcutDao().getAll().size)
         database.quickNoteDao().insert(QuickNote(title = "t", content = "c", updatedAt = 1))
         assertEquals(1, database.quickNoteDao().count())
         database.close()

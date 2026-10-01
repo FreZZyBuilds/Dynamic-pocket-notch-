@@ -118,17 +118,30 @@ fun AiUsageWidget(
             )
             Spacer(Modifier.height(6.dp))
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(
-                    state.totalTokens?.let { "${formatTokens(it)} Tokens" } ?: "Tokens: –",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray
-                )
-                Text(
-                    state.usages.joinToString("  ") { "${it.provider.label} ${formatUsdExact(it.costUsd)}" },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray
-                )
+            Text(
+                state.totalTokens?.let { "${formatTokens(it)} Tokens diesen Monat" } ?: "Tokens: –",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.Gray
+            )
+            Spacer(Modifier.height(4.dp))
+            // Je Anbieter: Kosten (oder „—“, wenn per API nicht abrufbar) und Zusatzinfo.
+            state.usages.forEach { usage ->
+                Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        usage.provider.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        usage.costUsd?.let(::formatUsdExact) ?: "—",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.Gray
+                    )
+                }
+                usage.detail?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = Color(0xFF8A8A8A), maxLines = 1)
+                }
             }
             state.errors.values.forEach { error ->
                 Text(error, style = MaterialTheme.typography.labelSmall, color = Over)

@@ -2,7 +2,6 @@ package com.frezzybuilds.devnotch.feature.github
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,8 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,10 +30,46 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.frezzybuilds.devnotch.appContainer
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.frezzybuilds.devnotch.feature.shortcuts.ProjectShortcutsContent
 
-/** Dev-Tab: Profil, Heatmap der letzten 16 Wochen und Schnellzugriffe. */
+/** Bereiche des Dev-Tabs; die Wahl bleibt erhalten, solange die Notch läuft. */
+enum class DevSection(val title: String) { GITHUB("GitHub"), PROJECTS("Projekte") }
+
+private var lastDevSection by mutableStateOf(DevSection.GITHUB)
+
+/**
+ * Dev-Tab: umschaltbar zwischen GitHub (Profil + Heatmap) und Projekt-Kacheln.
+ * @param onLaunched Notch einklappen, nachdem eine App/URL gestartet wurde.
+ */
 @Composable
-fun DevTabContent() {
+fun DevTabContent(onLaunched: () -> Unit = {}) {
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            DevSection.entries.forEach { section ->
+                val active = section == lastDevSection
+                Text(
+                    section.title,
+                    color = if (active) Color.Black else Color.Gray,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(if (active) Color.White else Color(0xFF1E1E1E))
+                        .clickable { lastDevSection = section }
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+            }
+        }
+        when (lastDevSection) {
+            DevSection.GITHUB -> GitHubSection()
+            DevSection.PROJECTS -> ProjectShortcutsContent(onLaunched = onLaunched)
+        }
+    }
+}
+
+@Composable
+private fun GitHubSection() {
     val context = LocalContext.current
     val container = context.appContainer
     val viewModel = viewModel { GitHubViewModel(container.gitHubService, container.gitHubSettings) }
@@ -61,8 +94,6 @@ fun DevTabContent() {
                 is GitHubUiState.Success -> Profile(s.profile, onRefresh = viewModel::refresh)
             }
         }
-        // Shortcuts funktionieren auch ohne Token/Netz.
-        ShortcutRow()
     }
 }
 
@@ -112,24 +143,6 @@ private fun Profile(profile: GitHubProfile, onRefresh: () -> Unit) {
                 color = Color.Gray,
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(start = 12.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun ShortcutRow() {
-    val context = LocalContext.current
-    // In schmalen Drawer-Spalten seitlich scrollbar statt abgeschnitten.
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.horizontalScroll(rememberScrollState())
-    ) {
-        DefaultDevShortcuts.forEach { shortcut ->
-            AssistChip(
-                onClick = { shortcut.launch(context) },
-                label = { Text(shortcut.label, maxLines = 1) },
-                colors = AssistChipDefaults.assistChipColors(labelColor = Color.White)
             )
         }
     }

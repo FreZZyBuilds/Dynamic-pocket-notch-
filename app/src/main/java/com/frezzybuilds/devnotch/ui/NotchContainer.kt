@@ -354,7 +354,7 @@ private fun Dashboard(
                 NotchTab.AI -> AiStatsTabContent()
                 NotchTab.TIMER -> FocusTimerTab(focusTimer)
                 NotchTab.CLIP -> ClipboardContent()
-                NotchTab.DEV -> DevTabContent()
+                NotchTab.DEV -> DevTabContent(onLaunched = onClose)
                 NotchTab.NOTES -> NotesContent(onLeaveForExternalApp = onClose)
             }
         }

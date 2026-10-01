@@ -63,7 +63,7 @@ fun SplitDrawer(
                 when (pane) {
                     DrawerPane.TIMER -> FocusTimerTab(focusTimer)
                     DrawerPane.AI -> AiUsagePanel()
-                    else -> DevTabContent()
+                    else -> DevTabContent(onLaunched = onClose)
                 }
             }
             Box(

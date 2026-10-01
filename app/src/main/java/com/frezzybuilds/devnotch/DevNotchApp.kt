@@ -13,6 +13,7 @@ import com.frezzybuilds.devnotch.data.settings.NotchSettings
 import com.frezzybuilds.devnotch.feature.github.GitHubService
 import com.frezzybuilds.devnotch.feature.github.GitHubSettings
 import com.frezzybuilds.devnotch.feature.notes.NotesRepository
+import com.frezzybuilds.devnotch.feature.shortcuts.ShortcutsRepository
 import com.frezzybuilds.devnotch.feature.notes.QuickNotesStore
 import io.ktor.client.engine.android.Android
 
@@ -27,13 +28,15 @@ class AppContainer(context: Context) {
         DevNotchDatabase::class.java,
         "devnotch.db"
     )
-        // v1 → v2 ergänzt die Notizen; die Clipboard-Historie bleibt erhalten.
-        .addMigrations(DevNotchDatabase.MIGRATION_1_2)
+        // v1 → v2 Notizen, v2 → v3 Shortcuts; bestehende Daten bleiben erhalten.
+        .addMigrations(DevNotchDatabase.MIGRATION_1_2, DevNotchDatabase.MIGRATION_2_3)
         .build()
 
     val notchSettings = NotchSettings(context)
 
     val clipboardRepository = ClipboardRepository(context, database.clipboardDao())
+
+    val shortcutsRepository = ShortcutsRepository(context, database.projectShortcutDao())
 
     val notesRepository = NotesRepository(database.quickNoteDao(), QuickNotesStore(context))
 

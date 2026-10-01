@@ -20,8 +20,16 @@ class AiUsageSettings(context: Context) {
     fun setKey(provider: AiProvider, value: String?) =
         prefs.edit { putString(keyName(provider), value?.trim()) }
 
+    /** Adresse des Ollama-Servers, z. B. http://localhost:11434 (Termux) oder http://192.168.1.20:11434. */
+    var ollamaUrl: String?
+        get() = prefs.getString(KEY_OLLAMA_URL, null)?.trim()?.takeIf { it.isNotEmpty() }
+        set(value) = prefs.edit { putString(KEY_OLLAMA_URL, value?.trim()) }
+
+    /** Ollama braucht keinen Key (optional für ollama.com/Proxys), aber eine Server-Adresse. */
     val configuredProviders: List<AiProvider>
-        get() = AiProvider.entries.filter { key(it) != null }
+        get() = AiProvider.entries.filter {
+            if (it == AiProvider.OLLAMA) ollamaUrl != null else key(it) != null
+        }
 
     /** Monatslimit in USD für den Fortschrittsbalken. */
     var monthlyLimitUsd: Double
@@ -57,5 +65,6 @@ class AiUsageSettings(context: Context) {
         const val KEY_LIMIT = "monthly_limit"
         const val KEY_SHOW_IN_PILL = "show_in_pill"
         const val KEY_CACHE = "cache"
+        const val KEY_OLLAMA_URL = "ollama_url"
     }
 }

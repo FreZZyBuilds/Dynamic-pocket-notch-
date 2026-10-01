@@ -399,6 +399,10 @@ private fun AiUsageCard() {
     val scope = rememberCoroutineScope()
     var openAiKey by remember { mutableStateOf(settings.key(AiProvider.OPENAI).orEmpty()) }
     var openRouterKey by remember { mutableStateOf(settings.key(AiProvider.OPENROUTER).orEmpty()) }
+    var anthropicKey by remember { mutableStateOf(settings.key(AiProvider.ANTHROPIC).orEmpty()) }
+    var geminiKey by remember { mutableStateOf(settings.key(AiProvider.GEMINI).orEmpty()) }
+    var ollamaUrl by remember { mutableStateOf(settings.ollamaUrl.orEmpty()) }
+    var ollamaKey by remember { mutableStateOf(settings.key(AiProvider.OLLAMA).orEmpty()) }
     var limit by remember { mutableStateOf("%.2f".format(java.util.Locale.US, settings.monthlyLimitUsd)) }
     var showInPill by remember { mutableStateOf(settings.showInPill) }
     var saved by remember { mutableStateOf(false) }
@@ -418,6 +422,17 @@ private fun AiUsageCard() {
                 modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
+                value = anthropicKey,
+                onValueChange = { anthropicKey = it; saved = false },
+                label = { Text("Anthropic Admin-Key (sk-ant-admin01-…)") },
+                supportingText = {
+                    Text("Claude Console → Settings → Admin keys. Nur für Organisationen verfügbar, nicht für Einzelkonten.")
+                },
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
                 value = openRouterKey,
                 onValueChange = { openRouterKey = it; saved = false },
                 label = { Text("OpenRouter API-Key") },
@@ -425,6 +440,37 @@ private fun AiUsageCard() {
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
+            OutlinedTextField(
+                value = geminiKey,
+                onValueChange = { geminiKey = it; saved = false },
+                label = { Text("Gemini API-Key") },
+                supportingText = {
+                    Text("Google bietet keine Kosten-API: geprüft wird nur der Key, Kosten zeigt das AI-Studio-Dashboard.")
+                },
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = ollamaUrl,
+                onValueChange = { ollamaUrl = it; saved = false },
+                label = { Text("Ollama-Server") },
+                placeholder = { Text("http://localhost:11434") },
+                supportingText = { Text("Lokal (Termux), im WLAN (z. B. http://192.168.1.20:11434) oder https://ollama.com") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (ollamaUrl.isNotBlank()) {
+                OutlinedTextField(
+                    value = ollamaKey,
+                    onValueChange = { ollamaKey = it; saved = false },
+                    label = { Text("Ollama API-Key (optional, für ollama.com)") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
             OutlinedTextField(
                 value = limit,
                 onValueChange = { limit = it.replace(',', '.'); saved = false },
@@ -443,6 +489,10 @@ private fun AiUsageCard() {
                 onClick = {
                     settings.setKey(AiProvider.OPENAI, openAiKey)
                     settings.setKey(AiProvider.OPENROUTER, openRouterKey)
+                    settings.setKey(AiProvider.ANTHROPIC, anthropicKey)
+                    settings.setKey(AiProvider.GEMINI, geminiKey)
+                    settings.ollamaUrl = ollamaUrl
+                    settings.setKey(AiProvider.OLLAMA, ollamaKey)
                     settings.monthlyLimitUsd = limit.toDouble()
                     settings.showInPill = showInPill
                     saved = true

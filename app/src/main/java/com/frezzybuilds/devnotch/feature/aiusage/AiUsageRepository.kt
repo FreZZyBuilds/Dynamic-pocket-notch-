@@ -45,11 +45,14 @@ class AiUsageRepository(
         val usages = mutableListOf<ProviderUsage>()
         val errors = mutableMapOf<AiProvider, String>()
         for (provider in providers) {
-            val key = settings.key(provider) ?: continue
+            val key = settings.key(provider)
             try {
                 usages += when (provider) {
-                    AiProvider.OPENAI -> api.fetchOpenAi(key)
-                    AiProvider.OPENROUTER -> api.fetchOpenRouter(key)
+                    AiProvider.OPENAI -> api.fetchOpenAi(key ?: continue)
+                    AiProvider.ANTHROPIC -> api.fetchAnthropic(key ?: continue)
+                    AiProvider.OPENROUTER -> api.fetchOpenRouter(key ?: continue)
+                    AiProvider.GEMINI -> api.fetchGemini(key ?: continue)
+                    AiProvider.OLLAMA -> api.fetchOllama(settings.ollamaUrl ?: continue, key)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -73,7 +76,7 @@ class AiUsageRepository(
         val month = api.currentMonth()
         return runCatching { json.decodeFromString(ListSerializer(ProviderUsage.serializer()), cached) }
             .getOrDefault(emptyList())
-            .filter { it.month == month && settings.key(it.provider) != null }
+            .filter { it.month == month && it.provider in settings.configuredProviders }
     }
 
     private companion object {
