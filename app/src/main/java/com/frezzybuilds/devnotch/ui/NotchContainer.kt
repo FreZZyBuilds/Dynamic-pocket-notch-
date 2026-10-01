@@ -53,6 +53,7 @@ import com.frezzybuilds.devnotch.ui.media.EdgeMiniBubble
 import com.frezzybuilds.devnotch.ui.media.rememberEdgePlayerState
 import com.frezzybuilds.devnotch.appContainer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
@@ -76,6 +77,9 @@ private val EdgeBarWidth = 60.dp
 private val EdgeBarHeight = 340.dp
 private val EdgeBubbleSize = 56.dp
 private val EdgeBubbleGap = 8.dp
+
+/** Mindest-Wischstrecke, ab der eine Geste die Notch öffnet oder schließt. */
+private val GestureThreshold = 40.dp
 
 private enum class NotchTab(val title: String) {
     DEV("Dev"),
@@ -136,6 +140,9 @@ fun NotchContainer(
         label = "notchCorner"
     )
 
+    val haptic = LocalHapticFeedback.current
+    val dragThreshold = with(LocalDensity.current) { GestureThreshold.toPx() }
+
     MaterialTheme(colorScheme = darkColorScheme()) {
         Box(
             modifier = Modifier
@@ -147,6 +154,18 @@ fun NotchContainer(
                 .clip(if (edgeMini) RectangleShape else notchShape(layout, cornerRadius))
                 // Bubble: transparentes Fenster, die Kreisform zeichnet EdgeMiniBubble selbst.
                 .background(if (edgeMini) Color.Transparent else NotchBlack)
+                // Wischen: Notch nach unten auf / nach oben zu; Edge zur Mitte auf / zum Rand zu.
+                // Die eingeklappte Bubble hat eigene Gesten (Verschieben), daher dort nicht.
+                .then(
+                    if (edgeMini) Modifier
+                    else Modifier.notchDragGestures(
+                        mode = layout.mode,
+                        side = layout.edgeSide,
+                        expanded = isExpanded,
+                        thresholdPx = dragThreshold,
+                        haptic = haptic
+                    ) { action -> setExpanded(action == NotchGestureAction.EXPAND) }
+                )
                 // Nur eingeklappt klickbar, sonst schluckt die Box Taps im Dashboard.
                 .clickable(enabled = !isExpanded) { setExpanded(true) },
             contentAlignment = Alignment.Center
