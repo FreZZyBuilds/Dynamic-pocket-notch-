@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.frezzybuilds.devnotch.feature.aiusage.AiUsagePanel
 import com.frezzybuilds.devnotch.feature.github.DevTabContent
 import com.frezzybuilds.devnotch.feature.notes.NotesContent
 import com.frezzybuilds.devnotch.service.NowPlaying
@@ -29,11 +30,12 @@ import com.frezzybuilds.devnotch.ui.focus.FocusTimerViewModel
 enum class DrawerPane(val title: String) {
     DEV("Dev-Tools"),
     TIMER("Pomodoro"),
+    AI("AI-Kosten"),
     NOTES("Notizen"),
     CLIP("Clipboard");
 
     companion object {
-        val Left = listOf(DEV, TIMER)
+        val Left = listOf(DEV, TIMER, AI)
         val Right = listOf(NOTES, CLIP)
     }
 }
@@ -60,6 +62,7 @@ fun SplitDrawer(
             DrawerColumn(DrawerPane.Left, leftPane, onSelectLeft, Modifier.weight(1f)) { pane ->
                 when (pane) {
                     DrawerPane.TIMER -> FocusTimerTab(focusTimer)
+                    DrawerPane.AI -> AiUsagePanel()
                     else -> DevTabContent()
                 }
             }

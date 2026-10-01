@@ -2,6 +2,11 @@ package com.frezzybuilds.devnotch.ui
 
 import android.os.BatteryManager
 import androidx.compose.foundation.layout.Arrangement
+import com.frezzybuilds.devnotch.feature.aiusage.AiUsagePanel
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,7 +44,10 @@ fun OverviewTabContent(focusTimer: FocusTimerViewModel) {
             .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.verticalScroll(rememberScrollState())
+    ) {
         Text(
             DateFormat.getTimeInstance(DateFormat.SHORT).format(now),
             color = Color.White,
@@ -60,5 +68,6 @@ fun OverviewTabContent(focusTimer: FocusTimerViewModel) {
             color = Color.White,
             style = MaterialTheme.typography.bodyMedium
         )
+        AiUsagePanel(Modifier.padding(top = 4.dp))
     }
 }

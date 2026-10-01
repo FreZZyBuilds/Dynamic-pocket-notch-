@@ -4,11 +4,14 @@ import android.app.Application
 import android.content.Context
 import androidx.room.Room
 import com.frezzybuilds.devnotch.data.DevNotchDatabase
+import com.frezzybuilds.devnotch.data.createJsonHttpClient
+import com.frezzybuilds.devnotch.feature.aiusage.AiUsageApi
+import com.frezzybuilds.devnotch.feature.aiusage.AiUsageRepository
+import com.frezzybuilds.devnotch.feature.aiusage.AiUsageSettings
 import com.frezzybuilds.devnotch.data.clipboard.ClipboardRepository
 import com.frezzybuilds.devnotch.data.settings.NotchSettings
 import com.frezzybuilds.devnotch.feature.github.GitHubService
 import com.frezzybuilds.devnotch.feature.github.GitHubSettings
-import com.frezzybuilds.devnotch.feature.github.createGitHubHttpClient
 import com.frezzybuilds.devnotch.feature.notes.NotesRepository
 import com.frezzybuilds.devnotch.feature.notes.QuickNotesStore
 import io.ktor.client.engine.android.Android
@@ -34,11 +37,17 @@ class AppContainer(context: Context) {
 
     val notesRepository = NotesRepository(database.quickNoteDao(), QuickNotesStore(context))
 
+    /** Ein Ktor-Client für alle JSON-APIs. */
+    private val httpClient = createJsonHttpClient(Android.create())
+
     val gitHubSettings = GitHubSettings(context)
     val gitHubService = GitHubService(
-        client = createGitHubHttpClient(Android.create()),
+        client = httpClient,
         token = gitHubSettings::token
     )
+
+    val aiUsageSettings = AiUsageSettings(context)
+    val aiUsageRepository = AiUsageRepository(AiUsageApi(httpClient), aiUsageSettings)
 }
 
 val Context.appContainer: AppContainer

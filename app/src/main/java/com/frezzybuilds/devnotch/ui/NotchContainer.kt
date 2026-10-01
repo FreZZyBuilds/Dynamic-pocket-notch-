@@ -53,6 +53,10 @@ import com.frezzybuilds.devnotch.ui.media.EdgeHandle
 import com.frezzybuilds.devnotch.ui.media.EdgeMiniBubble
 import com.frezzybuilds.devnotch.ui.media.rememberEdgePlayerState
 import com.frezzybuilds.devnotch.appContainer
+import com.frezzybuilds.devnotch.feature.aiusage.formatUsd
+import com.frezzybuilds.devnotch.feature.aiusage.usageColor
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -81,6 +85,8 @@ private val EdgeBarWidth = 60.dp
 private val EdgeBarHeight = 340.dp
 private val EdgeBubbleSize = 56.dp
 private val EdgeBubbleGap = 8.dp
+
+private const val AI_REFRESH_INTERVAL_MS = 15 * 60_000L
 
 /** Mindest-Wischstrecke, ab der eine Geste die Notch öffnet oder schließt. */
 private val GestureThreshold = 40.dp
@@ -117,6 +123,18 @@ fun NotchContainer(
     // Eingeklappt nur anzeigen, wenn der Timer läuft oder angebrochen pausiert ist.
     val showTimerInPill = timerRunning || timerRemaining != timerTotal
     val nowPlaying by MediaNotificationListener.nowPlaying.collectAsStateWithLifecycle()
+
+    // AI-Kosten: eingeklappt optional neben dem Timer; dann regelmäßig (alle 15 min) auffrischen.
+    val container = LocalContext.current.appContainer
+    val aiUsage by container.aiUsageRepository.state.collectAsStateWithLifecycle()
+    val aiDisplay by remember { container.aiUsageSettings.displayFlow() }
+        .collectAsStateWithLifecycle(initialValue = container.aiUsageSettings.display)
+    LaunchedEffect(aiDisplay.showInPill) {
+        while (aiDisplay.showInPill) {
+            container.aiUsageRepository.refreshIfStale()
+            delay(AI_REFRESH_INTERVAL_MS)
+        }
+    }
 
     fun setExpanded(expanded: Boolean) {
         isExpanded = expanded
@@ -220,20 +238,22 @@ fun NotchContainer(
             } else if (layout.mode == NotchLayoutMode.NOTCH_TOP) {
                 val playing = nowPlaying?.takeIf { it.isPlaying }
                 val timerText = if (showTimerInPill) "⏱ ${formatMmSs(timerRemaining)}" else null
+                val costText = aiUsage.takeIf { aiDisplay.showInPill && it.usages.isNotEmpty() }
+                    ?.let { formatUsd(it.totalCostUsd) }
+                val slots = PillLayout.slots(musicPlaying = playing != null, timerText = timerText, costText = costText)
+                val costColor = usageColor(aiUsage.totalCostUsd, aiDisplay.limitUsd)
+
+                @Composable
+                fun render(item: PillItem) = when (item) {
+                    is PillItem.Timer -> PillLabel(item.text)
+                    is PillItem.Cost -> PillLabel(item.text, costColor)
+                    PillItem.MusicGlyph -> PillLabel("♪")
+                    PillItem.MusicTitle -> playing?.let { MarqueeTitle(it) }
+                }
                 CollapsedPillContent(
                     lensGap = lensGap(layout),
-                    // Links: Timer, sonst ♪ als Hinweis auf laufende Musik.
-                    start = when {
-                        playing != null && timerText != null -> { { PillLabel(timerText) } }
-                        playing != null -> { { PillLabel("♪") } }
-                        else -> null
-                    },
-                    // Rechts: Songtitel als Lauftext, sonst der Timer.
-                    end = when {
-                        playing != null -> { { MarqueeTitle(playing) } }
-                        timerText != null -> { { PillLabel(timerText) } }
-                        else -> null
-                    }
+                    start = slots.start?.let { item -> { render(item) } },
+                    end = slots.end?.let { item -> { render(item) } }
                 )
             } else {
                 // Edge-Dock: mit Musik die farbige Player-Leiste (oder eingeklappt die Cover-Bubble),
@@ -387,8 +407,8 @@ private fun CollapsedPillContent(
 }
 
 @Composable
-private fun PillLabel(text: String) {
-    Text(text, color = Color.White, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+private fun PillLabel(text: String, color: Color = Color.White) {
+    Text(text, color = color, style = MaterialTheme.typography.labelSmall, maxLines = 1)
 }
 
 /** Breite der Linse plus etwas Luft; ohne Linse 8 dp. */

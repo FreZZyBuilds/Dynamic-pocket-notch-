@@ -22,6 +22,10 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
+import com.frezzybuilds.devnotch.feature.aiusage.AiProvider
+import com.frezzybuilds.devnotch.feature.aiusage.AiUsageState
+import com.frezzybuilds.devnotch.feature.aiusage.AiUsageWidget
+import com.frezzybuilds.devnotch.feature.aiusage.ProviderUsage
 import com.frezzybuilds.devnotch.service.NotchLayout
 import com.frezzybuilds.devnotch.service.NotchLayoutMode
 import com.frezzybuilds.devnotch.service.NowPlaying
@@ -128,4 +132,95 @@ class SplitDrawerScreenshotTest {
         val out = File("build/screenshots/phone_tabs.png").apply { parentFile?.mkdirs() }
         out.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
+
+    /** AI-Widget (68 % des Limits, mit Fehler) und Widget über dem Limit. */
+    @Test
+    @Config(sdk = [34], qualifiers = "w400dp-h300dp-xhdpi")
+    fun renderAiUsageWidget() {
+        lateinit var view: View
+        val month = "2026-10"
+        compose.setContent {
+            view = LocalView.current
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme(colorScheme = darkColorScheme()) {
+                    androidx.compose.foundation.layout.Column(
+                        Modifier.background(Color.Black).padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        AiUsageWidget(
+                            state = AiUsageState(
+                                usages = listOf(
+                                    ProviderUsage(AiProvider.OPENAI, 10.12, 425_100, month, 0),
+                                    ProviderUsage(AiProvider.OPENROUTER, 3.48, null, month, 0)
+                                ),
+                                configured = true
+                            ),
+                            monthlyLimitUsd = 20.0,
+                            onRefresh = {}
+                        )
+                        AiUsageWidget(
+                            state = AiUsageState(
+                                usages = listOf(ProviderUsage(AiProvider.OPENROUTER, 21.3, null, month, 0)),
+                                errors = mapOf(AiProvider.OPENAI to "OpenAI: Admin-Key (sk-admin-…) nötig"),
+                                configured = true
+                            ),
+                            monthlyLimitUsd = 20.0,
+                            onRefresh = {}
+                        )
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        val image = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(image))
+        val out = File("build/screenshots/ai_usage.png").apply { parentFile?.mkdirs() }
+        out.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    /** Eingeklappte Pille: Timer links, AI-Kosten rechts („$1.42 neben dem Timer“). */
+    @Test
+    @Config(sdk = [34], qualifiers = "w300dp-h120dp-xhdpi")
+    fun renderPillWithCost() {
+        val month = java.time.YearMonth.now(java.time.ZoneOffset.UTC).toString()
+        // Vor dem ersten Zugriff auf den AppContainer: Key, Anzeige-Option und Cache vorbelegen.
+        context().getSharedPreferences("ai_usage", android.content.Context.MODE_PRIVATE).edit()
+            .putString("key_openrouter", "sk-or-test")
+            .putBoolean("show_in_pill", true)
+            .putFloat("monthly_limit", 20f)
+            .putString("cache", """[{"provider":"OPENROUTER","costUsd":1.42,"tokens":null,"month":"$month","fetchedAt":${System.currentTimeMillis()}}]""")
+            .commit()
+
+        lateinit var view: View
+        compose.setContent {
+            view = LocalView.current
+            // Gleicher ViewModel-Schlüssel wie im NotchContainer: Timer 47 s gelaufen, pausiert.
+            androidx.lifecycle.viewmodel.compose.viewModel {
+                var now = 0L
+                FocusTimerViewModel(clock = { now }).apply {
+                    startTimer()
+                    now = 47_000
+                    pauseTimer()
+                }
+            }
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                Box(Modifier.background(Color(0xFF3A3F8F)).padding(24.dp)) {
+                    NotchContainer(
+                        layout = NotchLayout(NotchLayoutMode.NOTCH_TOP, pill = PillGeometry(480, 96, 0, 16)),
+                        onExpandRequest = {}
+                    )
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("$1.42").assertExists()
+        compose.onNodeWithText("⏱ 24:13").assertExists()
+        val image = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(image))
+        val out = File("build/screenshots/pill_cost.png").apply { parentFile?.mkdirs() }
+        out.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    private fun context(): android.content.Context =
+        androidx.test.core.app.ApplicationProvider.getApplicationContext()
 }

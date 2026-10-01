@@ -1,6 +1,11 @@
 package com.frezzybuilds.devnotch
 
 import android.Manifest
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import com.frezzybuilds.devnotch.feature.aiusage.AiProvider
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.os.PowerManager
@@ -220,6 +225,8 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         OemHintCard(settings)
 
         GitHubCard()
+
+        AiUsageCard()
     }
 
     if (showBatteryDialog) {
@@ -377,6 +384,71 @@ private fun OemHintCard(settings: NotchSettings) {
                     settings.oemHintDone = true
                 }) { Text("Erledigt") }
             }
+        }
+    }
+}
+
+/**
+ * AI-Nutzung: Keys für OpenAI (Admin-Key) und OpenRouter, Monatslimit und ob der Betrag
+ * eingeklappt in der Notch erscheinen soll. Speichern löst sofort eine Abfrage aus.
+ */
+@Composable
+private fun AiUsageCard() {
+    val container = LocalContext.current.appContainer
+    val settings = container.aiUsageSettings
+    val scope = rememberCoroutineScope()
+    var openAiKey by remember { mutableStateOf(settings.key(AiProvider.OPENAI).orEmpty()) }
+    var openRouterKey by remember { mutableStateOf(settings.key(AiProvider.OPENROUTER).orEmpty()) }
+    var limit by remember { mutableStateOf("%.2f".format(java.util.Locale.US, settings.monthlyLimitUsd)) }
+    var showInPill by remember { mutableStateOf(settings.showInPill) }
+    var saved by remember { mutableStateOf(false) }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("AI-Nutzung", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = openAiKey,
+                onValueChange = { openAiKey = it; saved = false },
+                label = { Text("OpenAI Admin-Key (sk-admin-…)") },
+                supportingText = {
+                    Text("Nur Admin-Keys dürfen Kosten lesen: platform.openai.com → Organization → Admin keys. Der Key bleibt auf diesem Gerät.")
+                },
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = openRouterKey,
+                onValueChange = { openRouterKey = it; saved = false },
+                label = { Text("OpenRouter API-Key") },
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = limit,
+                onValueChange = { limit = it.replace(',', '.'); saved = false },
+                label = { Text("Monatslimit in \$") },
+                isError = limit.toDoubleOrNull()?.let { it <= 0 } ?: true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Kosten in der Notch anzeigen", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Switch(checked = showInPill, onCheckedChange = { showInPill = it; saved = false })
+            }
+            OutlinedButton(
+                enabled = (limit.toDoubleOrNull() ?: 0.0) > 0,
+                onClick = {
+                    settings.setKey(AiProvider.OPENAI, openAiKey)
+                    settings.setKey(AiProvider.OPENROUTER, openRouterKey)
+                    settings.monthlyLimitUsd = limit.toDouble()
+                    settings.showInPill = showInPill
+                    saved = true
+                    scope.launch { container.aiUsageRepository.refresh() }
+                }
+            ) { Text(if (saved) "Gespeichert ✓" else "Speichern") }
         }
     }
 }

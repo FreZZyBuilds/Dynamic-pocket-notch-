@@ -1,5 +1,6 @@
 package com.frezzybuilds.devnotch.feature.github
 
+import com.frezzybuilds.devnotch.data.createJsonHttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
@@ -40,7 +41,7 @@ class GitHubServiceTest {
         body: String = response("user", weeks = 20),
         captured: Captured = Captured()
     ) = GitHubService(
-        client = createGitHubHttpClient(MockEngine { request ->
+        client = createJsonHttpClient(MockEngine { request ->
             captured.authorization = request.headers[HttpHeaders.Authorization]
             val json = Json.parseToJsonElement((request.body as TextContent).text).jsonObject
             captured.query = json.getValue("query").jsonPrimitive.content
