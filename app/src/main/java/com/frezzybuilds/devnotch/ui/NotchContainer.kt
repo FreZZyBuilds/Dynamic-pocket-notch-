@@ -93,10 +93,10 @@ private val GestureThreshold = 40.dp
 
 private enum class NotchTab(val title: String) {
     DEV("Dev"),
-    OVERVIEW("Overview"),
     TIMER("Timer"),
     NOTES("Notizen"),
-    CLIP("Clip")
+    CLIP("Clip"),
+    AI("AI")
 }
 
 /** Eine Feder für Größe und Eckenradius, damit beides synchron „nachfedert“. */
@@ -351,7 +351,7 @@ private fun Dashboard(
                 .padding(top = 8.dp)
         ) {
             when (selectedTab) {
-                NotchTab.OVERVIEW -> OverviewTabContent(focusTimer)
+                NotchTab.AI -> AiStatsTabContent()
                 NotchTab.TIMER -> FocusTimerTab(focusTimer)
                 NotchTab.CLIP -> ClipboardContent()
                 NotchTab.DEV -> DevTabContent()

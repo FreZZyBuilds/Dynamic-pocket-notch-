@@ -1,13 +1,13 @@
 package com.frezzybuilds.devnotch.ui
 
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.BatteryManager
 import androidx.compose.foundation.layout.Arrangement
-import com.frezzybuilds.devnotch.feature.aiusage.AiUsagePanel
-import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,58 +16,63 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.frezzybuilds.devnotch.ui.focus.FocusTimerViewModel
-import com.frezzybuilds.devnotch.ui.focus.formatMmSs
+import com.frezzybuilds.devnotch.feature.aiusage.AiUsagePanel
 import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 
+/**
+ * Tab „AI“: Nutzungs-Widget, darüber eine kompakte Statuszeile mit Uhrzeit, Datum und Akku
+ * (ersetzt den früheren Overview-Tab).
+ */
 @Composable
-fun OverviewTabContent(focusTimer: FocusTimerViewModel) {
+fun AiStatsTabContent() {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.verticalScroll(rememberScrollState())
+    ) {
+        StatusLine()
+        AiUsagePanel()
+    }
+}
+
+/** „14:05 · Mittwoch, 1. Oktober · 🔋 82 %“ – minütlich aktualisiert. */
+@Composable
+private fun StatusLine() {
     val context = LocalContext.current
-    val remaining by focusTimer.remainingTime.collectAsStateWithLifecycle()
-    val total by focusTimer.totalTime.collectAsStateWithLifecycle()
-    val isRunning by focusTimer.isRunning.collectAsStateWithLifecycle()
     var now by remember { mutableStateOf(Date()) }
     LaunchedEffect(Unit) {
         while (true) {
             now = Date()
-            delay(1_000)
+            // Bis zum nächsten Minutenwechsel schlafen statt sekündlich neu zu zeichnen.
+            delay(60_000 - now.time % 60_000)
         }
     }
-    val battery = remember(now.time / 60_000) {
-        context.getSystemService(BatteryManager::class.java)
-            .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-    }
+    val battery = remember(now) { batteryPercent(context) }
+    val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(now)
+    val date = DateFormat.getDateInstance(DateFormat.LONG).format(now)
+    Text(
+        listOfNotNull(time, date, battery?.let { "🔋 $it %" }).joinToString(" · "),
+        color = Color.Gray,
+        style = MaterialTheme.typography.labelMedium,
+        maxLines = 1
+    )
+}
 
-    Column(
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.verticalScroll(rememberScrollState())
-    ) {
-        Text(
-            DateFormat.getTimeInstance(DateFormat.SHORT).format(now),
-            color = Color.White,
-            style = MaterialTheme.typography.displaySmall
-        )
-        Text(
-            DateFormat.getDateInstance(DateFormat.FULL).format(now),
-            color = Color.Gray,
-            style = MaterialTheme.typography.bodySmall
-        )
-        Text("🔋 $battery %", color = Color.White, style = MaterialTheme.typography.bodyMedium)
-        Text(
-            when {
-                isRunning -> "⏱ Timer läuft – ${formatMmSs(remaining)}"
-                remaining != total -> "⏱ Pausiert – ${formatMmSs(remaining)}"
-                else -> "⏱ Kein Timer aktiv"
-            },
-            color = Color.White,
-            style = MaterialTheme.typography.bodyMedium
-        )
-        AiUsagePanel(Modifier.padding(top = 4.dp))
-    }
+/**
+ * Akkustand in Prozent oder null. BATTERY_PROPERTY_CAPACITY liefert auf manchen Geräten
+ * Integer.MIN_VALUE („nicht unterstützt“) – dann den Batterie-Broadcast (level/scale) lesen.
+ */
+fun batteryPercent(context: Context): Int? {
+    val capacity = context.getSystemService(BatteryManager::class.java)
+        ?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+    if (capacity != null && capacity in 0..100) return capacity
+    val status = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return null
+    val level = status.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+    val scale = status.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+    return if (level >= 0 && scale > 0) level * 100 / scale else null
 }

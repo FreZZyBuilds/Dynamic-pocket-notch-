@@ -131,6 +131,14 @@ class SplitDrawerScreenshotTest {
         view.draw(Canvas(image))
         val out = File("build/screenshots/phone_tabs.png").apply { parentFile?.mkdirs() }
         out.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+
+        // Tab „AI“: Statuszeile + Widget (ohne Keys: Einrichtungshinweis).
+        compose.onNodeWithText("AI").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("AI Usage").assertExists()
+        val aiImage = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(aiImage))
+        File("build/screenshots/phone_tab_ai.png").outputStream().use { aiImage.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
     /** AI-Widget (68 % des Limits, mit Fehler) und Widget über dem Limit. */
