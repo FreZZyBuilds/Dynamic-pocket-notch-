@@ -59,7 +59,11 @@ class RevenueCatBilling(private val proAccess: ProAccess) : BillingClient {
         }
     }
 
-    private fun apply(info: CustomerInfo) {
+    /** true, sobald das SDK läuft (Voraussetzung für die RevenueCat-Paywall-UI). */
+    val isReady: Boolean get() = Purchases.isConfigured
+
+    /** Übernimmt den Entitlement-Status, z. B. direkt aus einem Kauf in der RevenueCat-Paywall. */
+    fun apply(info: CustomerInfo) {
         proAccess.onEntitlementChanged(info.entitlements[ProPlan.ENTITLEMENT_ID]?.isActive == true)
     }
 

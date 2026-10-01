@@ -81,7 +81,7 @@ import com.frezzybuilds.devnotch.service.openSettings
 import com.frezzybuilds.devnotch.service.isTablet
 import com.frezzybuilds.devnotch.ui.theme.DevNotchTheme
 import com.frezzybuilds.devnotch.feature.billing.Paywall
-import com.frezzybuilds.devnotch.feature.billing.PaywallDialog
+import com.frezzybuilds.devnotch.feature.billing.PaywallHost
 import com.frezzybuilds.devnotch.feature.billing.ProFeature
 
 class MainActivity : ComponentActivity() {
@@ -106,7 +106,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 if (showPaywall) {
-                    PaywallDialog(highlight = paywallFeature) {
+                    PaywallHost(highlight = paywallFeature) {
                         showPaywall = false
                         paywallFeature = null
                     }

@@ -8,6 +8,20 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+/**
+ * Release-Signatur aus keystore.properties (nicht eingecheckt, Vorlage: keystore.properties.example)
+ * oder – für CI – aus Umgebungsvariablen. Fehlt beides, entsteht ein unsigniertes Release-APK/AAB.
+ */
+val keystoreProps = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+}
+
+fun signingValue(key: String, env: String): String? =
+    keystoreProps.getProperty(key) ?: System.getenv(env)?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = signingValue("storeFile", "DEVNOTCH_KEYSTORE_FILE")?.let { rootProject.file(it) }
+val hasReleaseSigning = releaseStoreFile?.exists() == true
+
 android {
     namespace = "com.frezzybuilds.devnotch"
     compileSdk = 35
@@ -29,15 +43,47 @@ android {
             ?: (project.findProperty("revenuecat.apiKey") as String?)
             ?: "goog_REPLACE_WITH_YOUR_REVENUECAT_KEY"
         buildConfigField("String", "REVENUECAT_API_KEY", "\"$revenueCatKey\"")
+
+        // Paywall-UI: "custom" (eigene Compose-Paywall, Standard) oder "revenuecat"
+        // (RevenueCat Paywalls aus purchases-ui, im Dashboard gestaltet).
+        val paywallMode = localProps.getProperty("revenuecat.paywall")
+            ?: (project.findProperty("revenuecat.paywall") as String?)
+            ?: "custom"
+        buildConfigField("String", "PAYWALL_MODE", "\"$paywallMode\"")
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = signingValue("storePassword", "DEVNOTCH_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "DEVNOTCH_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "DEVNOTCH_KEY_PASSWORD")
+                enableV1Signing = false // minSdk 26: v2/v3 genügen
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8: Code verkleinern/optimieren/obfuskieren, ungenutzte Ressourcen entfernen.
+            // mapping.txt (build/outputs/mapping/release/) zum Entschlüsseln von Stacktraces
+            // in der Play Console hochladen – beim AAB-Upload geschieht das automatisch.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = if (hasReleaseSigning) signingConfigs.getByName("release") else null
+            // Native Debug-Symbole fürs Play-Console-Crash-Reporting (aus Bibliotheken).
+            ndk { debugSymbolLevel = "SYMBOL_TABLE" }
+        }
+        debug {
+            // Debug bleibt unminifiziert für schnelle Builds und lesbare Stacktraces.
+            isMinifyEnabled = false
         }
     }
     compileOptions {
@@ -85,6 +131,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.androidx.palette.ktx)
     implementation(libs.revenuecat.purchases)
+    implementation(libs.revenuecat.purchases.ui)
     implementation(libs.androidx.fragment.ktx)
 
     testImplementation(libs.junit)
