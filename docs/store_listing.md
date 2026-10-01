@@ -167,7 +167,7 @@ zu. Lehnt die Prüfung sie ab, kann die App stattdessen die Einstellungsliste
 
 ## Grafiken – Checkliste
 
-- [ ] App-Symbol 512 × 512 px (PNG, 32-Bit)
+- [x] App-Symbol 512 × 512 px (PNG, 32-Bit): `docs/store/icon_play_512.png`, Vorschau aller Masken in `docs/store/icon_preview.png`
 - [ ] Vorstellungsgrafik 1024 × 500 px
 - [ ] Mindestens 4 Smartphone-Screenshots (Vorlagen in `docs/screenshots/`: Pille mit Musik,
       Dashboard-Tabs, Edge-Player, Paywall); Tablet-Screenshots aus `split_drawer.png`

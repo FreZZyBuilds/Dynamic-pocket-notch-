@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive Icon, Vordergrund (108 dp; garantiert sichtbar: Kreis Ø 66 dp um 54,54).
+  Schwarze „Dynamic Island“-Pille mit Neon-Rand im Markenverlauf (Magenta → Violett → Cyan),
+  mehrlagiger Glow statt Blur (Vektoren kennen keinen Weichzeichner), links die Kameralinse,
+  rechts </> als Entwickler-Zeichen.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Lichtschein hinter der Pille -->
+    <path android:pathData="M54,54m-33,0a33,33 0,1 1,66 0a33,33 0,1 1,-66 0">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial" android:centerX="54" android:centerY="55" android:gradientRadius="33">
+                <item android:offset="0" android:color="#997C4DFF" />
+                <item android:offset="0.5" android:color="#40E040FB" />
+                <item android:offset="1" android:color="#00E040FB" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Neon-Glow: breite, transparente Konturen unter dem Rand -->
+    <path android:strokeWidth="9" android:pathData="M41,41h26a13,13 0,0 1,0 26h-26a13,13 0,0 1,0 -26z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="28" android:startY="54" android:endX="80" android:endY="54">
+                <item android:offset="0" android:color="#14E040FB" />
+                <item android:offset="0.5" android:color="#147C4DFF" />
+                <item android:offset="1" android:color="#1418FFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:strokeWidth="6.5" android:pathData="M41,41h26a13,13 0,0 1,0 26h-26a13,13 0,0 1,0 -26z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="28" android:startY="54" android:endX="80" android:endY="54">
+                <item android:offset="0" android:color="#26E040FB" />
+                <item android:offset="0.5" android:color="#267C4DFF" />
+                <item android:offset="1" android:color="#2618FFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:strokeWidth="4.5" android:pathData="M41,41h26a13,13 0,0 1,0 26h-26a13,13 0,0 1,0 -26z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="28" android:startY="54" android:endX="80" android:endY="54">
+                <item android:offset="0" android:color="#4DE040FB" />
+                <item android:offset="0.5" android:color="#4D7C4DFF" />
+                <item android:offset="1" android:color="#4D18FFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Pille -->
+    <path android:fillColor="#FF000000" android:pathData="M41,41h26a13,13 0,0 1,0 26h-26a13,13 0,0 1,0 -26z" />
+
+    <!-- Neon-Rand -->
+    <path android:strokeWidth="2.2" android:pathData="M41,41h26a13,13 0,0 1,0 26h-26a13,13 0,0 1,0 -26z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="28" android:startY="54" android:endX="80" android:endY="54">
+                <item android:offset="0" android:color="#FFE040FB" />
+                <item android:offset="0.5" android:color="#FF7C4DFF" />
+                <item android:offset="1" android:color="#FF18FFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Kameralinse: Gehäuse, Glas, Reflex -->
+    <path
+        android:fillColor="#FF14142A"
+        android:strokeColor="#FF34345C"
+        android:strokeWidth="1"
+        android:pathData="M41,54m-5.6,0a5.6,5.6 0,1 1,11.2 0a5.6,5.6 0,1 1,-11.2 0" />
+    <path android:pathData="M41,54m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial" android:centerX="41" android:centerY="54" android:gradientRadius="3">
+                <item android:offset="0" android:color="#FF1E5AA8" />
+                <item android:offset="1" android:color="#FF0A1630" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:fillColor="#E618FFFF" android:pathData="M39.6,52.5m-1.1,0a1.1,1.1 0,1 1,2.2 0a1.1,1.1 0,1 1,-2.2 0" />
+
+    <!-- </> -->
+    <path
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M56.6,50L52.6,54L56.6,58M65.3,48.2L62.3,59.8M70.8,50L74.8,54L70.8,58">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="51" android:startY="54" android:endX="76" android:endY="54">
+                <item android:offset="0" android:color="#FF18FFFF" />
+                <item android:offset="1" android:color="#FFE040FB" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

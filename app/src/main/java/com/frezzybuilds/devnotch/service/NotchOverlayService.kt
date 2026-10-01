@@ -432,7 +432,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(getString(R.string.overlay_notification_text))
-            .setSmallIcon(android.R.drawable.ic_menu_view)
+            .setSmallIcon(R.drawable.ic_stat_devnotch)
             .setContentIntent(openApp)
             .addAction(0, getString(R.string.overlay_notification_stop), stop)
             .setOngoing(true)
