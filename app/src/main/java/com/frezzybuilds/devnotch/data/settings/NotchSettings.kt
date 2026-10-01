@@ -2,7 +2,9 @@ package com.frezzybuilds.devnotch.data.settings
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.frezzybuilds.devnotch.ui.BeamLook
 import com.frezzybuilds.devnotch.ui.BeamMode
+import com.frezzybuilds.devnotch.ui.BeamStyle
 import com.frezzybuilds.devnotch.ui.BeamPalette
 import androidx.core.content.edit
 import com.frezzybuilds.devnotch.service.EdgeSide
@@ -21,7 +23,7 @@ data class EdgePrefs(
     val theme: EdgeTheme
 )
 
-data class BeamPrefs(val mode: BeamMode, val palette: BeamPalette)
+data class BeamPrefs(val mode: BeamMode, val look: BeamLook)
 
 /** Persistente Einstellungen der Notch. Der Overlay-Service beobachtet Änderungen live. */
 class NotchSettings(context: Context) {
@@ -92,15 +94,35 @@ class NotchSettings(context: Context) {
     var beamPalette: BeamPalette
         get() = prefs.getString(KEY_BEAM_PALETTE, null)
             ?.let { name -> BeamPalette.entries.firstOrNull { it.name == name } }
-            ?: BeamPalette.NEON
+            ?: BeamPalette.GEMINI
         set(value) = prefs.edit { putString(KEY_BEAM_PALETTE, value.name) }
 
-    val beamPrefs: BeamPrefs get() = BeamPrefs(beamMode, beamPalette)
+    var beamStyle: BeamStyle
+        get() = prefs.getString(KEY_BEAM_STYLE, null)
+            ?.let { name -> BeamStyle.entries.firstOrNull { it.name == name } }
+            ?: BeamStyle.BEAM
+        set(value) = prefs.edit { putString(KEY_BEAM_STYLE, value.name) }
+
+    /** Sekunden pro Runde. */
+    var beamLapSeconds: Float
+        get() = prefs.getFloat(KEY_BEAM_LAP, BeamLook.DEFAULT_LAP_SECONDS)
+        set(value) = prefs.edit { putFloat(KEY_BEAM_LAP, value.coerceIn(BeamLook.LAP_RANGE)) }
+
+    var beamBrightness: Float
+        get() = prefs.getFloat(KEY_BEAM_BRIGHTNESS, BeamLook.DEFAULT_BRIGHTNESS)
+        set(value) = prefs.edit { putFloat(KEY_BEAM_BRIGHTNESS, value.coerceIn(BeamLook.BRIGHTNESS_RANGE)) }
+
+    var beamLength: Float
+        get() = prefs.getFloat(KEY_BEAM_LENGTH, BeamLook.DEFAULT_LENGTH)
+        set(value) = prefs.edit { putFloat(KEY_BEAM_LENGTH, value.coerceIn(BeamLook.LENGTH_RANGE)) }
+
+    val beamPrefs: BeamPrefs
+        get() = BeamPrefs(beamMode, BeamLook(beamStyle, beamPalette, beamLapSeconds, beamBrightness, beamLength))
 
     /** Änderungen wirken sofort in der laufenden Notch. */
     fun beamPrefsFlow(): Flow<BeamPrefs> = callbackFlow {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == KEY_BEAM_MODE || key == KEY_BEAM_PALETTE) trySend(beamPrefs)
+            if (key in BEAM_PREF_KEYS) trySend(beamPrefs)
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
         trySend(beamPrefs)
@@ -144,6 +166,13 @@ class NotchSettings(context: Context) {
         const val KEY_EDGE_OFFSET = "edge_offset"
         const val KEY_BEAM_MODE = "beam_mode"
         const val KEY_BEAM_PALETTE = "beam_palette"
+        const val KEY_BEAM_STYLE = "beam_style"
+        const val KEY_BEAM_LAP = "beam_lap_seconds"
+        const val KEY_BEAM_BRIGHTNESS = "beam_brightness"
+        const val KEY_BEAM_LENGTH = "beam_length"
+        val BEAM_PREF_KEYS = setOf(
+            KEY_BEAM_MODE, KEY_BEAM_PALETTE, KEY_BEAM_STYLE, KEY_BEAM_LAP, KEY_BEAM_BRIGHTNESS, KEY_BEAM_LENGTH
+        )
         val EDGE_PREF_KEYS = setOf(
             KEY_EDGE_AUTO_MINIMIZE, KEY_EDGE_MINIMIZE_DELAY, KEY_EDGE_SHOW_ON_TRACK, KEY_EDGE_THEME
         )

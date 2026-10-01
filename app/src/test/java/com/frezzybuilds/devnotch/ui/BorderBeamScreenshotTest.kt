@@ -47,32 +47,42 @@ class BorderBeamScreenshotTest {
     }
 
     @Test
-    @Config(sdk = [34], qualifiers = "w360dp-h300dp-xhdpi")
+    @Config(sdk = [34], qualifiers = "w380dp-h560dp-xhdpi")
     fun renderBeams() {
         lateinit var view: View
-        val fixed = listOf(0.08f, 0.33f, 0.58f, 0.83f)
         compose.setContent {
             view = LocalView.current
             Column(
                 Modifier.fillMaxSize().background(Color(0xFF1A1630)).padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                BeamPalette.entries.forEach { palette ->
+                // Stile mit Gemini-Farben
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    BeamStyle.entries.forEach { style ->
+                        val shape = RoundedCornerShape(18.dp)
+                        Box(
+                            Modifier.size(108.dp, 36.dp).clip(shape).background(Color.Black)
+                                .borderBeam(shape, remember { mutableFloatStateOf(0.3f) }, full, BeamLook(style = style, palette = BeamPalette.GEMINI))
+                        )
+                    }
+                }
+                // Alle Paletten als Strahl
+                BeamPalette.entries.chunked(2).forEach { pair ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        fixed.forEach { p ->
-                            val shape = RoundedCornerShape(16.dp)
+                        pair.forEach { palette ->
+                            val shape = RoundedCornerShape(18.dp)
                             Box(
-                                Modifier.size(76.dp, 32.dp).clip(shape).background(Color.Black)
-                                    .borderBeam(shape, remember(p) { mutableFloatStateOf(p) }, full, palette.colors)
+                                Modifier.size(170.dp, 36.dp).clip(shape).background(Color.Black)
+                                    .borderBeam(shape, remember { mutableFloatStateOf(0.42f) }, full, BeamLook(palette = palette))
                             )
                         }
                     }
                 }
-                // Peek-Größe
+                // Peek-Größe, Gemini-Ring
                 val peekShape = RoundedCornerShape(30.dp)
                 Box(
-                    Modifier.size(320.dp, 81.dp).clip(peekShape).background(Color.Black)
-                        .borderBeam(peekShape, remember { mutableFloatStateOf(0.45f) }, full, BeamPalette.SUNSET.colors)
+                    Modifier.size(340.dp, 81.dp).clip(peekShape).background(Color.Black)
+                        .borderBeam(peekShape, remember { mutableFloatStateOf(0.45f) }, full, BeamLook(style = BeamStyle.RING))
                 )
             }
         }
@@ -90,7 +100,7 @@ class BorderBeamScreenshotTest {
                 val shape = RoundedCornerShape(20.dp)
                 Box(
                     Modifier.size(180.dp, 40.dp).clip(shape).background(Color.Black)
-                        .borderBeam(shape, position, full, BeamPalette.NEON.colors)
+                        .borderBeam(shape, position, full, BeamLook())
                 )
             }
         }

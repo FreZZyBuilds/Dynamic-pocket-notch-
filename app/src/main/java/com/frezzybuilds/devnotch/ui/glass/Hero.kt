@@ -179,9 +179,9 @@ private fun Modifier.showcaseBeam(state: ShowcaseState): Modifier {
     val prefs by remember { settings.beamPrefsFlow() }.collectAsStateWithLifecycle(initialValue = settings.beamPrefs)
     val on = prefs.mode != BeamMode.OFF
     val strength = remember { mutableFloatStateOf(1f) }.also { it.floatValue = if (on) 1f else 0f }
-    val position = rememberBeamPosition(running = on)
+    val position = rememberBeamPosition(running = on, lapSeconds = prefs.look.lapSeconds)
     val shape = RoundedCornerShape(if (state.height > PillHeight) 28.dp else PillHeight / 2)
-    return borderBeam(shape, position, strength, prefs.palette.colors)
+    return borderBeam(shape, position, strength, prefs.look)
 }
 
 /** Timer-Zustand: Neon-Linie läuft um die Pille (Vorschau des echten Timer-Rings). */

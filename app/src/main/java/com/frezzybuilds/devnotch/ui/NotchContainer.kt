@@ -353,7 +353,7 @@ fun NotchContainer(
         BeamMode.OFF -> false
     }
     val beamStrength = animateFloatAsState(if (beamOn) 1f else 0f, tween(450), label = "beamStrength")
-    val beamPosition = rememberBeamPosition(running = beamOn)
+    val beamPosition = rememberBeamPosition(running = beamOn, lapSeconds = beamPrefs.look.lapSeconds)
 
     CompositionLocalProvider(LocalOverlayFocus provides overlayFocus) {
         MaterialTheme(colorScheme = Brand.NotchScheme) {
@@ -381,7 +381,7 @@ fun NotchContainer(
                     .then(if (edgeMini) Modifier else Modifier.neonFrame(animatedShape, rim))
                     .then(
                         if (beamShapeFits) {
-                            Modifier.borderBeam(animatedShape, beamPosition, beamStrength, beamPrefs.palette.colors)
+                            Modifier.borderBeam(animatedShape, beamPosition, beamStrength, beamPrefs.look)
                         } else {
                             Modifier
                         }

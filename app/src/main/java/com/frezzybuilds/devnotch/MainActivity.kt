@@ -1,6 +1,10 @@
 package com.frezzybuilds.devnotch
 
 import android.Manifest
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Slider
+import com.frezzybuilds.devnotch.ui.BeamStyle
+import com.frezzybuilds.devnotch.ui.BeamLook
 import androidx.compose.runtime.mutableFloatStateOf
 import com.frezzybuilds.devnotch.ui.rememberBeamPosition
 import com.frezzybuilds.devnotch.ui.borderBeam
@@ -324,7 +328,12 @@ fun SetupScreen(
             }
         }
 
-        BeamCard(settings, Modifier.staggerIn(4))
+        GlassCard(Modifier.fillMaxWidth().staggerIn(4)) {
+            Column(CardPadding, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                SectionHeader(icon = "✧", title = "Lichtlauf", subtitle = "Licht, das um die Notch kreist")
+                BeamSettings(settings)
+            }
+        }
 
         Box(Modifier.staggerIn(4)) { OemHintCard(settings) }
 
@@ -360,54 +369,153 @@ fun SetupScreen(
 }
 
 /**
- * Lichtlauf um die Notch: Modus und Farben wählen, mit Live-Vorschau. Änderungen wirken
- * sofort in der laufenden Notch.
+ * Lichtlauf um die Notch: Modus, Stil, Farben, Tempo, Helligkeit und Länge – mit
+ * Live-Vorschau. Änderungen wirken sofort in der laufenden Notch.
  */
 @Composable
-private fun BeamCard(settings: NotchSettings, modifier: Modifier = Modifier) {
+private fun BeamSettings(settings: NotchSettings) {
     var mode by remember { mutableStateOf(settings.beamMode) }
+    var style by remember { mutableStateOf(settings.beamStyle) }
     var palette by remember { mutableStateOf(settings.beamPalette) }
-    GlassCard(modifier.fillMaxWidth()) {
-        Column(CardPadding, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            SectionHeader(
-                icon = "✧",
-                title = "Lichtlauf",
-                subtitle = when (mode) {
-                    BeamMode.ALWAYS -> "Kreist ständig um die Notch (etwas mehr Akku)"
-                    BeamMode.EVENTS -> "Nur beim Aufklappen und bei Peeks"
-                    BeamMode.OFF -> "Aus"
-                }
+    var lap by remember { mutableFloatStateOf(settings.beamLapSeconds) }
+    var brightness by remember { mutableFloatStateOf(settings.beamBrightness) }
+    var length by remember { mutableFloatStateOf(settings.beamLength) }
+    val look = BeamLook(style, palette, lap, brightness, length)
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        // Live-Vorschau: schwarze Pille mit dem gewählten Lichtlauf.
+        Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+            val position = rememberBeamPosition(running = mode != BeamMode.OFF, lapSeconds = lap)
+            val strength = remember { mutableFloatStateOf(1f) }.also { it.floatValue = if (mode == BeamMode.OFF) 0f else 1f }
+            val shape = RoundedCornerShape(26.dp)
+            Box(
+                Modifier
+                    .size(240.dp, 52.dp)
+                    .clip(shape)
+                    .background(Color.Black)
+                    .borderBeam(shape, position, strength, look)
             )
-            // Live-Vorschau: schwarze Pille mit dem gewählten Lichtlauf.
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                val position = rememberBeamPosition(running = mode != BeamMode.OFF)
-                val strength = remember { mutableFloatStateOf(1f) }.also { it.floatValue = if (mode == BeamMode.OFF) 0f else 1f }
-                val shape = RoundedCornerShape(22.dp)
-                Box(
-                    Modifier
-                        .size(220.dp, 44.dp)
-                        .clip(shape)
-                        .background(Color.Black)
-                        .borderBeam(shape, position, strength, palette.colors)
-                )
-            }
+        }
+        Text(
+            when (mode) {
+                BeamMode.ALWAYS -> "Kreist ständig um die Notch – kostet etwas mehr Akku."
+                BeamMode.EVENTS -> "Nur beim Aufklappen und bei Peeks."
+                BeamMode.OFF -> "Kein Lichtlauf."
+            },
+            color = Glass.TextSecondary,
+            style = MaterialTheme.typography.bodySmall
+        )
+        ChoiceRow(BeamMode.entries, mode, { it.label }) { mode = it; settings.beamMode = it }
+        SettingLabel("Stil")
+        ChoiceRow(BeamStyle.entries, style, { it.label }) { style = it; settings.beamStyle = it }
+
+        SettingLabel("Farben")
+        BeamPalette.entries.chunked(2).forEach { pair ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BeamMode.entries.forEach { option ->
-                    ModeChip(option.label, selected = option == mode, modifier = Modifier.weight(1f)) {
-                        mode = option
-                        settings.beamMode = option
-                    }
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BeamPalette.entries.forEach { option ->
-                    ModeChip(option.label, selected = option == palette, modifier = Modifier.weight(1f)) {
+                pair.forEach { option ->
+                    PaletteChip(option, selected = option == palette, modifier = Modifier.weight(1f)) {
                         palette = option
                         settings.beamPalette = option
                     }
                 }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         }
+
+        // Tempo: rechts = schneller (kürzere Runde).
+        ValueSlider(
+            label = "Tempo",
+            valueText = "%.1f s pro Runde".format(java.util.Locale.GERMANY, lap),
+            value = BeamLook.LAP_RANGE.endInclusive + BeamLook.LAP_RANGE.start - lap,
+            range = BeamLook.LAP_RANGE,
+            onChange = { lap = BeamLook.LAP_RANGE.endInclusive + BeamLook.LAP_RANGE.start - it },
+            onDone = { settings.beamLapSeconds = lap }
+        )
+        ValueSlider(
+            label = "Helligkeit",
+            valueText = "${(brightness * 100).toInt()} %",
+            value = brightness,
+            range = BeamLook.BRIGHTNESS_RANGE,
+            onChange = { brightness = it },
+            onDone = { settings.beamBrightness = brightness }
+        )
+        ValueSlider(
+            label = "Länge",
+            valueText = "${(length * 100).toInt()} % des Rands",
+            value = length,
+            range = BeamLook.LENGTH_RANGE,
+            onChange = { length = it },
+            onDone = { settings.beamLength = length }
+        )
+    }
+}
+
+/** Zwischenüberschrift innerhalb einer Karte. */
+@Composable
+private fun SettingLabel(text: String) {
+    Text(text.uppercase(), color = Glass.TextSecondary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+}
+
+/** Reihe aus Auswahl-Kacheln (eine aktiv). */
+@Composable
+private fun <T> ChoiceRow(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { option ->
+            ModeChip(label(option), selected = option == selected, modifier = Modifier.weight(1f)) { onSelect(option) }
+        }
+    }
+}
+
+/** Paletten-Kachel: Farbverlauf als Balken plus Name. */
+@Composable
+private fun PaletteChip(palette: BeamPalette, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier
+            .clip(shape)
+            .background(if (selected) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.03f))
+            .border(if (selected) 1.5.dp else 1.dp, if (selected) SolidColor(Color.White.copy(alpha = 0.7f)) else SolidColor(Color.White.copy(alpha = 0.12f)), shape)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(34.dp, 10.dp)
+                .clip(CircleShape)
+                .background(Brush.horizontalGradient(palette.colors))
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(palette.label, color = if (selected) Color.White else Glass.TextSecondary, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+/** Regler mit Beschriftung und aktuellem Wert; gespeichert wird beim Loslassen. */
+@Composable
+private fun ValueSlider(
+    label: String,
+    valueText: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onChange: (Float) -> Unit,
+    onDone: () -> Unit
+) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text(valueText, color = Glass.TextSecondary, style = MaterialTheme.typography.labelMedium)
+        }
+        Slider(
+            value = value,
+            onValueChange = onChange,
+            onValueChangeFinished = onDone,
+            valueRange = range,
+            colors = SliderDefaults.colors(
+                thumbColor = Color.White,
+                activeTrackColor = Brand.Lilac,
+                inactiveTrackColor = Color.White.copy(alpha = 0.15f)
+            )
+        )
     }
 }
 
