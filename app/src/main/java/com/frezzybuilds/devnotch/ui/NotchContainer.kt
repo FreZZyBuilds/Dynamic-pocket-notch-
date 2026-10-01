@@ -1,6 +1,14 @@
 package com.frezzybuilds.devnotch.ui
 
 import androidx.compose.animation.animateContentSize
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.geometry.Size
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.rememberCoroutineScope
 import com.frezzybuilds.devnotch.peek.PeekCenter
 import com.frezzybuilds.devnotch.peek.Peek
 import androidx.compose.ui.layout.ContentScale
@@ -186,11 +194,25 @@ fun NotchContainer(
         }
     }
 
+    // Aufklappen in zwei Schritten: erst vergrößert der Service das Fenster, zwei Bilder später
+    // federt der Inhalt auf. Sonst zeichnet Android ein Bild mit alter Fenstergröße (schwarzer,
+    // eckiger Kasten). Einklappen sofort – das Fenster schrumpft erst nach der Animation.
+    val expandScope = rememberCoroutineScope()
+    var expandJob by remember { mutableStateOf<Job?>(null) }
     fun setExpanded(expanded: Boolean) {
         // Wer aufklappt, sieht ohnehin alles – ein laufender Peek ist damit erledigt.
         if (expanded) PeekCenter.current.value?.let(PeekCenter::dismiss)
-        isExpanded = expanded
+        expandJob?.cancel()
         onExpandRequest(expanded)
+        if (expanded) {
+            expandJob = expandScope.launch {
+                withFrameNanos { }
+                withFrameNanos { }
+                isExpanded = true
+            }
+        } else {
+            isExpanded = false
+        }
     }
 
     // --- Peeks: kurze Live-Einblendungen der eingeklappten Pille (nur Notch oben) -----------
@@ -265,7 +287,9 @@ fun NotchContainer(
     } else {
         pillWidth to pillHeight
     }
-    val cornerRadius by animateDpAsState(
+    // Als State, gelesen erst in Layer/Zeichnen: Ein animierter Radius darf nicht bei jedem
+    // Bild den ganzen Container neu komponieren (das ruckelte beim Einklappen).
+    val cornerRadius = animateDpAsState(
         targetValue = when {
             isExpanded -> 24.dp
             activePeek != null -> 30.dp
@@ -274,6 +298,7 @@ fun NotchContainer(
         animationSpec = notchSpring(),
         label = "notchCorner"
     )
+    val animatedShape = remember(layout.mode, layout.edgeSide) { AnimatedNotchShape(layout, cornerRadius) }
 
     // Edge-Modus: Drawer-Größe aus Bildschirm und Ausrichtung (Hoch-/Querformat).
     val configuration = LocalConfiguration.current
@@ -346,14 +371,17 @@ fun NotchContainer(
                         if (isExpanded) Modifier.size(expandedWidth, expandedHeight)
                         else Modifier.size(collapsedWidth, collapsedHeight)
                     )
-                    .clip(if (edgeMini) RectangleShape else notchShape(layout, cornerRadius))
+                    .graphicsLayer {
+                        shape = if (edgeMini) RectangleShape else notchShape(layout, cornerRadius.value)
+                        clip = true
+                    }
                     // Bubble: transparentes Fenster, die Kreisform zeichnet EdgeMiniBubble selbst.
                     .background(if (edgeMini) Color.Transparent else NotchBlack)
                     // Aufgeklappt: violetter Schimmer von oben und Neon-Rand wie im App-Icon.
-                    .then(if (edgeMini) Modifier else Modifier.neonFrame(notchShape(layout, cornerRadius), rim))
+                    .then(if (edgeMini) Modifier else Modifier.neonFrame(animatedShape, rim))
                     .then(
                         if (beamShapeFits) {
-                            Modifier.borderBeam(notchShape(layout, cornerRadius), beamPosition, beamStrength, beamPrefs.palette.colors)
+                            Modifier.borderBeam(animatedShape, beamPosition, beamStrength, beamPrefs.palette.colors)
                         } else {
                             Modifier
                         }
@@ -741,5 +769,14 @@ private fun Modifier.pillProgress(elapsed: State<Float>): Modifier = drawWithCon
     val segment = Path()
     measure.getSegment(0f, measure.length * fraction, segment, true)
     drawPath(segment, Brand.Horizontal, style = Stroke(width = stroke, cap = StrokeCap.Round))
+}
+
+/**
+ * Form mit animiertem Eckenradius: Der Radius wird erst beim Erzeugen der Kontur gelesen
+ * (Zeichen-/Cache-Phase) – Rand und Lichtlauf folgen ihm ohne Recomposition.
+ */
+private class AnimatedNotchShape(private val layout: NotchLayout, private val radius: State<Dp>) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
+        notchShape(layout, radius.value).createOutline(size, layoutDirection, density)
 }
 
