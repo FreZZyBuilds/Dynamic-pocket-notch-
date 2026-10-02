@@ -72,6 +72,10 @@ fun PeekContent(
     /** Groß öffnen (Lesen und Antworten) – wie Herunterziehen. */
     onExpand: () -> Unit = {}
 ) {
+    if (peek is Peek.MusicPlayer) {
+        Box(modifier.fillMaxSize()) { MusicPlayerContent(pillHeight) }
+        return
+    }
     val spec = peekSpec(peek)
     Box(modifier.fillMaxSize().then(if (peek is Peek.Charging) Modifier.chargeSweep() else Modifier)) {
         Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
@@ -214,6 +218,23 @@ private fun peekSpec(peek: Peek): PeekSpec = when (peek) {
         trailing = { Pulsing { Text("● ● ●", color = Brand.Charge, style = MaterialTheme.typography.labelSmall) } }
     )
     is Peek.LiveBanner -> liveBannerSpec(peek.live)
+    // Wird oben in PeekContent direkt gezeichnet.
+    is Peek.MusicPlayer -> PeekSpec("", null, {}, {})
+    is Peek.System -> {
+        val tint = Color(peek.tint)
+        PeekSpec(
+            title = peek.title,
+            subtitle = null,
+            leading = {
+                Box(Modifier.size(26.dp).clip(CircleShape).background(tint.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
+                    Text(peek.symbol, color = tint, style = MaterialTheme.typography.labelLarge)
+                }
+            },
+            trailing = {
+                peek.value?.let { Text(it, color = tint, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1) }
+            }
+        )
+    }
     is Peek.TrackChanged -> PeekSpec(
         title = peek.title,
         subtitle = peek.artist,
@@ -402,6 +423,18 @@ private fun liveBannerSpec(live: LiveActivity): PeekSpec {
             subtitle = live.app,
             leading = { icon(live.icon, "↓", Brand.Horizontal) },
             trailing = { value("${(live.fraction * 100).toInt()} %", Brand.Lilac) }
+        )
+        is LiveActivity.Recording -> PeekSpec(
+            title = "Bildschirmaufnahme",
+            subtitle = live.app,
+            leading = { Badge("●", Brush.linearGradient(listOf(Color(0xFFFF3B30), Color(0xFFFF6B6B)))) },
+            trailing = { if (plausibleDuration(live.since, now)) value(formatDuration(now - live.since), Color(0xFFFF3B30)) }
+        )
+        LiveActivity.Torch -> PeekSpec(
+            title = "Taschenlampe",
+            subtitle = "Leuchtet",
+            leading = { Badge("🔦", Brush.linearGradient(listOf(Color(0xFFFFD60A), Color(0xFFFFA000)))) },
+            trailing = {}
         )
     }
 }

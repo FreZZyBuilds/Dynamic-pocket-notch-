@@ -480,3 +480,20 @@ internal fun LiveBannerSetting(settings: NotchSettings) {
         settings.liveBanner = it
     }
 }
+
+/** Systemereignisse wie auf dem iPhone – jedes einzeln an/aus. */
+@Composable
+internal fun SystemEventSettings(settings: NotchSettings) {
+    var off by remember { mutableStateOf(settings.systemEventsOff) }
+    Text(
+        "Kurze Hinweise aus der Notch wie bei Apples Dynamic Island. Keine Berechtigung nötig.",
+        color = Glass.TextSecondary,
+        style = MaterialTheme.typography.bodySmall
+    )
+    com.frezzybuilds.devnotch.system.SystemEvent.entries.forEach { event ->
+        SwitchRow(event.label, event.description, event.name !in off) { on ->
+            settings.setSystemEvent(event, on)
+            off = settings.systemEventsOff
+        }
+    }
+}

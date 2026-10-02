@@ -366,6 +366,14 @@ fun SetupScreen(
         ) { LiveViewSettings(settings) }
 
         SettingsSection(
+            id = "system",
+            icon = "◎",
+            title = "Systemereignisse",
+            subtitle = "Lautlos, Akku, Kopfhörer, Taschenlampe …",
+            modifier = Modifier.staggerIn(5)
+        ) { SystemEventSettings(settings) }
+
+        SettingsSection(
             id = "lock",
             icon = "🔒",
             title = "Sperrbildschirm",

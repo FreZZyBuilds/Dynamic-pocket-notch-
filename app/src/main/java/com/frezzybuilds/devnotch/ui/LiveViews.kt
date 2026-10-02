@@ -1,5 +1,14 @@
 package com.frezzybuilds.devnotch.ui
 
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.ui.platform.LocalContext
+import com.frezzybuilds.devnotch.system.SystemStatus
 import com.frezzybuilds.devnotch.notify.NotificationHub
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
@@ -85,7 +94,7 @@ fun navDistance(nav: LiveActivity.Navigation): String? =
 /** Eingeklappte Pille mit Live-Ansicht: links Symbol, rechts der wichtigste Wert. */
 @Composable
 fun LivePill(live: LiveActivity, lensGap: Dp) {
-    val now = rememberNow(ticking = live is LiveActivity.Call || live is LiveActivity.Timer)
+    val now = rememberNow(ticking = live is LiveActivity.Call || live is LiveActivity.Timer || live is LiveActivity.Recording)
     Row(
         Modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -96,6 +105,8 @@ fun LivePill(live: LiveActivity, lensGap: Dp) {
                 is LiveActivity.Navigation -> LiveIcon(live.turnIcon, "➤", Brand.Cyan)
                 is LiveActivity.Timer -> LiveIcon(null, "⏱", Brand.Violet)
                 is LiveActivity.Progress -> LiveIcon(live.icon, "↓", Brand.Lilac)
+                is LiveActivity.Recording -> RecordingDot()
+                LiveActivity.Torch -> LiveIcon(null, "🔦", TorchYellow)
             }
         }
         Spacer(Modifier.width(lensGap))
@@ -106,6 +117,8 @@ fun LivePill(live: LiveActivity, lensGap: Dp) {
                 is LiveActivity.Navigation -> (navDistance(live) ?: "") to Brand.Cyan
                 is LiveActivity.Timer -> formatDuration(if (live.countDown) live.base - now else now - live.base) to Color.White
                 is LiveActivity.Progress -> "${(live.fraction * 100).toInt()} %" to Brand.Lilac
+                is LiveActivity.Recording -> (if (plausibleDuration(live.since, now)) formatDuration(now - live.since) else "REC") to RecordingRed
+                LiveActivity.Torch -> "An" to TorchYellow
             }
             Text(text, color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
@@ -127,7 +140,7 @@ private fun LiveIcon(bitmap: Bitmap?, fallback: String, tint: Color, size: Dp = 
 /** Aufgeklappt: Live-Karte über den Tabs, mit den passenden Aktionen. */
 @Composable
 fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Modifier = Modifier) {
-    val now = rememberNow(ticking = live is LiveActivity.Call || live is LiveActivity.Timer)
+    val now = rememberNow(ticking = live is LiveActivity.Call || live is LiveActivity.Timer || live is LiveActivity.Recording)
     val shape = RoundedCornerShape(16.dp)
     Column(
         modifier
@@ -144,6 +157,8 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
                 is LiveActivity.Navigation -> LiveIcon(live.turnIcon, "➤", Brand.Cyan, 32.dp)
                 is LiveActivity.Timer -> LiveIcon(live.icon, "⏱", Brand.Violet, 32.dp)
                 is LiveActivity.Progress -> LiveIcon(live.icon, "↓", Brand.Lilac, 32.dp)
+                is LiveActivity.Recording -> LiveIcon(null, "●", RecordingRed, 32.dp)
+                LiveActivity.Torch -> LiveIcon(null, "🔦", TorchYellow, 32.dp)
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
@@ -152,6 +167,8 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
                     is LiveActivity.Navigation -> live.instruction to (live.detail ?: live.app)
                     is LiveActivity.Timer -> live.title to "${live.app} · ${formatDuration(if (live.countDown) live.base - now else now - live.base)}"
                     is LiveActivity.Progress -> live.title to "${live.app} · ${(live.fraction * 100).toInt()} %"
+                    is LiveActivity.Recording -> "Bildschirmaufnahme" to (if (plausibleDuration(live.since, now)) "${live.app} · ${formatDuration(now - live.since)}" else live.app)
+                    LiveActivity.Torch -> "Taschenlampe" to "Leuchtet"
                 }
                 Text(title, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.smoothMarquee())
                 Text(detail, color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -174,13 +191,37 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
                     }
                 }
                 is LiveActivity.Navigation -> ActionChip("${live.app} öffnen", highlighted = true) { onSend(live.contentIntent) }
+                LiveActivity.Torch -> {
+                    val context = LocalContext.current
+                    ActionChip("Ausschalten", highlighted = true) { SystemStatus.turnOffTorch(context) }
+                }
                 else -> ActionChip("Öffnen", highlighted = true) { onSend(live.contentIntent) }
             }
             // Bleibt eine Ansicht hängen (z. B. App lässt die Benachrichtigung stehen): wegnehmen.
-            if (live !is LiveActivity.Call) {
+            if (live !is LiveActivity.Call && live !is LiveActivity.Torch) {
                 ActionChip("Ausblenden", highlighted = false) { NotificationHub.hide(live.key) }
             }
         }
     }
 }
 
+private val RecordingRed = Color(0xFFFF3B30)
+private val TorchYellow = Color(0xFFFFD60A)
+
+/** Roter, sanft pulsierender Aufnahme-Punkt (Alpha in der Zeichenphase). */
+@Composable
+private fun RecordingDot() {
+    val alpha = if (LocalInspectionMode.current) {
+        remember { mutableFloatStateOf(1f) }
+    } else {
+        rememberInfiniteTransition(label = "rec").animateFloat(
+            initialValue = 1f,
+            targetValue = 0.35f,
+            animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+            label = "recAlpha"
+        )
+    }
+    Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(10.dp).graphicsLayer { this.alpha = alpha.value }.clip(CircleShape).background(RecordingRed))
+    }
+}

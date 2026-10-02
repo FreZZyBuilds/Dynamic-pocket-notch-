@@ -1,5 +1,7 @@
 package com.frezzybuilds.devnotch.service
 
+import com.frezzybuilds.devnotch.system.SystemEventMonitor
+import com.frezzybuilds.devnotch.system.SystemEvent
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CoroutineScope
@@ -156,6 +158,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         if (changed) applyLayout()
     }
 
+    /** Lautlos, Nicht stören, Akku, Kopfhörer, Taschenlampe … (Apple-Insel-Ereignisse). */
+    private lateinit var systemEvents: SystemEventMonitor
+
     /** Bildschirm an/aus und Sperre – bestimmt Sichtbarkeit und was die Notch zeigen darf. */
     private var deviceLock by mutableStateOf(DeviceLock.UNLOCKED)
     private lateinit var lockSettingsListener: SharedPreferences.OnSharedPreferenceChangeListener
@@ -178,6 +183,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             applyLayout()
             // Beim Einschalten/Entsperren veraltete Live-Ansichten (beendete Fahrt …) sofort entfernen.
             if (next != DeviceLock.SCREEN_OFF) NotificationHub.reconciler?.invoke()
+            if (intent.action == Intent.ACTION_USER_PRESENT) systemEvents.onUnlocked()
         }
     }
 
@@ -185,6 +191,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private val powerReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action != Intent.ACTION_POWER_CONNECTED) return
+            if (!appContainer.notchSettings.isSystemEventOn(SystemEvent.CHARGING)) return
             val percent = getSystemService(BatteryManager::class.java)
                 ?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 ?.takeIf { it in 0..100 }
@@ -224,6 +231,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             notchLayout = notchLayout.copy(mode = effectiveMode())
             applyLayout()
         }
+
+        systemEvents = SystemEventMonitor(this, settings).also { it.start() }
 
         clipboardListener = ClipboardListener(this, appContainer.clipboardRepository, lifecycleScope)
         clipboardListener.start()
@@ -285,6 +294,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     }
 
     override fun onDestroy() {
+        systemEvents.stop()
         overlayRecomposer.cancel()
         recomposeScope.cancel()
         snapAnimator?.cancel()

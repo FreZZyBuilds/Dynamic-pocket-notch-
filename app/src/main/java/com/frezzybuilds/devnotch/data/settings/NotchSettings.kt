@@ -1,5 +1,6 @@
 package com.frezzybuilds.devnotch.data.settings
 
+import com.frezzybuilds.devnotch.system.SystemEvent
 import android.content.Context
 import android.content.SharedPreferences
 import com.frezzybuilds.devnotch.ui.BeamLook
@@ -202,6 +203,17 @@ class NotchSettings(context: Context) {
         get() = prefs.getBoolean(KEY_LIVE_PROGRESS, true)
         set(value) = prefs.edit { putBoolean(KEY_LIVE_PROGRESS, value) }
 
+    // --- Systemereignisse (Apple-Insel): einzeln abschaltbar ----------------------------------
+    var systemEventsOff: Set<String>
+        get() = prefs.getStringSet(KEY_SYSTEM_OFF, emptySet()).orEmpty().toSet()
+        set(value) = prefs.edit { putStringSet(KEY_SYSTEM_OFF, value) }
+
+    fun isSystemEventOn(event: SystemEvent): Boolean = event.name !in systemEventsOff
+
+    fun setSystemEvent(event: SystemEvent, on: Boolean) {
+        systemEventsOff = if (on) systemEventsOff - event.name else systemEventsOff + event.name
+    }
+
     var liveBanner: Boolean
         get() = prefs.getBoolean(KEY_LIVE_BANNER, true)
         set(value) = prefs.edit { putBoolean(KEY_LIVE_BANNER, value) }
@@ -215,7 +227,7 @@ class NotchSettings(context: Context) {
             skipSilent = notifySkipSilent,
             respectDnd = notifyRespectDnd,
             blockedApps = notifyBlockedApps,
-            live = LivePrefs(liveCalls, liveNavigation, liveTimers, liveProgress, liveBanner)
+            live = LivePrefs(liveCalls, liveNavigation, liveTimers, liveProgress, liveBanner, isSystemEventOn(SystemEvent.RECORDING))
         )
 
     fun notifyPrefsFlow(): Flow<NotifyPrefs> = callbackFlow {
@@ -297,10 +309,11 @@ class NotchSettings(context: Context) {
         const val KEY_LIVE_TIMERS = "live_timers"
         const val KEY_LIVE_PROGRESS = "live_progress"
         const val KEY_LIVE_BANNER = "live_banner"
+        const val KEY_SYSTEM_OFF = "system_events_off"
         val NOTIFY_PREF_KEYS = setOf(
             KEY_NOTIFY_ENABLED, KEY_NOTIFY_DURATION, KEY_NOTIFY_LOCK_CONTENT, KEY_NOTIFY_SKIP_ONGOING,
             KEY_NOTIFY_SKIP_SILENT, KEY_NOTIFY_DND, KEY_NOTIFY_BLOCKED,
-            KEY_LIVE_CALLS, KEY_LIVE_NAV, KEY_LIVE_TIMERS, KEY_LIVE_PROGRESS, KEY_LIVE_BANNER
+            KEY_LIVE_CALLS, KEY_LIVE_NAV, KEY_LIVE_TIMERS, KEY_LIVE_PROGRESS, KEY_LIVE_BANNER, KEY_SYSTEM_OFF
         )
         private const val KEY_DISPLAY_MODE = "display_mode"
         const val KEY_NOTCH_ENABLED = "notch_enabled"

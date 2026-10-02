@@ -47,6 +47,26 @@ sealed interface Peek {
     }
 
     /** Neuer Titel läuft. */
+    /**
+     * Systemereignis wie auf dem iPhone: Lautlos, Nicht stören, Energiesparen, Akku schwach,
+     * Kopfhörer, Entsperren. [tint] ist eine ARGB-Farbe für Symbol und Wert.
+     */
+    data class System(
+        val event: com.frezzybuilds.devnotch.system.SystemEvent,
+        val symbol: String,
+        val title: String,
+        val value: String?,
+        val tint: Long
+    ) : Peek {
+        override val durationMs = if (event == com.frezzybuilds.devnotch.system.SystemEvent.UNLOCK) 1_300L else 2_200L
+    }
+
+    /** Großer Player (Gedrückthalten bei Musik); [shownAt] macht jede Bedienung zu einem neuen Peek. */
+    data class MusicPlayer(val shownAt: Long = java.lang.System.nanoTime()) : Peek {
+        override val durationMs = 8_000L
+        override val extraHeightDp: Int get() = 112
+    }
+
     /** Live-Ansicht als Banner unter der Kamera (Navigation, Anruf, Timer) – bleibt, solange sie läuft. */
     data class LiveBanner(val live: com.frezzybuilds.devnotch.notify.LiveActivity) : Peek {
         override val durationMs = Long.MAX_VALUE

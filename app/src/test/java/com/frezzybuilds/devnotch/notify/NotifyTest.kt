@@ -117,13 +117,17 @@ class NotifyTest {
     }
 
     @Test
-    fun `screen recording is neither navigation nor timer`() {
+    fun `screen recording is a recording, never navigation or timer`() {
         val prefs = LivePrefs()
         // Samsung-Bildschirmaufnahme: laufende Uhr, teils mit Kategorie „navigation“.
         val recorder = msg(pkg = "com.samsung.android.app.smartcapture", title = "Tippe hier, um die Aufnahme anzuhalten.")
             .copy(ongoing = true, usesChronometer = true, whenTime = 9_000L, category = Notification.CATEGORY_NAVIGATION)
-        assertNull(LiveParsers.parse(recorder, prefs))
-        assertNull(LiveParsers.parse(recorder.copy(category = null), prefs))
+        assertEquals(9_000L, (LiveParsers.parse(recorder, prefs) as LiveActivity.Recording).since)
+        assertTrue(LiveParsers.parse(recorder.copy(category = null), prefs) is LiveActivity.Recording)
+        // Abgeschaltet: weder Aufnahme noch etwas anderes.
+        assertNull(LiveParsers.parse(recorder, prefs.copy(recording = false)))
+        // System-UI ohne laufende Uhr ist keine Aufnahme.
+        assertNull(LiveParsers.parse(msg(pkg = "com.android.systemui", title = "USB-Debugging").copy(ongoing = true), prefs))
 
         // Unbekannte Navi-App mit Kategorie und Entfernung zählt weiterhin.
         val nav = msg(pkg = "de.example.navi", title = "In 300 m links").copy(ongoing = true, category = Notification.CATEGORY_NAVIGATION)

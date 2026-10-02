@@ -1,5 +1,8 @@
 package com.frezzybuilds.devnotch.service
 
+import com.frezzybuilds.devnotch.notify.sendFromNotch
+import android.content.Context
+import android.content.Intent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import android.app.Notification
@@ -298,6 +301,12 @@ class MediaNotificationListener : NotificationListenerService() {
         /** Titel, Künstler und Play/Pause-Status der aktuellen Session; null = nichts läuft. */
         val nowPlaying: StateFlow<NowPlaying?> = _nowPlaying.asStateFlow()
 
+        /** Nur für Tests und Vorschauen: Wiedergabe vorgeben, ohne echte Media-Session. */
+        @androidx.annotation.VisibleForTesting
+        internal fun setNowPlayingForTest(value: NowPlaying?) {
+            _nowPlaying.value = value
+        }
+
         /** Nur auf dem Main-Thread gelesen/geschrieben (Callbacks + Compose-Klicks). */
         private var activeController: MediaController? = null
 
@@ -316,6 +325,26 @@ class MediaNotificationListener : NotificationListenerService() {
 
         fun skipToPrevious() {
             activeController?.transportControls?.skipToPrevious()
+        }
+
+        /** Öffnet den Player (Session-Activity, sonst die App) – wie Tippen auf die Insel beim iPhone. */
+        fun openPlayer(context: Context): Boolean {
+            val controller = activeController ?: return false
+            if (controller.sessionActivity?.sendFromNotch(context) == true) return true
+            val launch = context.packageManager.getLaunchIntentForPackage(controller.packageName) ?: return false
+            return runCatching { context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true }.getOrDefault(false)
+        }
+
+        /** Aktuelle Position und Länge (ms) des Titels, falls der Player sie meldet. */
+        fun progress(): Pair<Long, Long>? {
+            val controller = activeController ?: return null
+            val duration = controller.metadata?.getLong(android.media.MediaMetadata.METADATA_KEY_DURATION)?.takeIf { it > 0 } ?: return null
+            val state = controller.playbackState ?: return null
+            var position = state.position
+            if (state.state == android.media.session.PlaybackState.STATE_PLAYING && state.lastPositionUpdateTime > 0) {
+                position += ((android.os.SystemClock.elapsedRealtime() - state.lastPositionUpdateTime) * state.playbackSpeed).toLong()
+            }
+            return position.coerceIn(0, duration) to duration
         }
     }
 }

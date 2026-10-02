@@ -35,6 +35,15 @@ Datenschutzerklärung: [URL zu docs/privacy_policy.md, z. B. GitHub Pages]*
 > • Navigation (Google Maps, Waze u. a.), Timer und Downloads als Live-Ansicht
 > • Filter pro App, „Nicht stören“, Anzeigedauer, Datenschutz auf dem Sperrbildschirm
 >
+> **◎ Wie die Dynamic Island**
+> • Musik kompakt mit Cover und Wellenform in Coverfarbe; gedrückt halten öffnet den großen
+>   Player mit Fortschritt und Steuerung
+> • Tippen öffnet die App der laufenden Aktivität, gedrückt halten zeigt die große Ansicht
+> • Zwei Aktivitäten gleichzeitig: die zweite als kleiner Kreis neben der Insel
+> • Systemhinweise: Lautlos/Vibration, Nicht stören, Energiesparmodus, Akku schwach,
+>   Kopfhörer verbunden, Taschenlampe (antippen zum Ausschalten), Bildschirmaufnahme,
+>   Entsperren – jeder einzeln abschaltbar
+>
 > **✧ Lichtlauf & Größe**
 > • Farbiges Licht um die Notch in 10 Paletten und 3 Stilen, Tempo, Helligkeit und Länge
 > • Aufgeklappte Notch per Griff größer ziehen

@@ -1,5 +1,9 @@
 package com.frezzybuilds.devnotch.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.combinedClickable
+import com.frezzybuilds.devnotch.system.SystemStatus
 import com.frezzybuilds.devnotch.notify.NotchNotification
 import kotlin.math.roundToInt
 import androidx.compose.animation.animateContentSize
@@ -156,6 +160,7 @@ private fun <T> notchSpring() = spring<T>(
     stiffness = Spring.StiffnessMediumLow
 )
 
+@OptIn(ExperimentalFoundationApi::class) // combinedClickable (Tippen + Gedrückthalten)
 @Composable
 fun NotchContainer(
     layout: NotchLayout,
@@ -245,7 +250,10 @@ fun NotchContainer(
     // --- Peeks: kurze Live-Einblendungen der eingeklappten Pille (nur Notch oben) -----------
     val peek by PeekCenter.current.collectAsStateWithLifecycle()
     // Live-Ansichten (Anruf, Navigation, Timer, Fortschritt) und Einstellungen für Benachrichtigungen.
-    val live by NotificationHub.primaryLive.collectAsStateWithLifecycle()
+    val hubLive by NotificationHub.primaryLive.collectAsStateWithLifecycle()
+    // Taschenlampe als kleinste Live-Ansicht – nur, wenn keine Benachrichtigung eine zeigt.
+    val torchOn by SystemStatus.torchOn.collectAsStateWithLifecycle()
+    val live: LiveActivity? = hubLive ?: LiveActivity.Torch.takeIf { torchOn }
     val notifySettings = LocalContext.current.appContainer.notchSettings
     val notifyPrefs by remember { notifySettings.notifyPrefsFlow() }
         .collectAsStateWithLifecycle(initialValue = notifySettings.notifyPrefs)
@@ -257,7 +265,7 @@ fun NotchContainer(
         notifyPrefs.live.banner && it.key != minimizedLiveKey && when (it) {
             is LiveActivity.Navigation, is LiveActivity.Timer -> true
             is LiveActivity.Call -> !it.ringing
-            is LiveActivity.Progress -> false
+            is LiveActivity.Progress, is LiveActivity.Recording, LiveActivity.Torch -> false
         }
     }
     val activePeek: Peek? = when {
@@ -349,11 +357,23 @@ fun NotchContainer(
     val peekConfig = LocalConfiguration.current
     // Text neben der Kamera (Timer, Kosten, Live-Wert) braucht mehr Platz als die Kamera-Pille:
     // dann wird sie breiter, wie die Dynamic Island. Der Service bekommt die Breite vorab gemeldet.
-    val pillHasText = layout.mode == NotchLayoutMode.NOTCH_TOP && !isExpanded && activePeek == null &&
-        (live != null || showTimerInPill || (showCostInPill && aiUsage.usages.isNotEmpty()))
+    // Musik zeigt wie beim iPhone nur Cover + Wellenform (passt in die schmale Pille); Timer und
+    // Kosten brauchen Text und damit die breite Pille.
+    val musicPlaying = nowPlaying?.isPlaying == true
+    val compactIdle = layout.mode == NotchLayoutMode.NOTCH_TOP && !isExpanded && activePeek == null
+    val pillHasText = compactIdle &&
+        (live != null || (!musicPlaying && (showTimerInPill || (showCostInPill && aiUsage.usages.isNotEmpty()))))
+    val minimalItem = if (compactIdle) PillLayout.minimal(live != null, musicPlaying, showTimerInPill) else null
     val gapDp = lensGap(layout)
     val widePillDp = ExpandedSize.widePillWidthDp(peekConfig.screenWidthDp, pillWidth.value.roundToInt(), gapDp.value.roundToInt())
-    LaunchedEffect(pillHasText, widePillDp) { onPillWidthChange(if (pillHasText) widePillDp else null) }
+    val islandWidthDp = if (pillHasText) widePillDp else pillWidth.value.roundToInt()
+    // Fensterbreite vorab melden: breite Pille und/oder Platz für den kleinen Kreis links und rechts.
+    val windowWidthDp = when {
+        minimalItem != null -> islandWidthDp + 2 * (pillHeight.value.roundToInt() + MinimalGap.value.roundToInt())
+        pillHasText -> widePillDp
+        else -> null
+    }
+    LaunchedEffect(windowWidthDp) { onPillWidthChange(windowWidthDp) }
     val (collapsedWidth, collapsedHeight) = if (activePeek != null) {
         ExpandedSize.peek(peekConfig.screenWidthDp, pillHeight.value, activePeek.extraHeightDp).let { (w, h) -> w.dp to h.dp }
     } else if (pillHasText) {
@@ -457,208 +477,245 @@ fun NotchContainer(
 
     CompositionLocalProvider(LocalOverlayFocus provides overlayFocus) {
         MaterialTheme(colorScheme = Brand.NotchScheme) {
-            Box(
-                modifier = Modifier
-                    // Antippen: Die Pille „gibt nach“ und federt zurück.
-                    .graphicsLayer {
-                        scaleX = squish.value
-                        scaleY = squish.value
-                    }
-                    .animateContentSize(animationSpec = notchSpring()) { _, _ ->
-                        if (!isExpanded) onCollapseSettled()
-                    }
-                    .then(
-                        if (isExpanded) Modifier.size(expandedWidth, expandedHeight)
-                        else Modifier.size(collapsedWidth, collapsedHeight)
-                    )
-                    .graphicsLayer {
-                        shape = if (edgeMini) RectangleShape else notchShape(layout, cornerRadius.value)
-                        clip = true
-                    }
-                    // Bubble: transparentes Fenster, die Kreisform zeichnet EdgeMiniBubble selbst.
-                    .background(if (edgeMini) Color.Transparent else NotchBlack)
-                    // Aufgeklappt: violetter Schimmer von oben und Neon-Rand wie im App-Icon.
-                    .then(if (edgeMini) Modifier else Modifier.neonFrame(animatedShape, rim))
-                    .then(
-                        if (beamShapeFits) {
-                            Modifier.borderBeam(animatedShape, beamPosition, beamStrength, beamPrefs.look)
-                        } else {
-                            Modifier
+            // Zweite Aktivität als kleiner Kreis rechts; links derselbe Platz frei, damit die Insel
+            // über der Kamera zentriert bleibt (das Fenster ist um die Linse zentriert).
+            Row(verticalAlignment = Alignment.Top) {
+                if (minimalItem != null) Spacer(Modifier.width(pillHeight + MinimalGap))
+                Box(
+                    modifier = Modifier
+                        // Antippen: Die Pille „gibt nach“ und federt zurück.
+                        .graphicsLayer {
+                            scaleX = squish.value
+                            scaleY = squish.value
                         }
-                    )
-                    // Fokus-Timer läuft: Fortschritt als Lichtlinie einmal rund um die Pille.
-                    .then(
-                        if (timerRingVisible) Modifier.pillProgress(if (liveProgress != null) liveFraction else timerElapsed) else Modifier
-                    )
-                    // Wischen: Notch nach unten auf / nach oben zu; Edge zur Mitte auf / zum Rand zu.
-                    // Die eingeklappte Bubble hat eigene Gesten (Verschieben), daher dort nicht.
-                    .then(
-                        if (edgeMini) Modifier
-                        else Modifier.notchDragGestures(
-                            mode = layout.mode,
-                            side = layout.edgeSide,
-                            expanded = isExpanded,
-                            thresholdPx = dragThreshold,
-                            haptic = haptic,
-                            peeking = activePeek != null && activePeek !is Peek.LiveCall
-                        ) { action ->
-                            when {
-                                action == NotchGestureAction.EXPAND -> setExpanded(true)
-                                isExpanded -> setExpanded(false)
-                                // Eingeklappt nach oben: Einblendung wegschieben.
-                                activePeek is Peek.LiveBanner -> minimizedLiveKey = activePeek.live.key
-                                else -> PeekCenter.current.value?.let(PeekCenter::dismiss)
+                        .animateContentSize(animationSpec = notchSpring()) { _, _ ->
+                            if (!isExpanded) onCollapseSettled()
+                        }
+                        .then(
+                            if (isExpanded) Modifier.size(expandedWidth, expandedHeight)
+                            else Modifier.size(collapsedWidth, collapsedHeight)
+                        )
+                        .graphicsLayer {
+                            shape = if (edgeMini) RectangleShape else notchShape(layout, cornerRadius.value)
+                            clip = true
+                        }
+                        // Bubble: transparentes Fenster, die Kreisform zeichnet EdgeMiniBubble selbst.
+                        .background(if (edgeMini) Color.Transparent else NotchBlack)
+                        // Aufgeklappt: violetter Schimmer von oben und Neon-Rand wie im App-Icon.
+                        .then(if (edgeMini) Modifier else Modifier.neonFrame(animatedShape, rim))
+                        .then(
+                            if (beamShapeFits) {
+                                Modifier.borderBeam(animatedShape, beamPosition, beamStrength, beamPrefs.look)
+                            } else {
+                                Modifier
                             }
-                        }
-                    )
-                    // Nur eingeklappt klickbar, sonst schluckt die Box Taps im Dashboard.
-                    .clickable(
-                        enabled = !isExpanded,
-                        interactionSource = pillInteraction,
-                        indication = null
-                    ) {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        // Tipp auf eine Benachrichtigung öffnet sie; sonst klappt die Notch auf.
-                        when (val shown = activePeek) {
-                            is Peek.Notification -> sendIntent(shown.notification.contentIntent)
-                            is Peek.LiveCall -> sendIntent(shown.call.contentIntent)
-                            is Peek.LiveBanner -> sendIntent(shown.live.contentIntent)
-                            else -> setExpanded(true)
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                if (isExpanded && layout.mode == NotchLayoutMode.EDGE_SIDE && drawer.split && !locked) {
-                    // Seitlicher Drawer als Split-Ansicht: links Dev/Pomodoro, rechts Notizen/Clipboard.
-                    SplitDrawer(
-                        focusTimer = focusTimer,
-                        nowPlaying = nowPlaying,
-                        leftPane = leftPane,
-                        rightPane = rightPane,
-                        onSelectLeft = { leftPane = it },
-                        onSelectRight = { rightPane = it },
-                        onClose = { setExpanded(false) },
-                        modifier = Modifier
-                            .wrapContentSize(Alignment.Center, unbounded = true)
-                            .size(drawer.width, drawer.height)
-                    )
-                } else if (isExpanded) {
-                    // Feste Größe + unbounded: Das Dashboard wird beim Aufklappen „aufgedeckt“
-                    // statt während der Animation zusammengequetscht zu werden. Schmale Bildschirme
-                    // im Edge-Modus nutzen dieselben Tabs in Drawer-Größe.
-                    Dashboard(
-                        opened = openedNotification?.let { NotificationRules.redact(it, locked, notifyPrefs.lockContent) },
-                        locked = locked,
-                        onCloseDetail = { openedNotification = null },
-                        // Die App aktualisiert ihre Benachrichtigung nach der Antwort selbst.
-                        onReplied = { setExpanded(false) },
-                        live = live,
-                        onSend = ::sendIntent,
-                        onResizeDrag = onResizeDrag,
-                        onResizeEnd = onResizeEnd,
-                        tabs = if (locked) LockedTabs else NotchTab.entries,
-                        selectedTab = if (locked) NotchTab.TIMER else selectedTab,
-                        onSelectTab = { selectedTab = it },
-                        focusTimer = focusTimer,
-                        nowPlaying = nowPlaying,
-                        onClose = { setExpanded(false) },
-                        modifier = Modifier
-                            .wrapContentSize(Alignment.TopCenter, unbounded = true)
-                            .size(expandedWidth, expandedHeight)
-                            // Inhalt unter Statusleiste und Kamera; darüber bleibt die Fläche schwarz.
-                            .padding(top = topInset)
-                    )
-                } else if (activePeek != null) {
-                    PeekContent(
-                        peek = activePeek,
-                        pillHeight = pillHeight,
-                        lensGap = lensGap(layout),
-                        onSend = ::sendIntent,
-                        onExpand = { setExpanded(true) },
-                        onDismiss = {
-                            (peek as? Peek.Notification)?.let {
-                                NotificationHub.dismiss(it.notification.key)
-                                PeekCenter.dismiss(it)
+                        )
+                        // Fokus-Timer läuft: Fortschritt als Lichtlinie einmal rund um die Pille.
+                        .then(
+                            if (timerRingVisible) Modifier.pillProgress(if (liveProgress != null) liveFraction else timerElapsed) else Modifier
+                        )
+                        // Wischen: Notch nach unten auf / nach oben zu; Edge zur Mitte auf / zum Rand zu.
+                        // Die eingeklappte Bubble hat eigene Gesten (Verschieben), daher dort nicht.
+                        .then(
+                            if (edgeMini) Modifier
+                            else Modifier.notchDragGestures(
+                                mode = layout.mode,
+                                side = layout.edgeSide,
+                                expanded = isExpanded,
+                                thresholdPx = dragThreshold,
+                                haptic = haptic,
+                                peeking = activePeek != null && activePeek !is Peek.LiveCall
+                            ) { action ->
+                                when {
+                                    action == NotchGestureAction.EXPAND -> setExpanded(true)
+                                    isExpanded -> setExpanded(false)
+                                    // Eingeklappt nach oben: Einblendung wegschieben.
+                                    activePeek is Peek.LiveBanner -> minimizedLiveKey = activePeek.live.key
+                                    else -> PeekCenter.current.value?.let(PeekCenter::dismiss)
+                                }
+                            }
+                        )
+                        // Nur eingeklappt klickbar, sonst schluckt die Box Taps im Dashboard.
+                        // Wie bei Apple: Tippen öffnet die App der laufenden Aktivität, Gedrückthalten
+                        // zeigt die große Ansicht; ohne Aktivität öffnet Tippen das Dashboard.
+                        .combinedClickable(
+                            enabled = !isExpanded,
+                            interactionSource = pillInteraction,
+                            indication = null,
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (activePeek == null && live == null && musicPlaying) PeekCenter.show(Peek.MusicPlayer())
+                                else setExpanded(true)
+                            }
+                        ) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            when (val shown = activePeek) {
+                                is Peek.Notification -> sendIntent(shown.notification.contentIntent)
+                                is Peek.LiveCall -> sendIntent(shown.call.contentIntent)
+                                is Peek.LiveBanner -> sendIntent(shown.live.contentIntent)
+                                is Peek.System, is Peek.MusicPlayer -> PeekCenter.current.value?.let(PeekCenter::dismiss)
+                                null -> when {
+                                    live == LiveActivity.Torch -> SystemStatus.turnOffTorch(peekContext)
+                                    live?.contentIntent != null -> sendIntent(live.contentIntent)
+                                    musicPlaying -> MediaNotificationListener.openPlayer(peekContext)
+                                    else -> setExpanded(true)
+                                }
+                                else -> setExpanded(true)
                             }
                         },
-                        // Feste Endgröße + unbounded: Der Inhalt wird beim Wachsen aufgedeckt.
-                        modifier = Modifier
-                            .wrapContentSize(Alignment.TopCenter, unbounded = true)
-                            .size(collapsedWidth, collapsedHeight)
-                            .staggerIn(0)
-                    )
-                } else if (layout.mode == NotchLayoutMode.NOTCH_TOP && live != null) {
-                    LivePill(live!!, lensGap(layout))
-                } else if (layout.mode == NotchLayoutMode.NOTCH_TOP) {
-                    val playing = nowPlaying?.takeIf { it.isPlaying }
-                    val timerText = if (showTimerInPill) "⏱ ${formatMmSs(timerRemaining)}" else null
-                    val costText = aiUsage.takeIf { showCostInPill && it.usages.isNotEmpty() }
-                        ?.let { formatUsd(it.totalCostUsd) }
-                    val slots = PillLayout.slots(musicPlaying = playing != null, timerText = timerText, costText = costText)
-                    val costColor = usageColor(aiUsage.totalCostUsd, aiDisplay.limitUsd)
-
-                    @Composable
-                    fun render(item: PillItem) = when (item) {
-                        is PillItem.Timer -> PillLabel(item.text)
-                        is PillItem.Cost -> PillLabel(item.text, costColor)
-                        PillItem.MusicGlyph -> MiniArtwork(playing)
-                        PillItem.MusicTitle -> playing?.let { MarqueeTitle(it) }
-                    }
-                    CollapsedPillContent(
-                        lensGap = lensGap(layout),
-                        start = slots.start?.let { item -> { render(item) } },
-                        end = slots.end?.let { item -> { render(item) } }
-                    )
-                } else {
-                    // Edge-Dock: mit Musik die farbige Player-Leiste (oder eingeklappt die Cover-Bubble),
-                    // sonst der schlanke Griff. Die Größe federt über animateContentSize, der Inhalt
-                    // blendet über – so „zieht sich“ die Leiste zur Bubble zusammen.
-                    val media = edgeMedia
-                    if (media != null) {
-                        AnimatedContent(
-                            targetState = edgeMini,
-                            modifier = Modifier.fillMaxSize(),
-                            transitionSpec = {
-                                fadeIn(tween(220, delayMillis = 120)) togetherWith fadeOut(tween(120)) using
-                                    SizeTransform(clip = false)
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isExpanded && layout.mode == NotchLayoutMode.EDGE_SIDE && drawer.split && !locked) {
+                        // Seitlicher Drawer als Split-Ansicht: links Dev/Pomodoro, rechts Notizen/Clipboard.
+                        SplitDrawer(
+                            focusTimer = focusTimer,
+                            nowPlaying = nowPlaying,
+                            leftPane = leftPane,
+                            rightPane = rightPane,
+                            onSelectLeft = { leftPane = it },
+                            onSelectRight = { rightPane = it },
+                            onClose = { setExpanded(false) },
+                            modifier = Modifier
+                                .wrapContentSize(Alignment.Center, unbounded = true)
+                                .size(drawer.width, drawer.height)
+                        )
+                    } else if (isExpanded) {
+                        // Feste Größe + unbounded: Das Dashboard wird beim Aufklappen „aufgedeckt“
+                        // statt während der Animation zusammengequetscht zu werden. Schmale Bildschirme
+                        // im Edge-Modus nutzen dieselben Tabs in Drawer-Größe.
+                        Dashboard(
+                            opened = openedNotification?.let { NotificationRules.redact(it, locked, notifyPrefs.lockContent) },
+                            locked = locked,
+                            onCloseDetail = { openedNotification = null },
+                            // Die App aktualisiert ihre Benachrichtigung nach der Antwort selbst.
+                            onReplied = { setExpanded(false) },
+                            live = live,
+                            onSend = ::sendIntent,
+                            onResizeDrag = onResizeDrag,
+                            onResizeEnd = onResizeEnd,
+                            tabs = if (locked) LockedTabs else NotchTab.entries,
+                            selectedTab = if (locked) NotchTab.TIMER else selectedTab,
+                            onSelectTab = { selectedTab = it },
+                            focusTimer = focusTimer,
+                            nowPlaying = nowPlaying,
+                            onClose = { setExpanded(false) },
+                            modifier = Modifier
+                                .wrapContentSize(Alignment.TopCenter, unbounded = true)
+                                .size(expandedWidth, expandedHeight)
+                                // Inhalt unter Statusleiste und Kamera; darüber bleibt die Fläche schwarz.
+                                .padding(top = topInset)
+                        )
+                    } else if (activePeek != null) {
+                        PeekContent(
+                            peek = activePeek,
+                            pillHeight = pillHeight,
+                            lensGap = lensGap(layout),
+                            onSend = ::sendIntent,
+                            onExpand = { setExpanded(true) },
+                            onDismiss = {
+                                (peek as? Peek.Notification)?.let {
+                                    NotificationHub.dismiss(it.notification.key)
+                                    PeekCenter.dismiss(it)
+                                }
                             },
-                            label = "edgePlayer"
-                        ) { mini ->
-                            if (mini) {
-                                EdgeMiniBubble(
-                                    nowPlaying = media,
-                                    theme = edgePrefs.theme,
-                                    onClick = edgePlayer::restore,
-                                    onDrag = onEdgeDrag,
-                                    onDragEnd = onEdgeDragEnd,
-                                    // Kleiner Abstand zum Rand: Die Bubble schwebt frei.
-                                    modifier = Modifier.padding(
-                                        start = if (layout.edgeSide == EdgeSide.LEFT) EdgeBubbleGap else 0.dp,
-                                        end = if (layout.edgeSide == EdgeSide.RIGHT) EdgeBubbleGap else 0.dp
+                            // Feste Endgröße + unbounded: Der Inhalt wird beim Wachsen aufgedeckt.
+                            modifier = Modifier
+                                .wrapContentSize(Alignment.TopCenter, unbounded = true)
+                                .size(collapsedWidth, collapsedHeight)
+                                .staggerIn(0)
+                        )
+                    } else if (layout.mode == NotchLayoutMode.NOTCH_TOP && live != null) {
+                        LivePill(live!!, lensGap(layout))
+                    } else if (layout.mode == NotchLayoutMode.NOTCH_TOP) {
+                        val playing = nowPlaying?.takeIf { it.isPlaying }
+                        val timerText = if (showTimerInPill) "⏱ ${formatMmSs(timerRemaining)}" else null
+                        val costText = aiUsage.takeIf { showCostInPill && it.usages.isNotEmpty() }
+                            ?.let { formatUsd(it.totalCostUsd) }
+                        val slots = PillLayout.slots(musicPlaying = playing != null, timerText = timerText, costText = costText)
+                        val costColor = usageColor(aiUsage.totalCostUsd, aiDisplay.limitUsd)
+
+                        @Composable
+                        fun render(item: PillItem) = when (item) {
+                            is PillItem.Timer -> PillLabel(item.text)
+                            is PillItem.Cost -> PillLabel(item.text, costColor)
+                            PillItem.MusicGlyph -> MiniArtwork(playing)
+                            PillItem.MusicWave -> MusicWaveform(playing)
+                        }
+                        CollapsedPillContent(
+                            lensGap = lensGap(layout),
+                            start = slots.start?.let { item -> { render(item) } },
+                            end = slots.end?.let { item -> { render(item) } }
+                        )
+                    } else {
+                        // Edge-Dock: mit Musik die farbige Player-Leiste (oder eingeklappt die Cover-Bubble),
+                        // sonst der schlanke Griff. Die Größe federt über animateContentSize, der Inhalt
+                        // blendet über – so „zieht sich“ die Leiste zur Bubble zusammen.
+                        val media = edgeMedia
+                        if (media != null) {
+                            AnimatedContent(
+                                targetState = edgeMini,
+                                modifier = Modifier.fillMaxSize(),
+                                transitionSpec = {
+                                    fadeIn(tween(220, delayMillis = 120)) togetherWith fadeOut(tween(120)) using
+                                        SizeTransform(clip = false)
+                                },
+                                label = "edgePlayer"
+                            ) { mini ->
+                                if (mini) {
+                                    EdgeMiniBubble(
+                                        nowPlaying = media,
+                                        theme = edgePrefs.theme,
+                                        onClick = edgePlayer::restore,
+                                        onDrag = onEdgeDrag,
+                                        onDragEnd = onEdgeDragEnd,
+                                        // Kleiner Abstand zum Rand: Die Bubble schwebt frei.
+                                        modifier = Modifier.padding(
+                                            start = if (layout.edgeSide == EdgeSide.LEFT) EdgeBubbleGap else 0.dp,
+                                            end = if (layout.edgeSide == EdgeSide.RIGHT) EdgeBubbleGap else 0.dp
+                                        )
                                     )
-                                )
-                            } else {
-                                EdgeMusicBar(
-                                    nowPlaying = media,
-                                    theme = edgePrefs.theme,
-                                    onPrevious = {
-                                        edgePlayer.onInteraction()
-                                        MediaNotificationListener.skipToPrevious()
-                                    },
-                                    onPlayPause = {
-                                        edgePlayer.onInteraction()
-                                        MediaNotificationListener.togglePlayPause()
-                                    },
-                                    onNext = {
-                                        edgePlayer.onInteraction()
-                                        MediaNotificationListener.skipToNext()
-                                    }
-                                )
+                                } else {
+                                    EdgeMusicBar(
+                                        nowPlaying = media,
+                                        theme = edgePrefs.theme,
+                                        onPrevious = {
+                                            edgePlayer.onInteraction()
+                                            MediaNotificationListener.skipToPrevious()
+                                        },
+                                        onPlayPause = {
+                                            edgePlayer.onInteraction()
+                                            MediaNotificationListener.togglePlayPause()
+                                        },
+                                        onNext = {
+                                            edgePlayer.onInteraction()
+                                            MediaNotificationListener.skipToNext()
+                                        }
+                                    )
+                                }
+                            }
+                        } else {
+                            EdgeHandle()
+                        }
+                    }
+                }
+                if (minimalItem != null) {
+                    Spacer(Modifier.width(MinimalGap))
+                    MinimalBubble(
+                        item = minimalItem,
+                        nowPlaying = nowPlaying,
+                        timerElapsed = timerElapsed,
+                        size = pillHeight,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            when (minimalItem) {
+                                MinimalItem.MUSIC -> MediaNotificationListener.openPlayer(peekContext)
+                                MinimalItem.TIMER -> {
+                                    selectedTab = NotchTab.TIMER
+                                    setExpanded(true)
+                                }
                             }
                         }
-                    } else {
-                        EdgeHandle()
-                    }
+                    )
                 }
             }
         }
@@ -961,3 +1018,33 @@ private fun ResizeGrip(onDrag: (Float) -> Unit, onEnd: () -> Unit) {
 
 /** Zusätzliche Dashboard-Höhe für die Live-Karte über den Tabs. */
 private const val LIVE_CARD_HEIGHT_DP = 76
+
+/** Abstand zwischen Insel und kleinem Kreis (Apples „minimal“-Ansicht). */
+private val MinimalGap = 6.dp
+
+/** Kleiner schwarzer Kreis rechts neben der Insel: Cover bzw. Timer mit Fortschrittsring. */
+@Composable
+private fun MinimalBubble(item: MinimalItem, nowPlaying: NowPlaying?, timerElapsed: State<Float>, size: Dp, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(NotchBlack)
+            .then(if (item == MinimalItem.TIMER) Modifier.pillProgress(timerElapsed) else Modifier)
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        when (item) {
+            MinimalItem.MUSIC -> {
+                val art = nowPlaying?.artwork
+                if (art != null) {
+                    val image = remember(art) { art.asImageBitmap() }
+                    Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(size * 0.62f).clip(CircleShape))
+                } else {
+                    MusicWaveform(nowPlaying, height = size * 0.4f)
+                }
+            }
+            MinimalItem.TIMER -> Text("⏱", color = Color.White, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}

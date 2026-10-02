@@ -14,7 +14,9 @@ data class LivePrefs(
     val timers: Boolean = true,
     val progress: Boolean = true,
     /** Navigation, Anruf und Timer groß als Banner unter der Kamera (sonst nur in der Pille). */
-    val banner: Boolean = true
+    val banner: Boolean = true,
+    /** Bildschirmaufnahme als roter Punkt (Systemereignis). */
+    val recording: Boolean = true
 ) {
     val any: Boolean get() = calls || navigation || timers || progress
 }

@@ -22,10 +22,19 @@ class PillSlotsTest {
     }
 
     @Test
-    fun `music keeps the right half, left shows timer then cost then note`() {
-        assertEquals(PillSlots(timer, PillItem.MusicTitle), PillLayout.slots(true, "⏱ 24:13", "$1.42"))
-        assertEquals(PillSlots(cost, PillItem.MusicTitle), PillLayout.slots(true, null, "$1.42"))
-        assertEquals(PillSlots(PillItem.MusicGlyph, PillItem.MusicTitle), PillLayout.slots(true, null, null))
+    fun `music shows artwork and waveform like the iPhone`() {
+        val music = PillSlots(PillItem.MusicGlyph, PillItem.MusicWave)
+        assertEquals(music, PillLayout.slots(true, "⏱ 24:13", "$1.42"))
+        assertEquals(music, PillLayout.slots(true, null, null))
+    }
+
+    @Test
+    fun `second activity goes into the small circle`() {
+        assertEquals(MinimalItem.MUSIC, PillLayout.minimal(hasLive = true, musicPlaying = true, timerShown = true))
+        assertEquals(MinimalItem.TIMER, PillLayout.minimal(hasLive = true, musicPlaying = false, timerShown = true))
+        assertEquals(MinimalItem.TIMER, PillLayout.minimal(hasLive = false, musicPlaying = true, timerShown = true))
+        assertEquals(null, PillLayout.minimal(hasLive = false, musicPlaying = false, timerShown = true))
+        assertEquals(null, PillLayout.minimal(hasLive = true, musicPlaying = false, timerShown = false))
     }
 
     @Test

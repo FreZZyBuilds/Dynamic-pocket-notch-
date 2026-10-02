@@ -61,6 +61,26 @@ sealed interface LiveActivity {
         override val priority = 60
     }
 
+    /** Bildschirmaufnahme läuft (roter Punkt mit Dauer, wie auf dem iPhone). */
+    data class Recording(
+        override val key: String,
+        override val packageName: String,
+        override val contentIntent: PendingIntent?,
+        val app: String,
+        /** Start der Aufnahme (ms) oder 0, wenn die App keine Uhr mitliefert. */
+        val since: Long
+    ) : LiveActivity {
+        override val priority = 70
+    }
+
+    /** Taschenlampe an – kein Benachrichtigungs-Ursprung, kommt aus [com.frezzybuilds.devnotch.system.SystemStatus]. */
+    data object Torch : LiveActivity {
+        override val key = "system:torch"
+        override val packageName = "android"
+        override val contentIntent: PendingIntent? = null
+        override val priority = 20
+    }
+
     data class Progress(
         override val key: String,
         override val packageName: String,
@@ -83,6 +103,10 @@ object LiveParsers {
     private val NAVIGATION_APPS = setOf(
         "com.google.android.apps.maps", "com.waze", "com.here.app.maps", "net.osmand", "net.osmand.plus",
         "com.sygic.aura", "com.mapswithme.maps.pro", "app.organicmaps", "com.tomtom.gplay.navapp"
+    )
+    private val RECORDER_APPS = setOf(
+        "com.samsung.android.app.smartcapture", "com.android.systemui", "com.miui.screenrecorder",
+        "com.oneplus.screenrecord", "com.coloros.screenrecorder", "com.huawei.screenrecorder"
     )
     private val CLOCK_APPS = setOf(
         "com.google.android.deskclock", "com.android.deskclock", "com.sec.android.app.clockpackage",
@@ -139,6 +163,13 @@ object LiveParsers {
         LiveActivity.Timer(n.key, n.packageName, n.contentIntent, n.appLabel, n.title, n.whenTime, n.chronometerCountDown, n.icon)
     }
 
+    val recording = LiveParser { n, prefs ->
+        if (!prefs.recording || !n.ongoing || n.packageName !in RECORDER_APPS) return@LiveParser null
+        // In der System-UI nur Benachrichtigungen mit laufender Uhr – dort hängen auch andere Dauermeldungen.
+        if (n.packageName == "com.android.systemui" && !n.usesChronometer) return@LiveParser null
+        LiveActivity.Recording(n.key, n.packageName, n.contentIntent, n.appLabel, if (n.usesChronometer) n.whenTime else 0L)
+    }
+
     val progress = LiveParser { n, prefs ->
         val fraction = n.progressFraction
         if (!prefs.progress || !n.ongoing || fraction == null) return@LiveParser null
@@ -146,7 +177,7 @@ object LiveParsers {
     }
 
     /** Reihenfolge = Vorrang bei mehrdeutigen Benachrichtigungen. */
-    val all: List<LiveParser> = listOf(call, navigation, timer, progress)
+    val all: List<LiveParser> = listOf(call, recording, navigation, timer, progress)
 
     fun parse(n: NotchNotification, prefs: LivePrefs): LiveActivity? =
         all.firstNotNullOfOrNull { it.parse(n, prefs) }

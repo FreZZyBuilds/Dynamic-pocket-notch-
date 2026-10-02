@@ -57,6 +57,11 @@ jeweilige App (Android-Direktantwort); DevNotch speichert ihn nicht und übertr�
 selbst. Gesperrt ist das Antworten abgeschaltet. Aktionen (z. B.
 „Annehmen“ oder „Als gelesen markieren“) löst es nur aus, wenn du den Knopf antippst.
 
+Für die Systemhinweise (Klingelmodus, Nicht stören, Energiesparmodus, Akkustand, verbundene
+Kopfhörer, Taschenlampe) nutzt DevNotch öffentliche Android-Meldungen, für die keine
+Berechtigung nötig ist. Diese Zustände werden nur angezeigt, nicht gespeichert oder übertragen.
+Der Name verbundener Kopfhörer stammt aus Androids Audiogeräte-Liste.
+
 Die Zwischenablage liest DevNotch nur, wenn Android den Zugriff erlaubt. Ab Android 10 ist das
 nur der Fall, solange DevNotch im Vordergrund ist.
 
