@@ -303,6 +303,19 @@ fun NotchContainer(
     // Anruf vorbei (auch ohne Anrufsteuerung): Steuerung beim nächsten Anruf wieder zugeklappt.
     val inCall = live is LiveActivity.Call
     LaunchedEffect(inCall) { if (!inCall) CallControl.keypadOpen.value = false }
+    // Nichts läuft mehr: Ein späterer Anruf (oft mit gleichem Schlüssel) startet wieder groß.
+    val anyLive = live != null
+    LaunchedEffect(anyLive) { if (!anyLive) minimizedLiveKey = null }
+    // Wie beim iPhone: Das Anruf-Banner rückt nach ein paar Sekunden in die Pille zurück
+    // (Name und Dauer bleiben dort); Tippen auf die Pille holt es wieder. Mit offener
+    // Steuerung bleibt es, bis sie geschlossen wird – dann läuft die Zeit neu.
+    val shownCallKey = (bannerLive as? LiveActivity.Call)?.key
+    val callAutoHide = notifyPrefs.live.callAutoHideSeconds
+    LaunchedEffect(shownCallKey, callKeypad, callAutoHide) {
+        if (shownCallKey == null || callKeypad || callAutoHide <= 0) return@LaunchedEffect
+        delay(callAutoHide * 1000L)
+        minimizedLiveKey = shownCallKey
+    }
     val activePeek: Peek? = when {
         layout.mode != NotchLayoutMode.NOTCH_TOP || isExpanded -> null
         // Klingelt das Telefon, bleibt die Notch groß mit Annehmen/Ablehnen.
@@ -595,6 +608,9 @@ fun NotchContainer(
                                 is Peek.LiveBanner -> sendIntent(shown.live.contentIntent)
                                 is Peek.System, is Peek.MusicPlayer -> PeekCenter.current.value?.let(PeekCenter::dismiss)
                                 null -> when {
+                                    // Eingeklappter Anruf: Tippen holt das Banner mit der Steuerung zurück.
+                                    live is LiveActivity.Call && !live.ringing && live.key == minimizedLiveKey && notifyPrefs.live.banner ->
+                                        minimizedLiveKey = null
                                     live == LiveActivity.Torch -> SystemStatus.turnOffTorch(peekContext)
                                     live?.contentIntent != null -> sendIntent(live.contentIntent)
                                     musicPlaying -> MediaNotificationListener.openPlayer(peekContext)

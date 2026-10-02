@@ -243,6 +243,9 @@ class NotchSettings(context: Context) {
         get() = prefs.getString(KEY_LOCALSEND_ALIAS, null).orEmpty()
         set(value) = prefs.edit { putString(KEY_LOCALSEND_ALIAS, value.trim()) }
 
+    var callAutoHideSeconds: Int
+        get() = prefs.getInt(KEY_CALL_AUTO_HIDE, 10)
+        set(value) = prefs.edit { putInt(KEY_CALL_AUTO_HIDE, value.coerceAtLeast(0)) }
     var liveBanner: Boolean
         get() = prefs.getBoolean(KEY_LIVE_BANNER, true)
         set(value) = prefs.edit { putBoolean(KEY_LIVE_BANNER, value) }
@@ -258,7 +261,7 @@ class NotchSettings(context: Context) {
             blockedApps = notifyBlockedApps,
             payments = isSystemEventOn(SystemEvent.PAYMENT),
             style = notifyStyle,
-            live = LivePrefs(liveCalls, liveNavigation, liveTimers, liveProgress, liveBanner, isSystemEventOn(SystemEvent.RECORDING))
+            live = LivePrefs(liveCalls, liveNavigation, liveTimers, liveProgress, liveBanner, isSystemEventOn(SystemEvent.RECORDING), callAutoHideSeconds)
         )
 
     fun notifyPrefsFlow(): Flow<NotifyPrefs> = callbackFlow {
@@ -341,6 +344,7 @@ class NotchSettings(context: Context) {
         const val KEY_LIVE_TIMERS = "live_timers"
         const val KEY_LIVE_PROGRESS = "live_progress"
         const val KEY_LIVE_BANNER = "live_banner"
+        const val KEY_CALL_AUTO_HIDE = "call_auto_hide"
         const val KEY_SYSTEM_OFF = "system_events_off"
         const val KEY_CARD_NAME = "card_name"
         const val KEY_CARD_PHONE = "card_phone"
@@ -350,7 +354,7 @@ class NotchSettings(context: Context) {
         val NOTIFY_PREF_KEYS = setOf(
             KEY_NOTIFY_ENABLED, KEY_NOTIFY_DURATION, KEY_NOTIFY_LOCK_CONTENT, KEY_NOTIFY_SKIP_ONGOING,
             KEY_NOTIFY_SKIP_SILENT, KEY_NOTIFY_DND, KEY_NOTIFY_BLOCKED, KEY_NOTIFY_STYLE,
-            KEY_LIVE_CALLS, KEY_LIVE_NAV, KEY_LIVE_TIMERS, KEY_LIVE_PROGRESS, KEY_LIVE_BANNER, KEY_SYSTEM_OFF
+            KEY_LIVE_CALLS, KEY_LIVE_NAV, KEY_LIVE_TIMERS, KEY_LIVE_PROGRESS, KEY_LIVE_BANNER, KEY_CALL_AUTO_HIDE, KEY_SYSTEM_OFF
         )
         private const val KEY_DISPLAY_MODE = "display_mode"
         const val KEY_NOTCH_ENABLED = "notch_enabled"

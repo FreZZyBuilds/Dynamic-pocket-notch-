@@ -24,7 +24,9 @@ data class LivePrefs(
     /** Navigation, Anruf und Timer groß als Banner unter der Kamera (sonst nur in der Pille). */
     val banner: Boolean = true,
     /** Bildschirmaufnahme als roter Punkt (Systemereignis). */
-    val recording: Boolean = true
+    val recording: Boolean = true,
+    /** Anruf-Banner klappt nach so vielen Sekunden in die Pille zurück (0 = bleibt offen). */
+    val callAutoHideSeconds: Int = 10
 ) {
     val any: Boolean get() = calls || navigation || timers || progress
 }

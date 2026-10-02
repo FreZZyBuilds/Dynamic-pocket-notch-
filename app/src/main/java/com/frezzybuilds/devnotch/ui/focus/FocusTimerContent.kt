@@ -39,10 +39,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.requiredSize
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private val TrackColor = Color(0xFF1E1E26)
 private val PauseSurface = Color(0xFF24242E)
+
+/** Höhe von Start/Pause, Abstand und Presets. */
+private val CONTROLS_HEIGHT = 38.dp + 6.dp + 32.dp
 
 /** Tab-Einstieg: liest die StateFlows des ViewModels und rendert [FocusTimerContent]. */
 @Composable
@@ -82,13 +86,18 @@ fun FocusTimerContent(
 
     // Schmale Drawer-Spalte: Ring über den Buttons statt daneben.
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        if (maxWidth < 300.dp) {
+        // Der Ring bleibt rund: nie größer als der verfügbare Platz (sonst presst Compose die
+        // Zeichenfläche zusammen und der Ring wird zum Oval – z. B. mit Anrufkarte darüber).
+        val narrow = maxWidth < 300.dp
+        val ringSize = (if (narrow) maxHeight - CONTROLS_HEIGHT - 12.dp else maxHeight - 4.dp)
+            .coerceIn(64.dp, 132.dp)
+        if (narrow) {
             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
             ) {
-                TimerRing(progress, glow, remainingSeconds)
+                TimerRing(progress, glow, remainingSeconds, ringSize)
                 TimerControls(isRunning, totalSeconds, canStop, onToggleTimer, onPreset, onStop)
             }
         } else {
@@ -97,7 +106,7 @@ fun FocusTimerContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally)
             ) {
-                TimerRing(progress, glow, remainingSeconds)
+                TimerRing(progress, glow, remainingSeconds, ringSize)
                 TimerControls(isRunning, totalSeconds, canStop, onToggleTimer, onPreset, onStop)
             }
         }
@@ -105,11 +114,11 @@ fun FocusTimerContent(
 }
 
 @Composable
-private fun TimerRing(progress: Float, glow: Float, remainingSeconds: Long) {
-    Box(contentAlignment = Alignment.Center) {
+private fun TimerRing(progress: Float, glow: Float, remainingSeconds: Long, ringSize: androidx.compose.ui.unit.Dp = 132.dp) {
+    Box(Modifier.requiredSize(ringSize), contentAlignment = Alignment.Center) {
         // Ring im Markenverlauf (Magenta → Violett → Cyan) mit weichem Leuchten darunter.
-        Canvas(Modifier.size(132.dp)) {
-            val stroke = 8.dp.toPx()
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = (if (ringSize < 100.dp) 6.dp else 8.dp).toPx()
             val inset = stroke / 2 + 4.dp.toPx()
             val arcSize = Size(size.width - 2 * inset, size.height - 2 * inset)
             val topLeft = Offset(inset, inset)
@@ -125,7 +134,11 @@ private fun TimerRing(progress: Float, glow: Float, remainingSeconds: Long) {
         }
         Text(
             text = formatMmSs(remainingSeconds),
-            style = MaterialTheme.typography.headlineMedium,
+            style = when {
+                ringSize < 100.dp -> MaterialTheme.typography.titleMedium
+                ringSize < 120.dp -> MaterialTheme.typography.titleLarge
+                else -> MaterialTheme.typography.headlineMedium
+            },
             fontWeight = FontWeight.SemiBold,
             color = Color.White
         )
@@ -143,14 +156,14 @@ private fun TimerControls(
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         // Start im Markenverlauf; läuft der Timer, wird daraus ein ruhiger Pause-Knopf.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier
                 .width(if (canStop) 80.dp else 128.dp)
-                .height(40.dp)
+                .height(38.dp)
                 .clip(CircleShape)
                 .background(if (isRunning) SolidColor(PauseSurface) else Brand.Horizontal)
                 .clickable(role = Role.Button, onClick = onToggleTimer),
@@ -167,7 +180,7 @@ private fun TimerControls(
             // Beendet den Timer und setzt ihn auf die volle Zeit zurück.
             Box(
                 Modifier
-                    .size(40.dp)
+                    .size(38.dp)
                     .clip(CircleShape)
                     .background(PauseSurface)
                     .clickable(role = Role.Button, onClickLabel = "Timer beenden", onClick = onStop),
@@ -191,7 +204,8 @@ private fun PresetButton(minutes: Int, totalSeconds: Long, onPreset: (Int) -> Un
     OutlinedButton(
         onClick = { onPreset(minutes) },
         border = BorderStroke(1.dp, if (active) Color.White else Color.Gray),
-        modifier = Modifier.width(60.dp),
+        // Feste Höhe statt der 40-dp-Mindesthöhe – passt auch in ein niedriges Dashboard.
+        modifier = Modifier.width(60.dp).height(32.dp),
         contentPadding = ButtonDefaults.TextButtonContentPadding
     ) {
         Text("${minutes}m", color = if (active) Color.White else Color.Gray)

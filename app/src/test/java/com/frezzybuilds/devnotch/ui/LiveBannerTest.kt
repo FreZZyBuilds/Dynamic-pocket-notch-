@@ -24,6 +24,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.click
 import androidx.compose.ui.unit.dp
 import com.frezzybuilds.devnotch.notify.LiveActivity
 import com.frezzybuilds.devnotch.notify.NotchNotification
@@ -83,6 +84,32 @@ class LiveBannerTest {
         compose.onNodeWithText("Rechts abbiegen auf Hermannstraße").assertDoesNotExist()
         // Klein: nur noch die Entfernung neben der Kamera.
         compose.onNodeWithText("200 m").assertExists()
+    }
+
+    @Test
+    fun `call banner slides back into the pill and a tap brings it back`() {
+        val call = NotchNotification(
+            key = "0|com.samsung.android.dialer|call", packageName = "com.samsung.android.dialer", appLabel = "Telefon",
+            title = "Mama", category = android.app.Notification.CATEGORY_CALL, ongoing = true, usesChronometer = true,
+            whenTime = System.currentTimeMillis() - 20_000, actions = listOf(com.frezzybuilds.devnotch.notify.NotchAction("Auflegen", null))
+        )
+        NotificationHub.onPosted(call, NotifyPrefs(), dndActive = false, ownPackage = "com.frezzybuilds.devnotch")
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            NotchContainer(
+                layout = NotchLayout(NotchLayoutMode.NOTCH_TOP, pill = PillGeometry(120, 36, 0, 8)),
+                onExpandRequest = {}
+            )
+        }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.onNodeWithText("⋯  Steuerung").assertExists()
+        // Nach 10 s rückt das Banner in die Pille zurück.
+        compose.mainClock.advanceTimeBy(10_500)
+        compose.onNodeWithText("⋯  Steuerung").assertDoesNotExist()
+        // Antippen holt es wieder hervor.
+        compose.onRoot().performTouchInput { click(Offset(centerX, 20f)) }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.onNodeWithText("⋯  Steuerung").assertExists()
     }
 
     @Test

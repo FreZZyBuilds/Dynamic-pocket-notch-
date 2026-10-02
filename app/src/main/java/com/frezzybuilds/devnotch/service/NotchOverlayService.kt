@@ -189,9 +189,27 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             }
             deviceLock = next
             applyLayout()
+            mainHandler.removeCallbacks(lockRecheck)
+            if (next == DeviceLock.LOCKED) mainHandler.postDelayed(lockRecheck, LOCK_RECHECK_MS)
             // Beim Einschalten/Entsperren veraltete Live-Ansichten (beendete Fahrt …) sofort entfernen.
             if (next != DeviceLock.SCREEN_OFF) NotificationHub.reconciler?.invoke()
             if (intent.action == Intent.ACTION_USER_PRESENT) systemEvents.onUnlocked()
+        }
+    }
+
+    /**
+     * Gesperrt bleibt die Notch privat (nur Timer). Kommt „entsperrt“ nicht an – z. B. wenn ein
+     * Anruf über dem Sperrbildschirm lief –, korrigiert diese Prüfung den Zustand selbst.
+     */
+    private val lockRecheck = object : Runnable {
+        override fun run() {
+            if (deviceLock != DeviceLock.LOCKED) return
+            if (getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == false) {
+                deviceLock = DeviceLock.UNLOCKED
+                applyLayout()
+            } else {
+                mainHandler.postDelayed(this, LOCK_RECHECK_MS)
+            }
         }
     }
 
@@ -305,6 +323,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(lockRecheck)
         appContainer.notchSettings.removeListener(localSendListener)
         LocalSend.release(LOCALSEND_USER)
         NameDropSession.stop()
@@ -806,6 +825,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         const val CHANNEL_ID = "devnotch_service"
         private const val LEGACY_CHANNEL_ID = "notch_overlay"
         const val NOTIFICATION_ID = 1
+        private const val LOCK_RECHECK_MS = 2_000L
 
         /** Spätestens dann wird das Fenster nach dem Einklappen verkleinert (Feder ≈ 500 ms). */
         private const val SHRINK_FALLBACK_MS = 900L

@@ -20,6 +20,8 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.frezzybuilds.devnotch.notify.LiveActivity
@@ -156,5 +158,30 @@ class NotificationStylesTest {
         save(view, "call_controls_collapsed")
         compose.onNodeWithText("⋯  Steuerung").performClick()
         assertTrue(CallControl.keypadOpen.value)
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w380dp-h300dp-xxhdpi")
+    fun timerStaysRoundInALowDashboard() {
+        lateinit var view: View
+        compose.setContent {
+            view = LocalView.current
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme(colorScheme = Brand.NotchScheme) {
+                    Column(Modifier.fillMaxSize().background(Color(0xFF2B2E6E)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // So viel Platz bleibt mit Anrufkarte über den Tabs.
+                        Box(Modifier.size(320.dp, 88.dp).background(Color.Black)) {
+                            com.frezzybuilds.devnotch.ui.focus.FocusTimerContent(1500, 1500, false, {}, {})
+                        }
+                        Box(Modifier.size(320.dp, 150.dp).background(Color.Black)) {
+                            com.frezzybuilds.devnotch.ui.focus.FocusTimerContent(900, 1500, true, {}, {})
+                        }
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onAllNodesWithText("25m").assertCountEquals(2)
+        save(view, "timer_low")
     }
 }

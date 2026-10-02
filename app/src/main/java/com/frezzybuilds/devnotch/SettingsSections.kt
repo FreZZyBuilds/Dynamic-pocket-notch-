@@ -536,6 +536,22 @@ internal fun LiveBannerSetting(settings: NotchSettings) {
         banner = it
         settings.liveBanner = it
     }
+    AnimatedVisibility(banner) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            var hide by remember { mutableIntStateOf(settings.callAutoHideSeconds) }
+            SettingLabel("Anruf-Banner einklappen")
+            ChoiceRow(listOf(5, 10, 0), hide, { if (it == 0) "Nie" else "nach $it s" }) {
+                hide = it
+                settings.callAutoHideSeconds = it
+            }
+            Text(
+                "Während des Gesprächs rückt das Banner zurück in die Pille (Name und Dauer bleiben sichtbar). " +
+                    "Antippen holt es mit Steuerung und Auflegen wieder hervor.",
+                color = Glass.TextSecondary,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
 }
 
 /** Systemereignisse wie auf dem iPhone – jedes einzeln an/aus. */
