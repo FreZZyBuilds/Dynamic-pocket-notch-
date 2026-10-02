@@ -68,7 +68,9 @@ fun PeekContent(
     /** Benachrichtigung/Anruf: Intent auslösen (Öffnen, Aktion, Annehmen …). */
     onSend: (PendingIntent?) -> Unit = {},
     /** Benachrichtigung schließen. */
-    onDismiss: () -> Unit = {}
+    onDismiss: () -> Unit = {},
+    /** Groß öffnen (Lesen und Antworten) – wie Herunterziehen. */
+    onExpand: () -> Unit = {}
 ) {
     val spec = peekSpec(peek)
     Box(modifier.fillMaxSize().then(if (peek is Peek.Charging) Modifier.chargeSweep() else Modifier)) {
@@ -118,7 +120,7 @@ fun PeekContent(
                 Box(Modifier.widthIn(max = 96.dp)) { spec.trailing() }
             }
             when (peek) {
-                is Peek.Notification -> NotificationActions(peek.notification, onSend, onDismiss)
+                is Peek.Notification -> NotificationActions(peek.notification, onSend, onDismiss, onExpand)
                 is Peek.LiveCall -> CallButtons(peek.call, onSend)
                 else -> Unit
             }
@@ -304,12 +306,14 @@ private fun Modifier.chargeSweep(): Modifier {
 
 /** Aktionen einer Benachrichtigung: bis zu zwei App-Aktionen, „Öffnen“ und Schließen. */
 @Composable
-private fun NotificationActions(n: NotchNotification, onSend: (PendingIntent?) -> Unit, onDismiss: () -> Unit) {
-    // Aktionen mit Texteingabe (Antworten) öffnen die App – Inline-Antworten sind vorbereitet.
-    val direct = n.actions.filter { !it.needsInput && it.intent != null && it.title.isNotBlank() }.take(2)
+private fun NotificationActions(n: NotchNotification, onSend: (PendingIntent?) -> Unit, onDismiss: () -> Unit, onExpand: () -> Unit) {
+    // „Antworten“ öffnet die große Ansicht mit Eingabefeld; daneben höchstens eine App-Aktion.
+    val direct = n.actions.filter { !it.needsInput && it.intent != null && it.title.isNotBlank() }
+        .take(if (n.reply != null) 1 else 2)
     Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (n.reply != null) ActionChip("Antworten", highlighted = true, onClick = onExpand)
         direct.forEach { action -> ActionChip(action.title, highlighted = false) { onSend(action.intent) } }
-        ActionChip("Öffnen", highlighted = true) { onSend(n.contentIntent) }
+        ActionChip("Öffnen", highlighted = n.reply == null) { onSend(n.contentIntent) }
         ActionChip("✕", highlighted = false, onClick = onDismiss)
     }
 }

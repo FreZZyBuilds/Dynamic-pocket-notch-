@@ -64,7 +64,7 @@ object NotificationRules {
     fun redact(n: NotchNotification, locked: Boolean, lockContent: LockContent): NotchNotification? = when {
         !locked -> n
         lockContent == LockContent.HIDDEN -> null
-        lockContent == LockContent.APP_ONLY -> n.copy(title = n.appLabel, text = "Neue Benachrichtigung", icon = null, actions = emptyList())
+        lockContent == LockContent.APP_ONLY -> n.copy(title = n.appLabel, text = "Neue Benachrichtigung", icon = null, actions = emptyList(), reply = null)
         else -> n
     }
 }

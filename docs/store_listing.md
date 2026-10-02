@@ -30,6 +30,7 @@ Datenschutzerklärung: [URL zu docs/privacy_policy.md, z. B. GitHub Pages]*
 > **🔔 Benachrichtigungen & Live-Ansichten**
 > • Neue Benachrichtigungen gleiten kurz aus der Notch: öffnen, wegwischen oder direkt eine
 >   Aktion auslösen
+> • Nachricht herunterziehen: ganzen Text lesen und direkt aus der Notch antworten
 > • Eingehende Anrufe mit Annehmen/Ablehnen, laufende Gesprächsdauer in der Pille
 > • Navigation (Google Maps, Waze u. a.), Timer und Downloads als Live-Ansicht
 > • Filter pro App, „Nicht stören“, Anzeigedauer, Datenschutz auf dem Sperrbildschirm
@@ -129,8 +130,9 @@ Benachrichtigung besteht. Sie werden nie auf den Datenträger geschrieben und ni
 Gespeichert werden nur Paket- und App-Namen für die Filterliste in den Einstellungen.
 Benachrichtigungen und jede Live-Ansicht lassen sich einzeln abschalten, Apps lassen sich
 ausblenden. Sind alle aus, wertet DevNotch nur noch Medien-Benachrichtigungen aus. Auf dem
-Sperrbildschirm zeigt DevNotch standardmäßig nur den App-Namen. DevNotch beantwortet keine
-Nachrichten: Aktionen mit Texteingabe (z. B. „Antworten“) werden nicht angeboten.
+Sperrbildschirm zeigt DevNotch standardmäßig nur den App-Namen. Antworten verschickt
+DevNotch nur, wenn der Nutzer den Text selbst eingibt und auf Senden tippt – über die
+Direktantwort-Aktion der jeweiligen App, gesperrt nie.
 
 **Warum nötig:** Ohne diesen Zugriff gibt Android weder Mediensitzungen noch Benachrichtigungen
 fremder Apps heraus. Alle anderen Funktionen laufen auch ohne den Zugriff.

@@ -51,7 +51,10 @@ für die Filtereinstellung, ohne Inhalte. In den Einstellungen kannst du Benachr
 jede Art von Live-Ansicht einzeln abschalten und Apps ausblenden. Sind Benachrichtigungen und
 alle Live-Ansichten aus, wertet DevNotch nur noch Medien-Benachrichtigungen aus. Auf dem
 Sperrbildschirm zeigt DevNotch standardmäßig nur den App-Namen, keine Inhalte. Eine
-Benachrichtigung schließt DevNotch nur, wenn du in der Notch auf ✕ tippst. Aktionen (z. B.
+Benachrichtigung schließt DevNotch nur, wenn du in der Notch auf ✕ tippst. Antwortest du in
+der Notch auf eine Nachricht, übergibt DevNotch deinen Text auf dem Gerät direkt an die
+jeweilige App (Android-Direktantwort); DevNotch speichert ihn nicht und überträgt ihn nicht
+selbst. Gesperrt ist das Antworten abgeschaltet. Aktionen (z. B.
 „Annehmen“ oder „Als gelesen markieren“) löst es nur aus, wenn du den Knopf antippst.
 
 Die Zwischenablage liest DevNotch nur, wenn Android den Zugriff erlaubt. Ab Android 10 ist das

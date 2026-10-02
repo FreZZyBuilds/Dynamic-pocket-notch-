@@ -3,6 +3,9 @@ package com.frezzybuilds.devnotch.notify
 import android.app.ActivityOptions
 import android.app.Notification
 import android.app.PendingIntent
+import android.os.Bundle
+import android.content.Intent
+import android.app.RemoteInput
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
@@ -14,9 +17,33 @@ import androidx.core.graphics.drawable.toBitmap
 data class NotchAction(
     val title: String,
     val intent: PendingIntent?,
-    /** Verlangt Texteingabe (Antworten) – öffnet dann die App statt direkt auszulösen. */
+    /** Verlangt Texteingabe (Antworten) – läuft über [ReplyAction], nicht als einfacher Knopf. */
     val needsInput: Boolean = false
 )
+
+/**
+ * Direktantwort der App (Aktion mit [RemoteInput]), wie im Android-Benachrichtigungsfeld:
+ * Der Text geht an die App, ohne sie zu öffnen.
+ */
+class ReplyAction(
+    val title: String,
+    private val intent: PendingIntent,
+    private val remoteInputs: Array<RemoteInput>
+) {
+    /** Schickt [text] an die App. @return false, wenn die App den Intent nicht mehr annimmt. */
+    fun send(context: Context, text: String): Boolean = runCatching {
+        val results = Bundle().apply {
+            remoteInputs.filter { it.allowFreeFormInput }.forEach { putCharSequence(it.resultKey, text) }
+        }
+        val fillIn = Intent().addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+        RemoteInput.addResultsToIntent(remoteInputs, fillIn, results)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            RemoteInput.setResultsSource(fillIn, RemoteInput.SOURCE_FREE_FORM_INPUT)
+        }
+        intent.send(context, 0, fillIn)
+        true
+    }.getOrDefault(false)
+}
 
 /**
  * Neutrales Abbild einer Benachrichtigung – nur, was die Notch braucht. Wird nie gespeichert
@@ -50,7 +77,9 @@ data class NotchNotification(
     val answerIntent: PendingIntent? = null,
     val declineIntent: PendingIntent? = null,
     val hangUpIntent: PendingIntent? = null,
-    val isCallStyle: Boolean = false
+    val isCallStyle: Boolean = false,
+    /** Direktantwort, falls die App eine anbietet (Messenger, SMS, Mail …). */
+    val reply: ReplyAction? = null
 ) {
     val progressFraction: Float? =
         if (progressMax > 0 && !progressIndeterminate) (progress.toFloat() / progressMax).coerceIn(0f, 1f) else null
@@ -110,7 +139,15 @@ data class NotchNotification(
                 answerIntent = intentExtra("android.answerIntent"),
                 declineIntent = intentExtra("android.declineIntent"),
                 hangUpIntent = intentExtra("android.hangUpIntent"),
-                isCallStyle = template.endsWith("CallStyle")
+                isCallStyle = template.endsWith("CallStyle"),
+                reply = n.actions.orEmpty().firstNotNullOfOrNull { a ->
+                    val inputs = a.remoteInputs?.filter { it.allowFreeFormInput }
+                    if (a.actionIntent != null && !inputs.isNullOrEmpty()) {
+                        ReplyAction(a.title?.toString().orEmpty().ifBlank { "Antworten" }, a.actionIntent, a.remoteInputs)
+                    } else {
+                        null
+                    }
+                }
             )
         }
     }

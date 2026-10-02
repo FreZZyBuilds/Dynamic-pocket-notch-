@@ -1,5 +1,6 @@
 package com.frezzybuilds.devnotch.ui
 
+import com.frezzybuilds.devnotch.notify.NotchNotification
 import kotlin.math.roundToInt
 import androidx.compose.animation.animateContentSize
 import androidx.compose.ui.semantics.semantics
@@ -218,9 +219,16 @@ fun NotchContainer(
     // eckiger Kasten). Einklappen sofort – das Fenster schrumpft erst nach der Animation.
     val expandScope = rememberCoroutineScope()
     var expandJob by remember { mutableStateOf<Job?>(null) }
+    /** Heruntergezogene Benachrichtigung: aufgeklappt groß lesen und direkt antworten. */
+    var openedNotification by remember { mutableStateOf<NotchNotification?>(null) }
     fun setExpanded(expanded: Boolean) {
-        // Wer aufklappt, sieht ohnehin alles – ein laufender Peek ist damit erledigt.
-        if (expanded) PeekCenter.current.value?.let(PeekCenter::dismiss)
+        if (expanded) {
+            // Ein Nachrichten-Peek wird beim Aufklappen zur großen Ansicht; andere Peeks enden.
+            (PeekCenter.current.value as? Peek.Notification)?.let { openedNotification = it.notification }
+            PeekCenter.current.value?.let(PeekCenter::dismiss)
+        } else {
+            openedNotification = null
+        }
         expandJob?.cancel()
         onExpandRequest(expanded)
         if (expanded) {
@@ -517,6 +525,11 @@ fun NotchContainer(
                     // statt während der Animation zusammengequetscht zu werden. Schmale Bildschirme
                     // im Edge-Modus nutzen dieselben Tabs in Drawer-Größe.
                     Dashboard(
+                        opened = openedNotification?.let { NotificationRules.redact(it, locked, notifyPrefs.lockContent) },
+                        locked = locked,
+                        onCloseDetail = { openedNotification = null },
+                        // Die App aktualisiert ihre Benachrichtigung nach der Antwort selbst.
+                        onReplied = { setExpanded(false) },
                         live = live,
                         onSend = ::sendIntent,
                         onResizeDrag = onResizeDrag,
@@ -539,6 +552,7 @@ fun NotchContainer(
                         pillHeight = pillHeight,
                         lensGap = lensGap(layout),
                         onSend = ::sendIntent,
+                        onExpand = { setExpanded(true) },
                         onDismiss = {
                             (peek as? Peek.Notification)?.let {
                                 NotificationHub.dismiss(it.notification.key)
@@ -631,6 +645,10 @@ fun NotchContainer(
 
 @Composable
 private fun Dashboard(
+    opened: NotchNotification?,
+    locked: Boolean,
+    onCloseDetail: () -> Unit,
+    onReplied: () -> Unit,
     live: LiveActivity?,
     onSend: (PendingIntent?) -> Unit,
     onResizeDrag: ((Float) -> Unit)?,
@@ -644,6 +662,10 @@ private fun Dashboard(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.padding(12.dp)) {
+        if (opened != null) {
+            NotificationDetail(opened, locked, onSend, onReplied, onBack = onCloseDetail)
+            return@Column
+        }
         Box(Modifier.staggerIn(0)) { DashboardHeader(nowPlaying, onClose) }
         if (live != null) {
             LiveCard(live, onSend, Modifier.padding(top = 6.dp).staggerIn(0))
