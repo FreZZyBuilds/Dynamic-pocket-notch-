@@ -1,5 +1,6 @@
 package com.frezzybuilds.devnotch.ui
 
+import com.frezzybuilds.devnotch.service.CallControl
 import com.frezzybuilds.devnotch.share.Wallet
 import com.frezzybuilds.devnotch.share.ShareActions
 import com.frezzybuilds.devnotch.share.localsend.LocalSend
@@ -259,8 +260,28 @@ fun NotchContainer(
     val torchOn by SystemStatus.torchOn.collectAsStateWithLifecycle()
     // LocalSend-Übertragung (AirDrop-Ersatz) als Live-Ansicht mit Fortschritt.
     val transfer by LocalSend.transfer.collectAsStateWithLifecycle()
+    // Laufender Anruf über die Anrufsteuerung (Begleit-App): genauer Name, Startzeit und Zustand;
+    // Foto und Intents kommen weiter aus der Benachrichtigung der Telefon-App.
+    val companionCall by CallControl.state.collectAsStateWithLifecycle()
+    val callKeypad by CallControl.keypadOpen.collectAsStateWithLifecycle()
+    val hubCall = hubLive as? LiveActivity.Call
+    val telecomCall = companionCall?.let { c ->
+        LiveActivity.Call(
+            key = hubCall?.key ?: "telecom:call",
+            packageName = hubCall?.packageName ?: "android",
+            contentIntent = hubCall?.contentIntent,
+            caller = c.caller,
+            avatar = hubCall?.avatar,
+            ringing = c.ringing,
+            since = c.connectedAt.takeIf { it > 0 } ?: hubCall?.since ?: 0L,
+            answer = hubCall?.answer,
+            decline = hubCall?.decline,
+            hangUp = hubCall?.hangUp
+        )
+    }
     val live: LiveActivity? = listOfNotNull(
-        hubLive,
+        if (telecomCall != null && hubCall != null) telecomCall else hubLive,
+        telecomCall,
         transfer?.let { LiveActivity.Transfer(it.incoming, it.peerAlias, it.fileCount, it.fraction, it.currentFile) },
         LiveActivity.Torch.takeIf { torchOn }
     ).maxByOrNull { it.priority }
@@ -288,7 +309,7 @@ fun NotchContainer(
         peek is Peek.Notification -> (peek as Peek.Notification).let { p ->
             NotificationRules.redact(p.notification, locked, notifyPrefs.lockContent)?.let { p.copy(notification = it) }
         }
-        peek == null && bannerLive != null -> Peek.LiveBanner(bannerLive)
+        peek == null && bannerLive != null -> Peek.LiveBanner(bannerLive, keypad = callKeypad && bannerLive is LiveActivity.Call)
         else -> peek
     }
     val peekContext = LocalContext.current

@@ -134,6 +134,7 @@ ebenfalls von RevenueCat geladen.
 | Benachrichtigungszugriff (`BIND_NOTIFICATION_LISTENER_SERVICE`) | Mediensitzungen steuern, Benachrichtigungen und Live-Ansichten (Anrufe, Navigation, Timer, Fortschritt) in der Notch anzeigen (siehe 3) |
 | Bedienungshilfe (`BIND_ACCESSIBILITY_SERVICE`, optional) | Nur für das eigene Fenster: damit die Notch über dem Sperrbildschirm erscheinen und auf Wunsch die Statusleisten-Symbole hinter der Pille verdecken darf. Der Dienst liest keine Bildschirminhalte, empfängt keine Ereignisse anderer Apps, beobachtet keine Eingaben und sendet nichts |
 | Anrufen (`CALL_PHONE`, optional) | Telefon-Tab: die eingetippte Nummer direkt wählen. Ohne Erlaubnis öffnet die Telefon-App mit der Nummer |
+| Anruf-Begleit-App (`CALL_COMPANION_APP`) | Im laufenden Gespräch Stumm, Lautsprecher, Halten, Wahltasten und Auflegen aus der Notch. DevNotch erhält dabei Name/Nummer des Gesprächspartners nur zur Anzeige; nichts wird gespeichert oder übertragen, Gespräche werden nicht mitgehört |
 | Audioeinstellungen (`MODIFY_AUDIO_SETTINGS`) | Anruf in der Notch: Mikrofon auf Wunsch stummschalten |
 | NFC (`NFC`) | NameDrop: die eigene Kontaktkarte als NFC-Tag ausgeben, nur während einer Sitzung |
 | WLAN-Status, Multicast (`ACCESS_WIFI_STATE`, `CHANGE_WIFI_MULTICAST_STATE`) | LocalSend: Geräte im selben WLAN finden |

@@ -1,5 +1,6 @@
 package com.frezzybuilds.devnotch.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.runtime.setValue
@@ -143,7 +144,7 @@ fun PeekContent(
             when (peek) {
                 is Peek.Notification -> NotificationActions(peek.notification, onSend, onDismiss, onExpand)
                 is Peek.LiveCall -> CallButtons(peek.call, onSend)
-                is Peek.LiveBanner -> (peek.live as? LiveActivity.Call)?.let { OngoingCallControls(it, onSend) }
+                is Peek.LiveBanner -> (peek.live as? LiveActivity.Call)?.let { OngoingCallControls(it, peek.keypad, onSend) }
                 is Peek.ShareRequest -> Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CallButton("Ablehnen", Color.White.copy(alpha = 0.85f), Modifier.weight(1f)) {
                         LocalSend.decide(peek.request.id, false)
@@ -379,8 +380,15 @@ private fun NotificationActions(n: NotchNotification, onSend: (PendingIntent?) -
 @Composable
 private fun CallButtons(call: LiveActivity.Call, onSend: (PendingIntent?) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        CallButton("Ablehnen", Color(0xFFFF4D4D), Modifier.weight(1f)) { onSend(call.decline ?: call.contentIntent) }
-        CallButton("Annehmen", Brand.Charge, Modifier.weight(1f)) { onSend(call.answer ?: call.contentIntent) }
+        // Mit Anrufsteuerung direkt über Android Telecom, sonst über die Knöpfe der Telefon-App.
+        // Zustand erst beim Tippen lesen (nicht beim Zeichnen).
+        fun telecom() = com.frezzybuilds.devnotch.service.CallControl.state.value?.ringing == true
+        CallButton("Ablehnen", Color(0xFFFF4D4D), Modifier.weight(1f)) {
+            if (telecom()) com.frezzybuilds.devnotch.service.CallControl.reject() else onSend(call.decline ?: call.contentIntent)
+        }
+        CallButton("Annehmen", Brand.Charge, Modifier.weight(1f)) {
+            if (telecom()) com.frezzybuilds.devnotch.service.CallControl.answer() else onSend(call.answer ?: call.contentIntent)
+        }
     }
 }
 
@@ -445,7 +453,14 @@ private fun liveBannerSpec(live: LiveActivity): PeekSpec {
         )
         is LiveActivity.Call -> PeekSpec(
             title = live.caller,
-            subtitle = if (plausibleDuration(live.since, now)) "Im Gespräch · ${formatDuration(now - live.since)}" else "Im Gespräch",
+            subtitle = com.frezzybuilds.devnotch.service.CallControl.state.collectAsStateWithLifecycle().value.let { c ->
+                when {
+                    c?.dialing == true -> "Wählt …"
+                    c?.onHold == true -> "Gehalten"
+                    plausibleDuration(live.since, now) -> "Im Gespräch · ${formatDuration(now - live.since)}"
+                    else -> "Im Gespräch"
+                }
+            },
             leading = { icon(rememberUsableAvatar(live.avatar), "📞", Brush.linearGradient(listOf(Brand.Charge, Color(0xFF00C853)))) },
             trailing = { CallWave() }
         )
@@ -513,29 +528,80 @@ private fun CallWave() {
 }
 
 /**
- * Laufendes Gespräch: Stummschalten (Mikrofon) und Auflegen über die Aktion der Telefon-App,
- * daneben „Anruf“ zum Öffnen – wie die erweiterte Anrufansicht auf dem iPhone.
+ * Laufendes Gespräch wie in der Telefon-App: Stumm, Lautsprecher, Halten, Tasten (Töne ins Gespräch)
+ * und Auflegen. Mit Anrufsteuerung (Begleit-App) direkt über Android Telecom; ohne sie Stumm über das
+ * Mikrofon, Auflegen über die Aktion der Telefon-App und Tasten öffnen deren Wahltasten.
  */
 @Composable
-private fun OngoingCallControls(call: LiveActivity.Call, onSend: (PendingIntent?) -> Unit) {
+private fun OngoingCallControls(call: LiveActivity.Call, keypad: Boolean, onSend: (PendingIntent?) -> Unit) {
+    val control by com.frezzybuilds.devnotch.service.CallControl.state.collectAsStateWithLifecycle()
+    val c = control
     val context = androidx.compose.ui.platform.LocalContext.current
     val audio = remember { context.getSystemService(android.media.AudioManager::class.java) }
-    var muted by remember { androidx.compose.runtime.mutableStateOf(audio?.isMicrophoneMute == true) }
-    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        CallButton(
-            if (muted) "Stumm ✓" else "Stumm",
-            if (muted) Color.White else Color.White.copy(alpha = 0.18f),
-            Modifier.weight(1f),
-            textColor = if (muted) Color.Black else Color.White
-        ) {
-            audio?.let {
-                it.isMicrophoneMute = !it.isMicrophoneMute
-                muted = it.isMicrophoneMute
+    var fallbackMuted by remember { androidx.compose.runtime.mutableStateOf(audio?.isMicrophoneMute == true) }
+
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            val muted = c?.muted ?: fallbackMuted
+            CallToggle("Stumm", muted, Modifier.weight(1f)) {
+                if (c != null) {
+                    com.frezzybuilds.devnotch.service.CallControl.toggleMute()
+                } else {
+                    audio?.let { it.isMicrophoneMute = !it.isMicrophoneMute; fallbackMuted = it.isMicrophoneMute }
+                }
+            }
+            if (c != null) {
+                CallToggle("Lautspr.", c.speaker, Modifier.weight(1f)) { com.frezzybuilds.devnotch.service.CallControl.toggleSpeaker() }
+                if (c.canHold) CallToggle(if (c.onHold) "Fortsetzen" else "Halten", c.onHold, Modifier.weight(1f)) { com.frezzybuilds.devnotch.service.CallControl.toggleHold() }
+            }
+            CallToggle("Tasten", keypad, Modifier.weight(1f)) {
+                // Ohne Anrufsteuerung kann nur die Telefon-App Töne ins Gespräch senden.
+                if (c != null) com.frezzybuilds.devnotch.service.CallControl.keypadOpen.value = !keypad else onSend(call.contentIntent)
             }
         }
-        // Wahltasten während des Gesprächs bietet nur die Telefon-App (Android gibt Tönen im Gespräch nur ihr frei).
-        CallButton("Tasten", Color.White.copy(alpha = 0.18f), Modifier.weight(1f), textColor = Color.White) { onSend(call.contentIntent) }
-        CallButton("Auflegen", Color(0xFFFF453A), Modifier.weight(1f), textColor = Color.White) { onSend(call.hangUp ?: call.contentIntent) }
+        if (keypad && c != null) InCallKeypad()
+        CallButton("Auflegen", Color(0xFFFF453A), Modifier.fillMaxWidth(), textColor = Color.White) {
+            if (c != null) com.frezzybuilds.devnotch.service.CallControl.hangUp() else onSend(call.hangUp ?: call.contentIntent)
+        }
+    }
+}
+
+@Composable
+private fun CallToggle(label: String, on: Boolean, modifier: Modifier, onClick: () -> Unit) =
+    CallButton(label, if (on) Color.White else Color.White.copy(alpha = 0.16f), modifier, textColor = if (on) Color.Black else Color.White, onClick = onClick)
+
+/** Wahltasten im Gespräch: jeder Druck sendet den Ton über Android Telecom (z. B. Hotline-Menüs). */
+@Composable
+private fun InCallKeypad() {
+    val typed by com.frezzybuilds.devnotch.service.CallControl.typed.collectAsStateWithLifecycle()
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            typed.ifEmpty { " " },
+            color = Color.White,
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 1,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        listOf("123", "456", "789", "*0#").forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                row.forEach { digit ->
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(26.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(Color.White.copy(alpha = 0.12f))
+                            .clickable(role = Role.Button, onClickLabel = "Taste $digit") {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                com.frezzybuilds.devnotch.service.CallControl.dtmf(digit)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) { Text(digit.toString(), color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold) }
+                }
+            }
+        }
     }
 }
 

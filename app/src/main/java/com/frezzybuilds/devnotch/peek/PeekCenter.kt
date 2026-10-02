@@ -86,10 +86,14 @@ sealed interface Peek {
     }
 
     /** Live-Ansicht als Banner unter der Kamera (Navigation, Anruf, Timer) – bleibt, solange sie läuft. */
-    data class LiveBanner(val live: com.frezzybuilds.devnotch.notify.LiveActivity) : Peek {
+    data class LiveBanner(val live: com.frezzybuilds.devnotch.notify.LiveActivity, val keypad: Boolean = false) : Peek {
         override val durationMs = Long.MAX_VALUE
-        // Anrufe mit Knopfreihe (Stumm, Auflegen) wie beim iPhone.
-        override val extraHeightDp: Int get() = if (live is com.frezzybuilds.devnotch.notify.LiveActivity.Call) 92 else 50
+        // Anrufe mit Steuerung (Stumm, Lautsprecher, Halten, Tasten, Auflegen); Wahltasten klappen darunter auf.
+        override val extraHeightDp: Int get() = when {
+            live !is com.frezzybuilds.devnotch.notify.LiveActivity.Call -> 50
+            keypad -> 262
+            else -> 124
+        }
     }
 
     data class TrackChanged(val title: String, val artist: String?, val artwork: Bitmap?) : Peek {

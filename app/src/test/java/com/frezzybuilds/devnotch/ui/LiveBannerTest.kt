@@ -166,4 +166,44 @@ class LiveBannerTest {
             image.compress(Bitmap.CompressFormat.PNG, 100, it)
         }
     }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w380dp-h420dp-xxhdpi")
+    fun renderInCallControls() {
+        com.frezzybuilds.devnotch.service.CallControl.setStateForTest(
+            com.frezzybuilds.devnotch.service.CallControl.State(
+                caller = "Ayomini", ringing = false, dialing = false, onHold = false,
+                connectedAt = System.currentTimeMillis() - 125_000, muted = true, speaker = false, canHold = true
+            )
+        )
+        com.frezzybuilds.devnotch.service.CallControl.typed.value = "1#"
+        try {
+            val call = LiveActivity.Call("c", "com.samsung.android.dialer", null, "Ayomini", null, ringing = false,
+                since = System.currentTimeMillis() - 125_000, answer = null, decline = null, hangUp = null)
+            lateinit var view: View
+            compose.setContent {
+                view = LocalView.current
+                CompositionLocalProvider(LocalInspectionMode provides true) {
+                    MaterialTheme(colorScheme = Brand.NotchScheme) {
+                        Column(Modifier.fillMaxSize().background(Color(0xFF2B2E6E)).padding(16.dp)) {
+                            Box(Modifier.size(330.dp, 290.dp).clip(RoundedCornerShape(30.dp)).background(Color.Black)) {
+                                PeekContent(Peek.LiveBanner(call, keypad = true), pillHeight = 36.dp, lensGap = 42.dp)
+                            }
+                        }
+                    }
+                }
+            }
+            compose.waitForIdle()
+            compose.onNodeWithText("Lautspr.").assertExists()
+            compose.onNodeWithText("Halten").assertExists()
+            val image = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(image))
+            File("build/screenshots/in_call_controls.png").apply { parentFile?.mkdirs() }.outputStream().use {
+                image.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+        } finally {
+            com.frezzybuilds.devnotch.service.CallControl.setStateForTest(null)
+            com.frezzybuilds.devnotch.service.CallControl.typed.value = ""
+        }
+    }
 }

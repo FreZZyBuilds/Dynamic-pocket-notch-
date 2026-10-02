@@ -252,6 +252,12 @@ internal fun LiveViewSettings(settings: NotchSettings) {
         calls = it; settings.liveCalls = it
     }
     DirectCallPermission()
+    Text(
+        "Im Gespräch: Stumm, Lautsprecher, Halten, Wahltasten (Töne ins Gespräch) und Auflegen direkt in der Notch. " +
+            "Android bindet DevNotch dafür als Begleit-App an laufende Anrufe (wie eine Smartwatch) – ab Android 10.",
+        color = Glass.TextSecondary,
+        style = MaterialTheme.typography.bodySmall
+    )
     SwitchRow("🧭 Navigation", "Nächste Abbiegung aus Google Maps, Waze, HERE und anderen", navigation) {
         navigation = it; settings.liveNavigation = it
     }
