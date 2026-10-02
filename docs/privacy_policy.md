@@ -72,7 +72,7 @@ Der Name verbundener Kopfhörer stammt aus Androids Audiogeräte-Liste.
   Gerätename und Modell für LocalSend-Geräte sichtbar. Dateien kommen nur an, wenn du in der Notch
   „Annehmen“ tippst, und landen in Downloads/DevNotch. Gesendet wird nur, was du selbst teilst.
   Alles läuft direkt zwischen den Geräten im lokalen Netz, nie über einen Server oder das Internet.
-- *Bezahlen:* Erkennt DevNotch eine Zahlungsbenachrichtigung von Google oder Samsung Wallet,
+- *Google Pay:* Erkennt DevNotch eine Zahlungsbenachrichtigung von Google Pay (Google Wallet, GPay) oder Samsung Wallet,
   zeigt die Notch Händler und Betrag kurz an. Nichts davon wird gespeichert.
 
 Die Zwischenablage liest DevNotch nur, wenn Android den Zugriff erlaubt. Ab Android 10 ist das

@@ -76,6 +76,8 @@ class NameDropTest {
         assertEquals("€ 3.99", Wallet.parsePayment(n("com.samsung.android.spay", "Bezahlt bei Bäckerei", "€ 3.99"))?.amount)
         assertNull("Play-Dienste nur mit Zahlungswort", Wallet.parsePayment(n("com.google.android.gms", "Speicher fast voll", "1,50 €")))
         assertEquals("1,50 €", Wallet.parsePayment(n("com.google.android.gms", "Zahlung an Kiosk", "1,50 €"))?.amount)
+        assertEquals(Wallet.Payment("Paid to Chai Point", "₹ 250.00"), Wallet.parsePayment(n("com.google.android.apps.nbu.paisa.user", "Paid to Chai Point", "₹ 250.00")))
+        assertEquals("GPay mit Euro", "8,00 €", Wallet.parsePayment(n("com.google.android.apps.nbu.paisa.user", "Bezahlt an Kiosk", "8,00 €"))?.amount)
         assertNull("andere Apps nie", Wallet.parsePayment(n("org.telegram.messenger", "Lena", "Schuldest mir 12,50 €")))
         assertNull("ohne Betrag nicht", Wallet.parsePayment(n("com.google.android.apps.walletnfcrel", "Karte hinzugefügt", null)))
     }

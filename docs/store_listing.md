@@ -49,7 +49,8 @@ Datenschutzerklärung: [URL zu docs/privacy_policy.md, z. B. GitHub Pages]*
 >   iPhones per QR-Code
 > • AirDrop-Ersatz über LocalSend: Dateien mit iPhone, Mac, Windows, Linux und Android im selben
 >   WLAN tauschen – Annehmen/Ablehnen und Fortschritt direkt in der Notch
-> • Bezahlt-Bestätigung wie Apple Pay nach Zahlungen mit Google oder Samsung Wallet
+> • Bezahlt-Bestätigung wie Apple Pay nach Zahlungen mit Google Pay (Google Wallet, GPay) oder
+>   Samsung Wallet
 >
 > **✧ Lichtlauf & Größe**
 > • Farbiges Licht um die Notch in 10 Paletten und 3 Stilen, Tempo, Helligkeit und Länge

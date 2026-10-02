@@ -571,14 +571,14 @@ internal fun ShareSettings(settings: NotchSettings) {
         style = MaterialTheme.typography.bodySmall
     )
 
-    SettingLabel("Bezahlen – wie Apple Pay")
+    SettingLabel("Google Pay – wie Apple Pay")
     Text(
-        if (wallet != null) "Nach einer Zahlung mit Google oder Samsung Wallet zeigt die Notch „Bezahlt“ mit Betrag. Notch → 💳 öffnet die Wallet."
-        else "Keine Google- oder Samsung-Wallet gefunden. Mit Wallet zeigt die Notch nach jeder Zahlung „Bezahlt“ mit Betrag.",
+        if (wallet != null) "Nach einer Zahlung mit Google Pay (Google Wallet/GPay) oder Samsung Wallet zeigt die Notch „Bezahlt“ mit Betrag. Notch → 💳 öffnet Google Pay."
+        else "Google Pay (Google Wallet/GPay) nicht gefunden. Damit zeigt die Notch nach jeder Zahlung „Bezahlt“ mit Betrag.",
         color = Glass.TextSecondary,
         style = MaterialTheme.typography.bodySmall
     )
     if (wallet != null) {
-        com.frezzybuilds.devnotch.ui.glass.GlassButton("Wallet öffnen", onClick = { com.frezzybuilds.devnotch.share.Wallet.open(context) })
+        com.frezzybuilds.devnotch.ui.glass.GlassButton("Google Pay öffnen", onClick = { com.frezzybuilds.devnotch.share.Wallet.open(context) })
     }
 }

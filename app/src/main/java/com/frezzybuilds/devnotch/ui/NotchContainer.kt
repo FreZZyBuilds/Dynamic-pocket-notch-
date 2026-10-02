@@ -907,7 +907,7 @@ private fun ShareShortcuts(onClose: () -> Unit) {
     }
     shortcut("👤", "NameDrop") { ShareActions.startNameDrop(context) }
     shortcut("⇪", "Dateien senden") { ShareActions.pickAndSend(context) }
-    if (wallet) shortcut("💳", "Wallet öffnen") { Wallet.open(context) }
+    if (wallet) shortcut("💳", "Google Pay öffnen") { Wallet.open(context) }
 }
 
 /**

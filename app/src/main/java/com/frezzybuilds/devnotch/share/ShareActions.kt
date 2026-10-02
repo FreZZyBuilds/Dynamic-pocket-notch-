@@ -36,10 +36,11 @@ object ShareActions {
     }
 }
 
-/** Google Wallet / Samsung Wallet: öffnen und Zahlungen erkennen (Apple-Pay-Bestätigung). */
+/** Google Pay (Google Wallet/GPay) und Samsung Wallet: öffnen und Zahlungen erkennen (wie Apple Pay). */
 object Wallet {
     private val APPS = listOf(
-        "com.google.android.apps.walletnfcrel", // Google Wallet
+        "com.google.android.apps.walletnfcrel", // Google Wallet (Google Pay in Deutschland/EU)
+        "com.google.android.apps.nbu.paisa.user", // GPay (eigene App, z. B. Indien, Singapur)
         "com.samsung.android.spay", // Samsung Wallet
         "com.samsung.android.samsungpay.gear"
     )
@@ -56,7 +57,7 @@ object Wallet {
         return runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true }.getOrDefault(false)
     }
 
-    private val AMOUNT = Regex("""(?:(€|EUR|\$|USD|£|GBP|CHF)\s?(\d{1,3}(?:[.,\s]\d{3})*[.,]\d{2}))|(?:(\d{1,3}(?:[.\s]\d{3})*[.,]\d{2})\s?(€|EUR|\$|USD|£|GBP|CHF))""")
+    private val AMOUNT = Regex("""(?:(€|EUR|\$|USD|£|GBP|CHF|₹|INR|SGD)\s?(\d{1,3}(?:[.,\s]\d{3})*[.,]\d{2}))|(?:(\d{1,3}(?:[.\s]\d{3})*[.,]\d{2})\s?(€|EUR|\$|USD|£|GBP|CHF|₹|INR|SGD))""")
     private val PAID_WORDS = Regex("(?i)bezahl|zahlung|payment|paid|transaktion|transaction|kauf|purchase")
 
     /** Erkannte Zahlung: Händler und Betrag (wie angezeigt, z. B. „12,50 €“). */
