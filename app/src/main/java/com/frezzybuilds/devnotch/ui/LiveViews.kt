@@ -106,6 +106,7 @@ fun LivePill(live: LiveActivity, lensGap: Dp) {
                 is LiveActivity.Timer -> LiveIcon(null, "⏱", Brand.Violet)
                 is LiveActivity.Progress -> LiveIcon(live.icon, "↓", Brand.Lilac)
                 is LiveActivity.Recording -> RecordingDot()
+                is LiveActivity.Transfer -> LiveIcon(null, if (live.incoming) "⬇" else "⬆", Brand.Cyan)
                 LiveActivity.Torch -> LiveIcon(null, "🔦", TorchYellow)
             }
         }
@@ -118,6 +119,7 @@ fun LivePill(live: LiveActivity, lensGap: Dp) {
                 is LiveActivity.Timer -> formatDuration(if (live.countDown) live.base - now else now - live.base) to Color.White
                 is LiveActivity.Progress -> "${(live.fraction * 100).toInt()} %" to Brand.Lilac
                 is LiveActivity.Recording -> (if (plausibleDuration(live.since, now)) formatDuration(now - live.since) else "REC") to RecordingRed
+                is LiveActivity.Transfer -> "${(live.fraction * 100).toInt()} %" to Brand.Cyan
                 LiveActivity.Torch -> "An" to TorchYellow
             }
             Text(text, color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
@@ -158,6 +160,7 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
                 is LiveActivity.Timer -> LiveIcon(live.icon, "⏱", Brand.Violet, 32.dp)
                 is LiveActivity.Progress -> LiveIcon(live.icon, "↓", Brand.Lilac, 32.dp)
                 is LiveActivity.Recording -> LiveIcon(null, "●", RecordingRed, 32.dp)
+                is LiveActivity.Transfer -> LiveIcon(null, if (live.incoming) "⬇" else "⬆", Brand.Cyan, 32.dp)
                 LiveActivity.Torch -> LiveIcon(null, "🔦", TorchYellow, 32.dp)
             }
             Spacer(Modifier.width(10.dp))
@@ -169,6 +172,8 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
                     is LiveActivity.Progress -> live.title to "${live.app} · ${(live.fraction * 100).toInt()} %"
                     is LiveActivity.Recording -> "Bildschirmaufnahme" to (if (plausibleDuration(live.since, now)) "${live.app} · ${formatDuration(now - live.since)}" else live.app)
                     LiveActivity.Torch -> "Taschenlampe" to "Leuchtet"
+                    is LiveActivity.Transfer -> (if (live.incoming) "Empfange von ${live.peer}" else "Sende an ${live.peer}") to
+                        "${live.fileName} · ${(live.fraction * 100).toInt()} %"
                 }
                 Text(title, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.smoothMarquee())
                 Text(detail, color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -198,7 +203,7 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
                 else -> ActionChip("Öffnen", highlighted = true) { onSend(live.contentIntent) }
             }
             // Bleibt eine Ansicht hängen (z. B. App lässt die Benachrichtigung stehen): wegnehmen.
-            if (live !is LiveActivity.Call && live !is LiveActivity.Torch) {
+            if (live !is LiveActivity.Call && live !is LiveActivity.Torch && live !is LiveActivity.Transfer) {
                 ActionChip("Ausblenden", highlighted = false) { NotificationHub.hide(live.key) }
             }
         }

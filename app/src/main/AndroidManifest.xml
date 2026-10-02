@@ -28,6 +28,15 @@
     -->
 
     <!-- Paketsichtbarkeit (Android 11+) für die Dev-Shortcuts: Termux und GitHub Mobile starten. -->
+    <!-- NameDrop: Kontaktkarte per NFC-Kartenemulation (HCE). NFC ist optional. -->
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
+    <uses-feature android:name="android.hardware.nfc.hce" android:required="false" />
+
+    <!-- LocalSend (AirDrop-Alternative): Geräte im WLAN finden (Multicast) und Dateien austauschen -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
     <queries>
         <package android:name="com.termux" />
         <package android:name="com.github.android" />
@@ -71,6 +80,53 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!-- NameDrop: gibt die Kontaktkarte als NFC-Tag aus – nur während einer Sitzung. -->
+        <service
+            android:name=".share.NameDropApduService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/namedrop_apdu" />
+        </service>
+
+        <!-- NameDrop empfangen: vCard-Tag eines anderen Handys → Kontaktformular -->
+        <activity
+            android:name=".share.NameDropReceiveActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/vcard" />
+            </intent-filter>
+        </activity>
+
+        <!-- LocalSend: „Teilen“ → Gerät im WLAN wählen (iPhone, Mac, Windows, Android …) -->
+        <activity
+            android:name=".share.LocalSendShareActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/localsend_share_label"
+            android:taskAffinity=""
+            android:theme="@style/Theme.DevNotch">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
 
         <!-- Optional: nur damit die Notch über dem Sperrbildschirm erscheinen darf. -->
         <service

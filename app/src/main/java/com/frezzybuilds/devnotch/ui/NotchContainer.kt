@@ -1,5 +1,8 @@
 package com.frezzybuilds.devnotch.ui
 
+import com.frezzybuilds.devnotch.share.Wallet
+import com.frezzybuilds.devnotch.share.ShareActions
+import com.frezzybuilds.devnotch.share.localsend.LocalSend
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.combinedClickable
@@ -253,7 +256,13 @@ fun NotchContainer(
     val hubLive by NotificationHub.primaryLive.collectAsStateWithLifecycle()
     // Taschenlampe als kleinste Live-Ansicht – nur, wenn keine Benachrichtigung eine zeigt.
     val torchOn by SystemStatus.torchOn.collectAsStateWithLifecycle()
-    val live: LiveActivity? = hubLive ?: LiveActivity.Torch.takeIf { torchOn }
+    // LocalSend-Übertragung (AirDrop-Ersatz) als Live-Ansicht mit Fortschritt.
+    val transfer by LocalSend.transfer.collectAsStateWithLifecycle()
+    val live: LiveActivity? = listOfNotNull(
+        hubLive,
+        transfer?.let { LiveActivity.Transfer(it.incoming, it.peerAlias, it.fileCount, it.fraction, it.currentFile) },
+        LiveActivity.Torch.takeIf { torchOn }
+    ).maxByOrNull { it.priority }
     val notifySettings = LocalContext.current.appContainer.notchSettings
     val notifyPrefs by remember { notifySettings.notifyPrefsFlow() }
         .collectAsStateWithLifecycle(initialValue = notifySettings.notifyPrefs)
@@ -263,7 +272,7 @@ fun NotchContainer(
     var minimizedLiveKey by remember { mutableStateOf<String?>(null) }
     val bannerLive = live?.takeIf {
         notifyPrefs.live.banner && it.key != minimizedLiveKey && when (it) {
-            is LiveActivity.Navigation, is LiveActivity.Timer -> true
+            is LiveActivity.Navigation, is LiveActivity.Timer, is LiveActivity.Transfer -> true
             is LiveActivity.Call -> !it.ringing
             is LiveActivity.Progress, is LiveActivity.Recording, LiveActivity.Torch -> false
         }
@@ -531,6 +540,11 @@ fun NotchContainer(
                                     isExpanded -> setExpanded(false)
                                     // Eingeklappt nach oben: Einblendung wegschieben.
                                     activePeek is Peek.LiveBanner -> minimizedLiveKey = activePeek.live.key
+                                    // Weggewischte LocalSend-Anfrage = abgelehnt.
+                                    activePeek is Peek.ShareRequest -> {
+                                        LocalSend.decide(activePeek.request.id, false)
+                                        PeekCenter.dismiss(activePeek)
+                                    }
                                     else -> PeekCenter.current.value?.let(PeekCenter::dismiss)
                                 }
                             }
@@ -745,7 +759,7 @@ private fun Dashboard(
             NotificationDetail(opened, locked, onSend, onReplied, onBack = onCloseDetail)
             return@Column
         }
-        Box(Modifier.staggerIn(0)) { DashboardHeader(nowPlaying, onClose) }
+        Box(Modifier.staggerIn(0)) { DashboardHeader(nowPlaying, onClose, shortcuts = !locked) }
         if (live != null) {
             LiveCard(live, onSend, Modifier.padding(top = 6.dp).staggerIn(0))
         }
@@ -849,7 +863,7 @@ private fun Modifier.neonFrame(shape: Shape, rim: State<Float>): Modifier = draw
 
 /** Kopfzeile: Mediensteuerung, wenn Musik läuft (keine Extra-Höhe), sonst Titel; dazu ✕. */
 @Composable
-internal fun DashboardHeader(nowPlaying: NowPlaying?, onClose: () -> Unit) {
+internal fun DashboardHeader(nowPlaying: NowPlaying?, onClose: () -> Unit, shortcuts: Boolean = false) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -864,10 +878,36 @@ internal fun DashboardHeader(nowPlaying: NowPlaying?, onClose: () -> Unit) {
                 modifier = Modifier.weight(1f)
             )
         }
+        if (shortcuts) ShareShortcuts(onClose)
         TextButton(onClick = onClose) {
             Text("✕", color = Color.Gray)
         }
     }
+}
+
+/** NameDrop, Senden (LocalSend) und Wallet – je ein Tipp, danach klappt die Notch ein. */
+@Composable
+private fun ShareShortcuts(onClose: () -> Unit) {
+    val context = LocalContext.current
+    val wallet = remember { Wallet.installedApp(context) != null }
+    @Composable
+    fun shortcut(symbol: String, label: String, action: () -> Unit) {
+        Box(
+            Modifier
+                .padding(start = 4.dp)
+                .size(30.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.10f))
+                .clickable(role = Role.Button, onClickLabel = label) {
+                    onClose()
+                    action()
+                },
+            contentAlignment = Alignment.Center
+        ) { Text(symbol, style = MaterialTheme.typography.labelMedium) }
+    }
+    shortcut("👤", "NameDrop") { ShareActions.startNameDrop(context) }
+    shortcut("⇪", "Dateien senden") { ShareActions.pickAndSend(context) }
+    if (wallet) shortcut("💳", "Wallet öffnen") { Wallet.open(context) }
 }
 
 /**

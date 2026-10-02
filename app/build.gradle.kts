@@ -47,8 +47,8 @@ android {
         applicationId = "com.frezzybuilds.devnotch"
         minSdk = 26 // TYPE_APPLICATION_OVERLAY, Notification Channels, adaptive Icons
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.8.0"
+        versionCode = 12
+        versionName = "0.9.0"
 
         // RevenueCat Public SDK Key (Google Play, beginnt mit "goog_").
         // local.properties: revenuecat.apiKey=goog_xxx  ·  CI: -Prevenuecat.apiKey=…
@@ -174,6 +174,8 @@ dependencies {
     // --- Bilder & Farben (GitHub-Avatar, Cover-Farben im Edge-Player) ------------------------
     implementation(libs.coil.compose)
     implementation(libs.androidx.palette.ktx)
+    // QR-Code für NameDrop (Kontaktkarte für iPhone-Kameras), rein lokal erzeugt.
+    implementation(libs.zxing.core)
 
     // --- In-App-Käufe: RevenueCat SDK + Paywalls UI ------------------------------------------
     implementation(libs.revenuecat.purchases)

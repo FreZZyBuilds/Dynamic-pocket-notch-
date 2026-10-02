@@ -1,5 +1,7 @@
 package com.frezzybuilds.devnotch.service
 
+import com.frezzybuilds.devnotch.share.NameDropSession
+import com.frezzybuilds.devnotch.share.localsend.LocalSend
 import com.frezzybuilds.devnotch.system.SystemEventMonitor
 import com.frezzybuilds.devnotch.system.SystemEvent
 import kotlinx.coroutines.cancel
@@ -158,6 +160,12 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         if (changed) applyLayout()
     }
 
+    private lateinit var localSendListener: SharedPreferences.OnSharedPreferenceChangeListener
+
+    private fun syncLocalSend() {
+        if (appContainer.notchSettings.localSendReceive) LocalSend.acquire(this, LOCALSEND_USER) else LocalSend.release(LOCALSEND_USER)
+    }
+
     /** Lautlos, Nicht stören, Akku, Kopfhörer, Taschenlampe … (Apple-Insel-Ereignisse). */
     private lateinit var systemEvents: SystemEventMonitor
 
@@ -259,6 +267,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             keyguardLocked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
         )
         lockSettingsListener = settings.addListener(setOf(NotchSettings.KEY_LOCKSCREEN_MODE, NotchSettings.KEY_COVER_STATUS_BAR)) { applyLayout() }
+        // LocalSend-Empfang (AirDrop-Ersatz): läuft mit der Notch, solange er eingeschaltet ist.
+        syncLocalSend()
+        localSendListener = settings.addListener(setOf(NotchSettings.KEY_LOCALSEND_RECEIVE)) { syncLocalSend() }
         // Bedienungshilfe ein-/ausgeschaltet: Fenster ggf. in den anderen Typ umhängen.
         lifecycleScope.launch { NotchAccessibilityService.instance.collect { applyLayout() } }
     }
@@ -294,6 +305,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     }
 
     override fun onDestroy() {
+        appContainer.notchSettings.removeListener(localSendListener)
+        LocalSend.release(LOCALSEND_USER)
+        NameDropSession.stop()
         systemEvents.stop()
         overlayRecomposer.cancel()
         recomposeScope.cancel()
@@ -816,3 +830,5 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         }
     }
 }
+
+private const val LOCALSEND_USER = "service"

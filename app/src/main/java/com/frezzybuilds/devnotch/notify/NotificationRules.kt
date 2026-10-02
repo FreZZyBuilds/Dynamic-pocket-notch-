@@ -30,6 +30,8 @@ data class NotifyPrefs(
     val skipSilent: Boolean = true,
     val respectDnd: Boolean = true,
     val blockedApps: Set<String> = emptySet(),
+    /** Zahlungsbestätigung (Google/Samsung Wallet) wie Apple Pay. */
+    val payments: Boolean = true,
     val live: LivePrefs = LivePrefs()
 ) {
     companion object {

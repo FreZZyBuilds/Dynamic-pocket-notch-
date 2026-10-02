@@ -62,6 +62,19 @@ Kopfhörer, Taschenlampe) nutzt DevNotch öffentliche Android-Meldungen, für di
 Berechtigung nötig ist. Diese Zustände werden nur angezeigt, nicht gespeichert oder übertragen.
 Der Name verbundener Kopfhörer stammt aus Androids Audiogeräte-Liste.
 
+**Teilen (NameDrop, LocalSend, Bezahlen):**
+- *NameDrop:* Deine Kontaktkarte (Name, Telefon, E-Mail) speicherst du selbst in der App; sie
+  bleibt im App-Speicher (vom Backup ausgeschlossen). Übertragen wird sie nur, solange du eine
+  NameDrop-Sitzung startest (höchstens 60 Sekunden), per NFC an ein Handy, das du direkt
+  daranhältst, oder als QR-Code auf deinem Bildschirm. Empfangene Karten öffnet DevNotch im
+  Kontaktformular; gespeichert wird erst nach deiner Bestätigung, ohne Kontakte-Berechtigung.
+- *LocalSend (AirDrop-Ersatz):* Ist „Empfangen“ an, ist dein Gerät im selben WLAN mit
+  Gerätename und Modell für LocalSend-Geräte sichtbar. Dateien kommen nur an, wenn du in der Notch
+  „Annehmen“ tippst, und landen in Downloads/DevNotch. Gesendet wird nur, was du selbst teilst.
+  Alles läuft direkt zwischen den Geräten im lokalen Netz, nie über einen Server oder das Internet.
+- *Bezahlen:* Erkennt DevNotch eine Zahlungsbenachrichtigung von Google oder Samsung Wallet,
+  zeigt die Notch Händler und Betrag kurz an. Nichts davon wird gespeichert.
+
 Die Zwischenablage liest DevNotch nur, wenn Android den Zugriff erlaubt. Ab Android 10 ist das
 nur der Fall, solange DevNotch im Vordergrund ist.
 
@@ -120,6 +133,8 @@ ebenfalls von RevenueCat geladen.
 | Über anderen Apps einblenden (`SYSTEM_ALERT_WINDOW`) | Die Notch, das Floating-Dashboard und den Edge-Player über dem aktuellen Bildschirm zeichnen |
 | Benachrichtigungszugriff (`BIND_NOTIFICATION_LISTENER_SERVICE`) | Mediensitzungen steuern, Benachrichtigungen und Live-Ansichten (Anrufe, Navigation, Timer, Fortschritt) in der Notch anzeigen (siehe 3) |
 | Bedienungshilfe (`BIND_ACCESSIBILITY_SERVICE`, optional) | Nur für das eigene Fenster: damit die Notch über dem Sperrbildschirm erscheinen und auf Wunsch die Statusleisten-Symbole hinter der Pille verdecken darf. Der Dienst liest keine Bildschirminhalte, empfängt keine Ereignisse anderer Apps, beobachtet keine Eingaben und sendet nichts |
+| NFC (`NFC`) | NameDrop: die eigene Kontaktkarte als NFC-Tag ausgeben, nur während einer Sitzung |
+| WLAN-Status, Multicast (`ACCESS_WIFI_STATE`, `CHANGE_WIFI_MULTICAST_STATE`) | LocalSend: Geräte im selben WLAN finden |
 | Vordergrunddienst (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE`) | Die Notch dauerhaft anzeigen, ohne dass Android sie beendet |
 | Benachrichtigungen (`POST_NOTIFICATIONS`) | Die vorgeschriebene, dezente Dienst-Benachrichtigung mit „Beenden“-Knopf |
 | Nach dem Neustart starten (`RECEIVE_BOOT_COMPLETED`) | Die Notch nach einem Neustart oder App-Update wieder einblenden, falls sie aktiv war |

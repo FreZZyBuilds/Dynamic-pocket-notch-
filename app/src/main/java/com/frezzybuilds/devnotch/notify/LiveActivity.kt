@@ -73,6 +73,20 @@ sealed interface LiveActivity {
         override val priority = 70
     }
 
+    /** LocalSend-Übertragung (AirDrop-Ersatz) mit Fortschritt. */
+    data class Transfer(
+        val incoming: Boolean,
+        val peer: String,
+        val fileCount: Int,
+        val fraction: Float,
+        val fileName: String
+    ) : LiveActivity {
+        override val key = "localsend:transfer"
+        override val packageName = "com.frezzybuilds.devnotch"
+        override val contentIntent: PendingIntent? = null
+        override val priority = 75
+    }
+
     /** Taschenlampe an – kein Benachrichtigungs-Ursprung, kommt aus [com.frezzybuilds.devnotch.system.SystemStatus]. */
     data object Torch : LiveActivity {
         override val key = "system:torch"

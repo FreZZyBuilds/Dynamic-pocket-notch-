@@ -1,5 +1,6 @@
 package com.frezzybuilds.devnotch.data.settings
 
+import com.frezzybuilds.devnotch.share.ContactCard
 import com.frezzybuilds.devnotch.system.SystemEvent
 import android.content.Context
 import android.content.SharedPreferences
@@ -214,6 +215,29 @@ class NotchSettings(context: Context) {
         systemEventsOff = if (on) systemEventsOff - event.name else systemEventsOff + event.name
     }
 
+    // --- Teilen: NameDrop-Kontaktkarte, LocalSend -------------------------------------------
+    var contactCard: ContactCard
+        get() = ContactCard(
+            prefs.getString(KEY_CARD_NAME, null).orEmpty(),
+            prefs.getString(KEY_CARD_PHONE, null).orEmpty(),
+            prefs.getString(KEY_CARD_EMAIL, null).orEmpty()
+        )
+        set(value) = prefs.edit {
+            putString(KEY_CARD_NAME, value.name.trim())
+            putString(KEY_CARD_PHONE, value.phone.trim())
+            putString(KEY_CARD_EMAIL, value.email.trim())
+        }
+
+    /** Für LocalSend-Geräte im WLAN sichtbar und empfangsbereit. */
+    var localSendReceive: Boolean
+        get() = prefs.getBoolean(KEY_LOCALSEND_RECEIVE, false)
+        set(value) = prefs.edit { putBoolean(KEY_LOCALSEND_RECEIVE, value) }
+
+    /** Gerätename bei LocalSend; leer = „DevNotch (Modell)“. */
+    var localSendAlias: String
+        get() = prefs.getString(KEY_LOCALSEND_ALIAS, null).orEmpty()
+        set(value) = prefs.edit { putString(KEY_LOCALSEND_ALIAS, value.trim()) }
+
     var liveBanner: Boolean
         get() = prefs.getBoolean(KEY_LIVE_BANNER, true)
         set(value) = prefs.edit { putBoolean(KEY_LIVE_BANNER, value) }
@@ -227,6 +251,7 @@ class NotchSettings(context: Context) {
             skipSilent = notifySkipSilent,
             respectDnd = notifyRespectDnd,
             blockedApps = notifyBlockedApps,
+            payments = isSystemEventOn(SystemEvent.PAYMENT),
             live = LivePrefs(liveCalls, liveNavigation, liveTimers, liveProgress, liveBanner, isSystemEventOn(SystemEvent.RECORDING))
         )
 
@@ -310,6 +335,11 @@ class NotchSettings(context: Context) {
         const val KEY_LIVE_PROGRESS = "live_progress"
         const val KEY_LIVE_BANNER = "live_banner"
         const val KEY_SYSTEM_OFF = "system_events_off"
+        const val KEY_CARD_NAME = "card_name"
+        const val KEY_CARD_PHONE = "card_phone"
+        const val KEY_CARD_EMAIL = "card_email"
+        const val KEY_LOCALSEND_RECEIVE = "localsend_receive"
+        const val KEY_LOCALSEND_ALIAS = "localsend_alias"
         val NOTIFY_PREF_KEYS = setOf(
             KEY_NOTIFY_ENABLED, KEY_NOTIFY_DURATION, KEY_NOTIFY_LOCK_CONTENT, KEY_NOTIFY_SKIP_ONGOING,
             KEY_NOTIFY_SKIP_SILENT, KEY_NOTIFY_DND, KEY_NOTIFY_BLOCKED,

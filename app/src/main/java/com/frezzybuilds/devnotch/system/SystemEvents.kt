@@ -20,7 +20,9 @@ enum class SystemEvent(val label: String, val description: String) {
     HEADPHONES("Kopfhörer", "Verbunden oder getrennt (Bluetooth, Kabel, USB)"),
     TORCH("Taschenlampe", "Solange sie leuchtet – Antippen schaltet sie aus"),
     RECORDING("Bildschirmaufnahme", "Roter Punkt mit laufender Dauer"),
-    UNLOCK("Entsperren", "Kurzes Schloss-Symbol beim Entsperren");
+    UNLOCK("Entsperren", "Kurzes Schloss-Symbol beim Entsperren"),
+    PAYMENT("Bezahlen", "Bestätigung nach Zahlungen mit Google oder Samsung Wallet"),
+    SHARE("NameDrop & LocalSend", "Kontakt gesendet/empfangen, Dateien empfangen");
 }
 
 /** Laufende Systemzustände, die die Notch dauerhaft zeigt. */

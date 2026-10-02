@@ -60,6 +60,12 @@ object NotificationHub {
         // Apps posten dieselbe Benachrichtigung oft erneut (Sortierung, Zeitstempel) – nur echte
         // Änderungen am Inhalt zeigen.
         if (lastShown[n.key] == n.contentSignature()) return
+        // Bezahlt mit Google/Samsung Wallet: Bestätigung wie Apple Pay statt normaler Benachrichtigung.
+        com.frezzybuilds.devnotch.share.Wallet.parsePayment(n)?.let { payment ->
+            lastShown[n.key] = n.contentSignature()
+            if (prefs.payments) PeekCenter.show(Peek.Payment(payment.merchant, payment.amount))
+            return
+        }
         if (NotificationRules.shouldPeek(n, prefs, dndActive, ownPackage)) {
             lastShown[n.key] = n.contentSignature()
             onAppSeen(n.packageName, n.appLabel)

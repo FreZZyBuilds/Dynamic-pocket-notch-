@@ -497,3 +497,88 @@ internal fun SystemEventSettings(settings: NotchSettings) {
         }
     }
 }
+
+/** Teilen wie beim iPhone: NameDrop (NFC/QR), AirDrop-Ersatz LocalSend und Wallet. */
+@Composable
+internal fun ShareSettings(settings: NotchSettings) {
+    val context = LocalContext.current
+    var card by remember { mutableStateOf(settings.contactCard) }
+    var receive by remember { mutableStateOf(settings.localSendReceive) }
+    var alias by remember { mutableStateOf(settings.localSendAlias) }
+    val nfc = remember { com.frezzybuilds.devnotch.share.NameDropSession.nfcEnabled(context) }
+    val wallet = remember { com.frezzybuilds.devnotch.share.Wallet.installedApp(context) }
+
+    SettingLabel("NameDrop – deine Kontaktkarte")
+    androidx.compose.material3.OutlinedTextField(
+        value = card.name, onValueChange = { card = card.copy(name = it) },
+        label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+    )
+    androidx.compose.material3.OutlinedTextField(
+        value = card.phone, onValueChange = { card = card.copy(phone = it) },
+        label = { Text("Telefon") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone)
+    )
+    androidx.compose.material3.OutlinedTextField(
+        value = card.email, onValueChange = { card = card.copy(email = it) },
+        label = { Text("E-Mail") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email)
+    )
+    Text(
+        when (nfc) {
+            null -> "Dieses Gerät hat kein NFC – NameDrop zeigt dann einen QR-Code (iPhone-Kamera erkennt ihn als Kontakt)."
+            false -> "NFC ist aus. Einschalten, um Handys aneinanderzuhalten – sonst geht nur der QR-Code."
+            true -> "Notch → 👤: Handy oben an ein anderes Android-Handy halten. Für iPhones gibt es den QR-Code."
+        },
+        color = Glass.TextSecondary,
+        style = MaterialTheme.typography.bodySmall
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        com.frezzybuilds.devnotch.ui.glass.GradientButton(
+            if (card == settings.contactCard) "NameDrop starten" else "Speichern & starten",
+            onClick = {
+                settings.contactCard = card
+                com.frezzybuilds.devnotch.share.ShareActions.startNameDrop(context)
+            }
+        )
+        if (nfc == false) {
+            com.frezzybuilds.devnotch.ui.glass.GlassButton("NFC einschalten", onClick = {
+                runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_NFC_SETTINGS)) }
+            })
+        }
+    }
+
+    SettingLabel("AirDrop – über LocalSend")
+    SwitchRow(
+        "Empfangen",
+        "Für LocalSend im selben WLAN sichtbar (iPhone, Mac, Windows, Linux, Android). Jede Übertragung musst du in der Notch annehmen.",
+        receive
+    ) {
+        receive = it
+        settings.localSendReceive = it
+    }
+    androidx.compose.material3.OutlinedTextField(
+        value = alias,
+        onValueChange = { alias = it; settings.localSendAlias = it },
+        label = { Text("Gerätename") },
+        placeholder = { Text("DevNotch (${android.os.Build.MODEL})") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth()
+    )
+    com.frezzybuilds.devnotch.ui.glass.GlassButton("Dateien senden", onClick = { com.frezzybuilds.devnotch.share.ShareActions.pickAndSend(context) })
+    Text(
+        "Senden geht auch aus jeder App: Teilen → „LocalSend (DevNotch)“. Empfangenes landet in Downloads/DevNotch.",
+        color = Glass.TextSecondary,
+        style = MaterialTheme.typography.bodySmall
+    )
+
+    SettingLabel("Bezahlen – wie Apple Pay")
+    Text(
+        if (wallet != null) "Nach einer Zahlung mit Google oder Samsung Wallet zeigt die Notch „Bezahlt“ mit Betrag. Notch → 💳 öffnet die Wallet."
+        else "Keine Google- oder Samsung-Wallet gefunden. Mit Wallet zeigt die Notch nach jeder Zahlung „Bezahlt“ mit Betrag.",
+        color = Glass.TextSecondary,
+        style = MaterialTheme.typography.bodySmall
+    )
+    if (wallet != null) {
+        com.frezzybuilds.devnotch.ui.glass.GlassButton("Wallet öffnen", onClick = { com.frezzybuilds.devnotch.share.Wallet.open(context) })
+    }
+}

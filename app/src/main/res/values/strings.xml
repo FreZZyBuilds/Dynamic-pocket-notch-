@@ -6,4 +6,6 @@
     <string name="overlay_notification_stop">Beenden</string>
     <string name="accessibility_label">DevNotch Overlay</string>
     <string name="accessibility_description">Zeigt die DevNotch über dem Sperrbildschirm und auf Wunsch über der Statusleiste an. Android erlaubt das nur Bedienungshilfen. DevNotch liest dabei keine Bildschirminhalte, beobachtet keine Eingaben und sendet nichts: Der Dienst stellt ausschließlich das Fenster bereit, in dem die Notch gezeichnet wird.</string>
+    <string name="namedrop_description">DevNotch NameDrop – Kontaktkarte teilen</string>
+    <string name="localsend_share_label">LocalSend (DevNotch)</string>
 </resources>

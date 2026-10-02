@@ -366,6 +366,14 @@ fun SetupScreen(
         ) { LiveViewSettings(settings) }
 
         SettingsSection(
+            id = "share",
+            icon = "⇪",
+            title = "Teilen",
+            subtitle = "NameDrop, AirDrop (LocalSend), Bezahlen",
+            modifier = Modifier.staggerIn(5)
+        ) { ShareSettings(settings) }
+
+        SettingsSection(
             id = "system",
             icon = "◎",
             title = "Systemereignisse",

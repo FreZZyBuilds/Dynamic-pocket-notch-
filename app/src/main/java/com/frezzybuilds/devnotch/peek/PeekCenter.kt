@@ -61,6 +61,24 @@ sealed interface Peek {
         override val durationMs = if (event == com.frezzybuilds.devnotch.system.SystemEvent.UNLOCK) 1_300L else 2_200L
     }
 
+    /** LocalSend: ein Gerät möchte Dateien senden – Annehmen oder Ablehnen (wie AirDrop). */
+    data class ShareRequest(val request: com.frezzybuilds.devnotch.share.localsend.IncomingRequest) : Peek {
+        override val durationMs = 60_000L
+        override val extraHeightDp: Int get() = 92
+    }
+
+    /** NameDrop läuft: Handys aneinanderhalten oder QR-Code zeigen. */
+    data class NameDrop(val shownAt: Long = java.lang.System.nanoTime()) : Peek {
+        override val durationMs = com.frezzybuilds.devnotch.share.NameDropSession.SESSION_MS
+        override val extraHeightDp: Int get() = 150
+    }
+
+    /** Bezahlt (Google/Samsung Wallet) – wie die Apple-Pay-Bestätigung in der Insel. */
+    data class Payment(val merchant: String, val amount: String) : Peek {
+        override val durationMs = 3_500L
+        override val extraHeightDp: Int get() = 64
+    }
+
     /** Großer Player (Gedrückthalten bei Musik); [shownAt] macht jede Bedienung zu einem neuen Peek. */
     data class MusicPlayer(val shownAt: Long = java.lang.System.nanoTime()) : Peek {
         override val durationMs = 8_000L

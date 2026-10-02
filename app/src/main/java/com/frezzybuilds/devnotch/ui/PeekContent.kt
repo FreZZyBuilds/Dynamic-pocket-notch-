@@ -1,5 +1,6 @@
 package com.frezzybuilds.devnotch.ui
 
+import com.frezzybuilds.devnotch.share.localsend.LocalSend
 import androidx.compose.animation.core.Animatable
 import com.frezzybuilds.devnotch.notify.NotchNotification
 import com.frezzybuilds.devnotch.notify.LiveActivity
@@ -76,6 +77,14 @@ fun PeekContent(
         Box(modifier.fillMaxSize()) { MusicPlayerContent(pillHeight) }
         return
     }
+    if (peek is Peek.NameDrop) {
+        Box(modifier.fillMaxSize()) { NameDropContent(pillHeight) }
+        return
+    }
+    if (peek is Peek.Payment) {
+        Box(modifier.fillMaxSize()) { PaymentContent(peek.merchant, peek.amount, pillHeight) }
+        return
+    }
     val spec = peekSpec(peek)
     Box(modifier.fillMaxSize().then(if (peek is Peek.Charging) Modifier.chargeSweep() else Modifier)) {
         Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
@@ -122,6 +131,14 @@ fun PeekContent(
             when (peek) {
                 is Peek.Notification -> NotificationActions(peek.notification, onSend, onDismiss, onExpand)
                 is Peek.LiveCall -> CallButtons(peek.call, onSend)
+                is Peek.ShareRequest -> Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CallButton("Ablehnen", Color.White.copy(alpha = 0.85f), Modifier.weight(1f)) {
+                        LocalSend.decide(peek.request.id, false)
+                    }
+                    CallButton("Annehmen", Brand.Cyan, Modifier.weight(1f)) {
+                        LocalSend.decide(peek.request.id, true)
+                    }
+                }
                 else -> Unit
             }
             if (peek is Peek.Charging && peek.percent != null) {
@@ -218,8 +235,20 @@ private fun peekSpec(peek: Peek): PeekSpec = when (peek) {
         trailing = { Pulsing { Text("● ● ●", color = Brand.Charge, style = MaterialTheme.typography.labelSmall) } }
     )
     is Peek.LiveBanner -> liveBannerSpec(peek.live)
+    is Peek.ShareRequest -> {
+        val r = peek.request
+        val model = r.sender.deviceModel?.lowercase().orEmpty()
+        val device = if (r.sender.deviceType == "desktop" || "mac" in model || "windows" in model || "linux" in model) "💻" else "📱"
+        PeekSpec(
+            title = r.sender.alias,
+            subtitle = r.text?.let { "„$it“" } ?: if (r.files.size == 1) "möchte „${r.files.first().fileName}“ senden · ${formatBytes(r.totalBytes)}"
+                else "möchte ${r.files.size} Dateien senden · ${formatBytes(r.totalBytes)}",
+            leading = { Badge(device, Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))) },
+            trailing = { Text("LocalSend", color = Brand.Cyan, style = MaterialTheme.typography.labelSmall) }
+        )
+    }
     // Wird oben in PeekContent direkt gezeichnet.
-    is Peek.MusicPlayer -> PeekSpec("", null, {}, {})
+    is Peek.MusicPlayer, is Peek.NameDrop, is Peek.Payment -> PeekSpec("", null, {}, {})
     is Peek.System -> {
         val tint = Color(peek.tint)
         PeekSpec(
@@ -430,6 +459,12 @@ private fun liveBannerSpec(live: LiveActivity): PeekSpec {
             leading = { Badge("●", Brush.linearGradient(listOf(Color(0xFFFF3B30), Color(0xFFFF6B6B)))) },
             trailing = { if (plausibleDuration(live.since, now)) value(formatDuration(now - live.since), Color(0xFFFF3B30)) }
         )
+        is LiveActivity.Transfer -> PeekSpec(
+            title = if (live.incoming) "Empfange von ${live.peer}" else "Sende an ${live.peer}",
+            subtitle = if (live.fileCount > 1) "${live.fileName} · ${live.fileCount} Dateien" else live.fileName,
+            leading = { Badge(if (live.incoming) "⬇" else "⬆", Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))) },
+            trailing = { value("${(live.fraction * 100).toInt()} %", Brand.Cyan) }
+        )
         LiveActivity.Torch -> PeekSpec(
             title = "Taschenlampe",
             subtitle = "Leuchtet",
@@ -437,4 +472,12 @@ private fun liveBannerSpec(live: LiveActivity): PeekSpec {
             trailing = {}
         )
     }
+}
+
+/** 1 536 000 → „1,5 MB“. */
+fun formatBytes(bytes: Long): String = when {
+    bytes >= 1_000_000_000 -> "%.1f GB".format(java.util.Locale.GERMANY, bytes / 1e9)
+    bytes >= 1_000_000 -> "%.1f MB".format(java.util.Locale.GERMANY, bytes / 1e6)
+    bytes >= 1_000 -> "%.0f KB".format(java.util.Locale.GERMANY, bytes / 1e3)
+    else -> "$bytes B"
 }
