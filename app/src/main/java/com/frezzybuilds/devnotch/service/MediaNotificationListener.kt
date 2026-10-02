@@ -1,5 +1,7 @@
 package com.frezzybuilds.devnotch.service
 
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import android.app.Notification
 import android.content.ComponentName
 import android.content.SharedPreferences
@@ -63,6 +65,8 @@ class MediaNotificationListener : NotificationListenerService() {
     /** Letzte Medien-Benachrichtigung je App: Titel/Cover-Fallback für sparsame Metadaten. */
     private val mediaNotifications = mutableMapOf<String, NotificationInfo>()
 
+    private var reconcileJob: Job? = null
+
     /** Hält die Referenz – SharedPreferences merkt sich Listener nur schwach. */
     private var notifyPrefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
 
@@ -81,6 +85,16 @@ class MediaNotificationListener : NotificationListenerService() {
             rememberMediaNotification(sbn)
             routeNotification(sbn, initialScan = true)
         }
+        // Regelmäßiger Abgleich: Live-Ansichten zu Benachrichtigungen, deren „entfernt“ verloren
+        // ging, verschwinden spätestens nach einer halben Minute.
+        reconcileJob?.cancel()
+        reconcileJob = scope.launch {
+            while (true) {
+                delay(RECONCILE_MS)
+                if (NotificationHub.primaryLive.value != null) reconcileLive()
+            }
+        }
+        NotificationHub.reconciler = { mainHandler.post(::reconcileLive) }
         // Schalter geändert (z. B. Navigation aus): laufende Live-Ansichten neu bewerten.
         val settings = applicationContext.appContainer.notchSettings
         notifyPrefsListener?.let(settings::removeListener)
@@ -138,7 +152,15 @@ class MediaNotificationListener : NotificationListenerService() {
 
     private fun component() = ComponentName(this, MediaNotificationListener::class.java)
 
+    private fun reconcileLive() {
+        val active = runCatching { activeNotifications }.getOrNull() ?: return
+        NotificationHub.retain(active.mapTo(HashSet()) { it.key })
+    }
+
     private fun release() {
+        NotificationHub.reconciler = null
+        reconcileJob?.cancel()
+        reconcileJob = null
         notifyPrefsListener?.let(applicationContext.appContainer.notchSettings::removeListener)
         notifyPrefsListener = null
         sessionManager?.removeOnActiveSessionsChangedListener(sessionsListener)
@@ -297,3 +319,6 @@ class MediaNotificationListener : NotificationListenerService() {
         }
     }
 }
+
+/** Abstand des Abgleichs mit den aktiven Benachrichtigungen. */
+private const val RECONCILE_MS = 30_000L

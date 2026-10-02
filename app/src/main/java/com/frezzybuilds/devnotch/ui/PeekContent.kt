@@ -89,13 +89,29 @@ fun PeekContent(
                         modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE)
                     )
                     spec.subtitle?.let {
-                        Text(
-                            it,
-                            color = Color.White.copy(alpha = 0.6f),
-                            style = MaterialTheme.typography.labelSmall,
-                            maxLines = if (peek is Peek.Notification) 2 else 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        if (peek is Peek.Notification) {
+                            // Lange Nachrichten laufen als Lauftext durch (Zeilenumbrüche zu Leerzeichen);
+                            // die Anzeigedauer wächst mit der Länge (siehe NotificationHub).
+                            Text(
+                                it.replace('\n', ' '),
+                                color = Color.White.copy(alpha = 0.75f),
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                modifier = Modifier.fillMaxWidth().basicMarquee(
+                                    iterations = Int.MAX_VALUE,
+                                    initialDelayMillis = MARQUEE_DELAY_MS,
+                                    velocity = MARQUEE_VELOCITY
+                                )
+                            )
+                        } else {
+                            Text(
+                                it,
+                                color = Color.White.copy(alpha = 0.6f),
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.width(8.dp))
@@ -338,3 +354,6 @@ fun ActionChip(label: String, highlighted: Boolean, onClick: () -> Unit) {
     }
 }
 
+/** Lauftext langer Nachrichten: kurz stehen lassen, dann zügig, aber lesbar durchlaufen. */
+private const val MARQUEE_DELAY_MS = 900
+private val MARQUEE_VELOCITY = 60.dp

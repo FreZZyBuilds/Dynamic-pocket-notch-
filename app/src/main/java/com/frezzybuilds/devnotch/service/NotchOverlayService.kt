@@ -1,5 +1,6 @@
 package com.frezzybuilds.devnotch.service
 
+import com.frezzybuilds.devnotch.notify.NotificationHub
 import android.view.View
 import kotlinx.coroutines.launch
 import android.animation.ValueAnimator
@@ -166,6 +167,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             }
             deviceLock = next
             applyLayout()
+            // Beim Einschalten/Entsperren veraltete Live-Ansichten (beendete Fahrt …) sofort entfernen.
+            if (next != DeviceLock.SCREEN_OFF) NotificationHub.reconciler?.invoke()
         }
     }
 

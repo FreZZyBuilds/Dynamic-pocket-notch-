@@ -151,6 +151,6 @@ object LiveParsers {
     fun parse(n: NotchNotification, prefs: LivePrefs): LiveActivity? =
         all.firstNotNullOfOrNull { it.parse(n, prefs) }
 
-    /** Die wichtigste aktive Ansicht (bei Gleichstand die zuletzt aktualisierte). */
+    /** Die wichtigste aktive Ansicht; bei Gleichstand die zuerst übergebene. */
     fun primary(active: Collection<LiveActivity>): LiveActivity? = active.maxByOrNull { it.priority }
 }

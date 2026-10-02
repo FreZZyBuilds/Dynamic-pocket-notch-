@@ -148,4 +148,46 @@ class NotifyTest {
         NotificationHub.onPosted(n.copy(text = "Abholbereit"), prefs, false, own)
         assertEquals("Abholbereit", (PeekCenter.current.value as Peek.Notification).notification.text)
     }
+
+    @Test
+    fun `stale live views disappear on reconcile and can be hidden`() {
+        val prefs = NotifyPrefs()
+        val ride = msg(pkg = "ee.mtakso.client", title = "Abholung in 4 Min.").copy(ongoing = true, progress = 20, progressMax = 100)
+        NotificationHub.onPosted(ride, prefs, false, own)
+        assertTrue(NotificationHub.primaryLive.value is LiveActivity.Progress)
+
+        // Fahrt beendet, aber das „entfernt“ kam nie an: der Abgleich räumt auf.
+        NotificationHub.retain(emptySet())
+        assertNull(NotificationHub.primaryLive.value)
+
+        // Ausblenden hält, auch wenn die App weiter aktualisiert …
+        NotificationHub.onPosted(ride, prefs, false, own)
+        NotificationHub.hide(ride.key)
+        NotificationHub.onPosted(ride.copy(progress = 30), prefs, false, own)
+        assertNull(NotificationHub.primaryLive.value)
+        // … bis die Benachrichtigung entfernt wurde und neu kommt.
+        NotificationHub.onRemoved(ride.key)
+        NotificationHub.onPosted(ride, prefs, false, own)
+        assertTrue(NotificationHub.primaryLive.value is LiveActivity.Progress)
+    }
+
+    @Test
+    fun `newest live view wins on equal priority`() {
+        val prefs = NotifyPrefs()
+        val old = msg(pkg = "ee.mtakso.client", title = "Fahrt").copy(ongoing = true, progress = 1, progressMax = 100)
+        val new = msg(pkg = "com.android.chrome", title = "video.mp4").copy(ongoing = true, progress = 50, progressMax = 100)
+        NotificationHub.onPosted(old, prefs, false, own)
+        NotificationHub.onPosted(new, prefs, false, own)
+        assertEquals("video.mp4", (NotificationHub.primaryLive.value as LiveActivity.Progress).title)
+        NotificationHub.onPosted(old.copy(progress = 2), prefs, false, own)
+        assertEquals("Fahrt", (NotificationHub.primaryLive.value as LiveActivity.Progress).title)
+    }
+
+    @Test
+    fun `long messages stay until the marquee has run`() {
+        val prefs = NotifyPrefs(durationSeconds = 5f)
+        assertEquals(5_000L, NotificationHub.peekDurationMs(msg(text = "Kurz"), prefs))
+        assertEquals(1_500L + 100 * 120L, NotificationHub.peekDurationMs(msg(text = "x".repeat(100)), prefs))
+        assertEquals("höchstens 20 s", 20_000L, NotificationHub.peekDurationMs(msg(text = "x".repeat(1000)), prefs))
+    }
 }

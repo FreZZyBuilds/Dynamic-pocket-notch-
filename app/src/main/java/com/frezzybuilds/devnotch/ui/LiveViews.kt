@@ -1,5 +1,8 @@
 package com.frezzybuilds.devnotch.ui
 
+import com.frezzybuilds.devnotch.notify.NotificationHub
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import android.app.PendingIntent
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
@@ -149,8 +152,8 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
             }
         }
         if (live is LiveActivity.Progress) {
-            Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.1f))) {
-                Box(Modifier.fillMaxWidth(live.fraction).padding(vertical = 2.dp).clip(CircleShape).background(Brand.Horizontal))
+            Box(Modifier.padding(vertical = 2.dp).fillMaxWidth().height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.1f))) {
+                Box(Modifier.fillMaxWidth(live.fraction).fillMaxHeight().clip(CircleShape).background(Brand.Horizontal))
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -166,6 +169,10 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
                 }
                 is LiveActivity.Navigation -> ActionChip("${live.app} öffnen", highlighted = true) { onSend(live.contentIntent) }
                 else -> ActionChip("Öffnen", highlighted = true) { onSend(live.contentIntent) }
+            }
+            // Bleibt eine Ansicht hängen (z. B. App lässt die Benachrichtigung stehen): wegnehmen.
+            if (live !is LiveActivity.Call) {
+                ActionChip("Ausblenden", highlighted = false) { NotificationHub.hide(live.key) }
             }
         }
     }

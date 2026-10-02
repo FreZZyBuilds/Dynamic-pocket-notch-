@@ -36,8 +36,8 @@ sealed interface Peek {
         val notification: com.frezzybuilds.devnotch.notify.NotchNotification,
         override val durationMs: Long
     ) : Peek {
-        private val hasMore = !notification.text.isNullOrBlank() || notification.actions.isNotEmpty()
-        override val extraHeightDp: Int get() = if (hasMore) 96 else 52
+        // Kopfzeile (Titel + Lauftext) und immer die Aktionszeile („Öffnen“, ✕).
+        override val extraHeightDp: Int get() = 86
     }
 
     /** Eingehender Anruf – bleibt groß, solange es klingelt (nicht in [PeekCenter] abgelegt). */

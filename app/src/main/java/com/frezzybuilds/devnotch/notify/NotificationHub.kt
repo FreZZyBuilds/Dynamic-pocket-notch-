@@ -16,7 +16,10 @@ fun interface NotificationController {
  * Peeks auslösen, gesehene Apps für die Einstellungen merken.
  */
 object NotificationHub {
-    private val live = mutableMapOf<String, LiveActivity>()
+    private val live = LinkedHashMap<String, LiveActivity>()
+
+    /** Live-Ansichten, die der Nutzer ausgeblendet hat (Schlüssel). */
+    private val hidden = mutableSetOf<String>()
 
     /** Zuletzt angezeigter Inhalt je Schlüssel (begrenzt), damit Wiederholungen keinen Peek auslösen. */
     private val lastShown = object : LinkedHashMap<String, String>(32, 0.75f, true) {
@@ -35,6 +38,10 @@ object NotificationHub {
     @Volatile
     var controller: NotificationController? = null
 
+    /** Vom Listener gesetzt: Live-Ansichten sofort mit den aktiven Benachrichtigungen abgleichen. */
+    @Volatile
+    var reconciler: (() -> Unit)? = null
+
     /**
      * Neue/aktualisierte Benachrichtigung. [initialScan]: beim Verbinden vorhandene
      * Benachrichtigungen nur für Live-Ansichten auswerten, keine Peeks für Altes.
@@ -42,7 +49,9 @@ object NotificationHub {
     @Synchronized
     fun onPosted(n: NotchNotification, prefs: NotifyPrefs, dndActive: Boolean, ownPackage: String, initialScan: Boolean = false) {
         val activity = LiveParsers.parse(n, prefs.live)
-        if (activity != null) live[n.key] = activity else live.remove(n.key)
+        // Entfernen + neu einfügen: Die Reihenfolge der Map ist so die der letzten Aktualisierung.
+        live.remove(n.key)
+        if (activity != null && n.key !in hidden) live[n.key] = activity
         publish()
         if (initialScan || activity != null) {
             lastShown[n.key] = n.contentSignature()
@@ -54,7 +63,7 @@ object NotificationHub {
         if (NotificationRules.shouldPeek(n, prefs, dndActive, ownPackage)) {
             lastShown[n.key] = n.contentSignature()
             onAppSeen(n.packageName, n.appLabel)
-            PeekCenter.show(Peek.Notification(n, (prefs.durationSeconds * 1000).toLong()))
+            PeekCenter.show(Peek.Notification(n, peekDurationMs(n, prefs)))
         } else if (!n.isMedia && n.packageName != ownPackage) {
             onAppSeen(n.packageName, n.appLabel)
         }
@@ -63,9 +72,28 @@ object NotificationHub {
     @Synchronized
     fun onRemoved(key: String) {
         lastShown.remove(key)
+        hidden.remove(key)
         if (live.remove(key) != null) publish()
         // Ein angezeigter Peek zu einer entfernten Benachrichtigung verschwindet mit ihr.
         (PeekCenter.current.value as? Peek.Notification)?.takeIf { it.notification.key == key }?.let(PeekCenter::dismiss)
+    }
+
+    /**
+     * Abgleich mit den tatsächlich aktiven Benachrichtigungen: Live-Ansichten, deren Benachrichtigung
+     * verschwunden ist, ohne dass ein „entfernt“ ankam (Listener kurz getrennt, Sperre …), fliegen raus.
+     */
+    @Synchronized
+    fun retain(activeKeys: Set<String>) {
+        lastShown.keys.retainAll(activeKeys)
+        hidden.retainAll(activeKeys)
+        if (live.keys.retainAll(activeKeys)) publish()
+    }
+
+    /** Vom Nutzer ausgeblendet: bleibt weg, bis die App die Benachrichtigung entfernt. */
+    @Synchronized
+    fun hide(key: String) {
+        hidden += key
+        if (live.remove(key) != null) publish()
     }
 
     /** Live-Ansichten neu bewerten (z. B. nach Änderung der Einstellungen). */
@@ -81,7 +109,18 @@ object NotificationHub {
         onRemoved(key)
     }
 
+    /**
+     * Mindestens die eingestellte Dauer; lange Nachrichten bleiben so lange, bis der Lauftext
+     * einmal durch ist (~120 ms je Zeichen bei 60 dp/s), höchstens 20 s.
+     */
+    fun peekDurationMs(n: NotchNotification, prefs: NotifyPrefs): Long {
+        val base = (prefs.durationSeconds * 1000).toLong()
+        val reading = 1_500L + (n.text?.length ?: 0) * 120L
+        return maxOf(base, minOf(reading, 20_000L))
+    }
+
+    /** Bei gleicher Priorität gewinnt die zuletzt aktualisierte Ansicht. */
     private fun publish() {
-        _primaryLive.value = LiveParsers.primary(live.values)
+        _primaryLive.value = LiveParsers.primary(live.values.toList().asReversed())
     }
 }
