@@ -202,6 +202,10 @@ class NotchSettings(context: Context) {
         get() = prefs.getBoolean(KEY_LIVE_PROGRESS, true)
         set(value) = prefs.edit { putBoolean(KEY_LIVE_PROGRESS, value) }
 
+    var liveBanner: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_BANNER, true)
+        set(value) = prefs.edit { putBoolean(KEY_LIVE_BANNER, value) }
+
     val notifyPrefs: NotifyPrefs
         get() = NotifyPrefs(
             enabled = notifyEnabled,
@@ -211,7 +215,7 @@ class NotchSettings(context: Context) {
             skipSilent = notifySkipSilent,
             respectDnd = notifyRespectDnd,
             blockedApps = notifyBlockedApps,
-            live = LivePrefs(liveCalls, liveNavigation, liveTimers, liveProgress)
+            live = LivePrefs(liveCalls, liveNavigation, liveTimers, liveProgress, liveBanner)
         )
 
     fun notifyPrefsFlow(): Flow<NotifyPrefs> = callbackFlow {
@@ -257,6 +261,11 @@ class NotchSettings(context: Context) {
         awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
+    /** Notch über der Statusleiste (Accessibility-Fenster) – verdeckt Symbole hinter der Pille. */
+    var coverStatusBar: Boolean
+        get() = prefs.getBoolean(KEY_COVER_STATUS_BAR, false)
+        set(value) = prefs.edit { putBoolean(KEY_COVER_STATUS_BAR, value) }
+
     var lockscreenMode: LockscreenMode
         get() = prefs.getString(KEY_LOCKSCREEN_MODE, null)
             ?.let { name -> LockscreenMode.entries.firstOrNull { it.name == name } }
@@ -272,6 +281,7 @@ class NotchSettings(context: Context) {
 
     companion object {
         const val KEY_LOCKSCREEN_MODE = "lockscreen_mode"
+        const val KEY_COVER_STATUS_BAR = "cover_status_bar"
         const val KEY_DASH_WIDTH = "dashboard_width"
         const val KEY_DASH_HEIGHT = "dashboard_height"
         const val KEY_NOTIFY_ENABLED = "notify_enabled"
@@ -286,10 +296,11 @@ class NotchSettings(context: Context) {
         const val KEY_LIVE_NAV = "live_navigation"
         const val KEY_LIVE_TIMERS = "live_timers"
         const val KEY_LIVE_PROGRESS = "live_progress"
+        const val KEY_LIVE_BANNER = "live_banner"
         val NOTIFY_PREF_KEYS = setOf(
             KEY_NOTIFY_ENABLED, KEY_NOTIFY_DURATION, KEY_NOTIFY_LOCK_CONTENT, KEY_NOTIFY_SKIP_ONGOING,
             KEY_NOTIFY_SKIP_SILENT, KEY_NOTIFY_DND, KEY_NOTIFY_BLOCKED,
-            KEY_LIVE_CALLS, KEY_LIVE_NAV, KEY_LIVE_TIMERS, KEY_LIVE_PROGRESS
+            KEY_LIVE_CALLS, KEY_LIVE_NAV, KEY_LIVE_TIMERS, KEY_LIVE_PROGRESS, KEY_LIVE_BANNER
         )
         private const val KEY_DISPLAY_MODE = "display_mode"
         const val KEY_NOTCH_ENABLED = "notch_enabled"

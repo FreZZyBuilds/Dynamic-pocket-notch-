@@ -38,11 +38,18 @@ class LockStateTest {
 
     @Test
     fun `accessibility window only while locked, wanted and available`() {
-        assertEquals(OverlayHost.ACCESSIBILITY, OverlayHost.choose(DeviceLock.LOCKED, LockscreenMode.SHOW, accessibilityConnected = true))
-        assertEquals("schon bei Bildschirm aus umhängen", OverlayHost.ACCESSIBILITY, OverlayHost.choose(DeviceLock.SCREEN_OFF, LockscreenMode.SHOW, true))
-        assertEquals("entsperrt nie über der Benachrichtigungsleiste", OverlayHost.APP, OverlayHost.choose(DeviceLock.UNLOCKED, LockscreenMode.SHOW, true))
-        assertEquals(OverlayHost.APP, OverlayHost.choose(DeviceLock.LOCKED, LockscreenMode.HIDE, true))
-        assertEquals(OverlayHost.APP, OverlayHost.choose(DeviceLock.LOCKED, LockscreenMode.SHOW, accessibilityConnected = false))
+        fun host(lock: DeviceLock, mode: LockscreenMode = LockscreenMode.SHOW, cover: Boolean = false, a11y: Boolean = true) =
+            OverlayHost.choose(lock, mode, cover, a11y)
+        assertEquals(OverlayHost.ACCESSIBILITY, host(DeviceLock.LOCKED))
+        assertEquals("schon bei Bildschirm aus umhängen", OverlayHost.ACCESSIBILITY, host(DeviceLock.SCREEN_OFF))
+        assertEquals("entsperrt ohne Überdecken unter der Statusleiste", OverlayHost.APP, host(DeviceLock.UNLOCKED))
+        assertEquals(OverlayHost.APP, host(DeviceLock.LOCKED, mode = LockscreenMode.HIDE))
+        assertEquals(OverlayHost.APP, host(DeviceLock.LOCKED, a11y = false))
+        // Statusleiste überdecken: auch entsperrt über der Statusleiste – nur mit Bedienungshilfe.
+        assertEquals(OverlayHost.ACCESSIBILITY, host(DeviceLock.UNLOCKED, cover = true))
+        assertEquals(OverlayHost.APP, host(DeviceLock.UNLOCKED, cover = true, a11y = false))
+        assertEquals("Tastatur nur im normalen Overlay", OverlayHost.APP,
+            OverlayHost.choose(DeviceLock.UNLOCKED, LockscreenMode.SHOW, coverStatusBar = true, accessibilityConnected = true, needsKeyboard = true))
     }
 
     @Test

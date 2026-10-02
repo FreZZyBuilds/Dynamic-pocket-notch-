@@ -73,9 +73,14 @@ fun formatDuration(millis: Long): String {
 /** Laufende Dauer nur anzeigen, wenn sie plausibel ist (0 … 24 h) – sonst „Anruf“. */
 fun plausibleDuration(since: Long, now: Long): Boolean = since > 0 && now - since in 0..86_400_000L
 
+private val DISTANCE = Regex("""(\d+[.,]?\d*\s?(m|km|ft|mi))\b""")
+
 /** Kurztext für die Pille, z. B. „In 200 m rechts abbiegen“ → „200 m“. */
-fun shortInstruction(instruction: String): String =
-    Regex("""(\d+[.,]?\d*\s?(m|km|ft|mi))""").find(instruction)?.value ?: instruction
+fun shortInstruction(instruction: String): String = DISTANCE.find(instruction)?.value ?: instruction
+
+/** Entfernung zur nächsten Abbiegung – aus Anweisung oder Details (Maps setzt sie mal hier, mal dort). */
+fun navDistance(nav: LiveActivity.Navigation): String? =
+    DISTANCE.find(nav.instruction)?.value ?: nav.detail?.let { DISTANCE.find(it)?.value }
 
 /** Eingeklappte Pille mit Live-Ansicht: links Symbol, rechts der wichtigste Wert. */
 @Composable
@@ -97,7 +102,8 @@ fun LivePill(live: LiveActivity, lensGap: Dp) {
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
             val (text, color) = when (live) {
                 is LiveActivity.Call -> (if (plausibleDuration(live.since, now)) formatDuration(now - live.since) else "Anruf") to Brand.Charge
-                is LiveActivity.Navigation -> shortInstruction(live.instruction) to Brand.Cyan
+                // Ohne Entfernung kein abgeschnittenes Wort („Mit…“), sondern nur der Pfeil links.
+                is LiveActivity.Navigation -> (navDistance(live) ?: "") to Brand.Cyan
                 is LiveActivity.Timer -> formatDuration(if (live.countDown) live.base - now else now - live.base) to Color.White
                 is LiveActivity.Progress -> "${(live.fraction * 100).toInt()} %" to Brand.Lilac
             }
@@ -147,7 +153,7 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
                     is LiveActivity.Timer -> live.title to "${live.app} · ${formatDuration(if (live.countDown) live.base - now else now - live.base)}"
                     is LiveActivity.Progress -> live.title to "${live.app} · ${(live.fraction * 100).toInt()} %"
                 }
-                Text(title, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE))
+                Text(title, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.smoothMarquee())
                 Text(detail, color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }

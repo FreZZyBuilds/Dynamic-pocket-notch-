@@ -1,5 +1,6 @@
 package com.frezzybuilds.devnotch.ui.media
 
+import com.frezzybuilds.devnotch.ui.smoothMarquee
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -446,7 +447,7 @@ private fun List<Color>.colorAt(fraction: Float): Color {
 @Composable
 private fun Modifier.edgeMarquee(): Modifier =
     if (LocalInspectionMode.current) this
-    else basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_500)
+    else smoothMarquee(initialDelayMillis = 1_500)
 
 @Composable
 private fun PlayPauseButton(isPlaying: Boolean, colors: EdgeColors, onClick: () -> Unit) {

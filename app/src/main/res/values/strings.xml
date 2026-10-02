@@ -4,6 +4,6 @@
     <string name="overlay_channel_description">Hält die Notch im Hintergrund aktiv. Kann ausgeblendet werden.</string>
     <string name="overlay_notification_text">Notch aktiv – tippen für Einstellungen</string>
     <string name="overlay_notification_stop">Beenden</string>
-    <string name="accessibility_label">DevNotch auf dem Sperrbildschirm</string>
-    <string name="accessibility_description">Zeigt die DevNotch auch über dem Sperrbildschirm an. Android erlaubt das nur Bedienungshilfen. DevNotch liest dabei keine Bildschirminhalte, beobachtet keine Eingaben und sendet nichts: Der Dienst stellt ausschließlich das Fenster für die Notch bereit, solange das Gerät gesperrt ist.</string>
+    <string name="accessibility_label">DevNotch Overlay</string>
+    <string name="accessibility_description">Zeigt die DevNotch über dem Sperrbildschirm und auf Wunsch über der Statusleiste an. Android erlaubt das nur Bedienungshilfen. DevNotch liest dabei keine Bildschirminhalte, beobachtet keine Eingaben und sendet nichts: Der Dienst stellt ausschließlich das Fenster bereit, in dem die Notch gezeichnet wird.</string>
 </resources>

@@ -27,7 +27,9 @@ object NotchGestures {
         side: EdgeSide,
         expanded: Boolean,
         distance: Float,
-        threshold: Float
+        threshold: Float,
+        /** Eingeklappt mit Einblendung (Peek, Live-Banner): nach oben wischen schiebt sie weg. */
+        peeking: Boolean = false
     ): NotchGestureAction? {
         // Positive Richtung = „öffnen“: unten bzw. zur Mitte.
         val towardOpen = when (mode) {
@@ -36,7 +38,7 @@ object NotchGestures {
         }
         return when {
             !expanded && towardOpen > threshold -> NotchGestureAction.EXPAND
-            expanded && towardOpen < -threshold -> NotchGestureAction.COLLAPSE
+            (expanded || peeking) && towardOpen < -threshold -> NotchGestureAction.COLLAPSE
             else -> null
         }
     }
@@ -53,15 +55,16 @@ fun Modifier.notchDragGestures(
     expanded: Boolean,
     thresholdPx: Float,
     haptic: HapticFeedback,
+    peeking: Boolean = false,
     onAction: (NotchGestureAction) -> Unit
-): Modifier = pointerInput(mode, side, expanded, thresholdPx) {
+): Modifier = pointerInput(mode, side, expanded, thresholdPx, peeking) {
     var distance = 0f
     var fired = false
 
     fun onDelta(delta: Float) {
         if (fired) return
         distance += delta
-        NotchGestures.resolve(mode, side, expanded, distance, thresholdPx)?.let { action ->
+        NotchGestures.resolve(mode, side, expanded, distance, thresholdPx, peeking)?.let { action ->
             fired = true
             haptic.performHapticFeedback(
                 // Öffnen deutlich spürbar, Schließen als leichter Tick.

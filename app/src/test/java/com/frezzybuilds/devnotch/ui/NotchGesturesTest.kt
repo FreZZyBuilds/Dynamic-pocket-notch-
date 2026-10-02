@@ -44,4 +44,13 @@ class NotchGesturesTest {
             resolve(NotchLayoutMode.EDGE_SIDE, expanded = true, distance = -120f, side = EdgeSide.LEFT)
         )
     }
+
+    @Test
+    fun `swiping up on a collapsed peek pushes it away`() {
+        assertNull("ohne Einblendung nichts", resolve(NotchLayoutMode.NOTCH_TOP, expanded = false, distance = -200f))
+        assertEquals(
+            NotchGestureAction.COLLAPSE,
+            NotchGestures.resolve(NotchLayoutMode.NOTCH_TOP, EdgeSide.RIGHT, expanded = false, distance = -200f, threshold = threshold, peeking = true)
+        )
+    }
 }

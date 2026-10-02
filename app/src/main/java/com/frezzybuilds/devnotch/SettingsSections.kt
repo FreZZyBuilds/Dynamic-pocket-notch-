@@ -291,37 +291,13 @@ internal fun LockscreenSettings(settings: NotchSettings) {
         } else {
             HintBox(
                 "Über dem Sperrbildschirm erlaubt Android nur Fenster von Bedienungshilfen. " +
-                    "Schalte dafür „DevNotch auf dem Sperrbildschirm“ ein.",
+                    "Schalte dafür „DevNotch Overlay“ ein.",
                 action = "Einrichten",
                 onAction = { showDisclosure = true }
             )
         }
     }
-    if (showDisclosure) {
-        AlertDialog(
-            onDismissRequest = { showDisclosure = false },
-            title = { Text("Bedienungshilfe für den Sperrbildschirm") },
-            text = {
-                Text(
-                    "DevNotch nutzt die Bedienungshilfe-Schnittstelle (AccessibilityService) " +
-                        "ausschließlich, um die Notch über dem Sperrbildschirm anzuzeigen.\n\n" +
-                        "DevNotch liest dabei keine Bildschirminhalte, beobachtet keine Eingaben, " +
-                        "steuert keine anderen Apps und sendet keine Daten.\n\n" +
-                        "Tippe in den Einstellungen auf „Installierte Apps“ bzw. „Heruntergeladene Apps“ → " +
-                        "„DevNotch auf dem Sperrbildschirm“ und schalte sie ein.\n\n" +
-                        "Ist der Schalter ausgegraut (bei Installation außerhalb des Play Store): " +
-                        "App-Info von DevNotch öffnen → ⋮ → „Eingeschränkte Einstellungen zulassen“."
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDisclosure = false
-                    NotchAccessibilityService.openSettings(context)
-                }) { Text("Zustimmen und öffnen") }
-            },
-            dismissButton = { TextButton(onClick = { showDisclosure = false }) { Text("Abbrechen") } }
-        )
-    }
+    if (showDisclosure) AccessibilityDisclosure(onDismiss = { showDisclosure = false })
     AnimatedVisibility(mode == LockscreenMode.SHOW) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SettingLabel("Inhalt von Benachrichtigungen")
@@ -425,5 +401,82 @@ private fun HintBox(text: String, action: String, onAction: () -> Unit) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onAction).padding(6.dp)
         )
+    }
+}
+
+/**
+ * Deutliche Offenlegung vor dem Einschalten der Bedienungshilfe (Play-Vorgabe): wofür sie dient,
+ * was sie nicht tut, wie man sie aktiviert.
+ */
+@Composable
+internal fun AccessibilityDisclosure(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Bedienungshilfe für die Notch") },
+        text = {
+            Text(
+                "DevNotch nutzt die Bedienungshilfe-Schnittstelle (AccessibilityService) ausschließlich " +
+                    "für ihr eigenes Fenster: damit die Notch über dem Sperrbildschirm erscheinen und " +
+                    "auf Wunsch die Statusleisten-Symbole hinter der Pille verdecken darf.\n\n" +
+                    "DevNotch liest dabei keine Bildschirminhalte, beobachtet keine Eingaben, " +
+                    "steuert keine anderen Apps und sendet keine Daten.\n\n" +
+                    "Tippe in den Einstellungen auf „Installierte Apps“ bzw. „Heruntergeladene Apps“ → " +
+                    "„DevNotch Overlay“ und schalte es ein.\n\n" +
+                    "Ist der Schalter ausgegraut (bei Installation außerhalb des Play Store): " +
+                    "App-Info von DevNotch öffnen → ⋮ → „Eingeschränkte Einstellungen zulassen“."
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onDismiss()
+                NotchAccessibilityService.openSettings(context)
+            }) { Text("Zustimmen und öffnen") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+    )
+}
+
+/** Notch über der Statusleiste: verdeckt Uhr/Symbole hinter der Pille (braucht die Bedienungshilfe). */
+@Composable
+internal fun StatusBarCoverSetting(settings: NotchSettings) {
+    val context = LocalContext.current
+    var cover by remember { mutableStateOf(settings.coverStatusBar) }
+    var a11yOn by remember { mutableStateOf(NotchAccessibilityService.isEnabled(context)) }
+    LifecycleResumeEffect(Unit) {
+        a11yOn = NotchAccessibilityService.isEnabled(context)
+        onPauseOrDispose { }
+    }
+    var showDisclosure by remember { mutableStateOf(false) }
+    SwitchRow(
+        "Statusleiste überdecken",
+        "Die Notch liegt über Uhr und Symbolen: Was hinter der Pille steht, wird verdeckt – wie bei Apple.",
+        cover
+    ) {
+        cover = it
+        settings.coverStatusBar = it
+        if (it && !a11yOn) showDisclosure = true
+    }
+    if (cover && !a11yOn) {
+        HintBox(
+            "Android erlaubt Fenster über der Statusleiste nur Bedienungshilfen. Schalte „DevNotch Overlay“ ein.",
+            action = "Einrichten",
+            onAction = { showDisclosure = true }
+        )
+    }
+    if (showDisclosure) AccessibilityDisclosure(onDismiss = { showDisclosure = false })
+}
+
+/** Live-Ansichten als Banner unter der Kamera (wie Apples Live-Aktivitäten) oder nur klein. */
+@Composable
+internal fun LiveBannerSetting(settings: NotchSettings) {
+    var banner by remember { mutableStateOf(settings.liveBanner) }
+    SwitchRow(
+        "Live-Banner unter der Notch",
+        "Navigation, Anrufe und Timer groß direkt unter der Kamera. Nach oben wischen macht sie klein.",
+        banner
+    ) {
+        banner = it
+        settings.liveBanner = it
     }
 }

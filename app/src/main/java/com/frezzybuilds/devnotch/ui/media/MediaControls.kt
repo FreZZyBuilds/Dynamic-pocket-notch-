@@ -1,5 +1,6 @@
 package com.frezzybuilds.devnotch.ui.media
 
+import com.frezzybuilds.devnotch.ui.smoothMarquee
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,7 +31,7 @@ fun MarqueeTitle(nowPlaying: NowPlaying, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.labelSmall,
         maxLines = 1,
         // Endlos durchlaufen; basicMarquee scrollt nur, wenn der Text zu lang ist.
-        modifier = modifier.basicMarquee(iterations = Int.MAX_VALUE)
+        modifier = modifier.smoothMarquee()
     )
 }
 
@@ -44,7 +45,7 @@ fun MediaHeader(nowPlaying: NowPlaying, modifier: Modifier = Modifier) {
                 color = Color.White,
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
-                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                modifier = Modifier.smoothMarquee()
             )
             nowPlaying.artist?.let {
                 Text(

@@ -47,6 +47,12 @@ sealed interface Peek {
     }
 
     /** Neuer Titel läuft. */
+    /** Live-Ansicht als Banner unter der Kamera (Navigation, Anruf, Timer) – bleibt, solange sie läuft. */
+    data class LiveBanner(val live: com.frezzybuilds.devnotch.notify.LiveActivity) : Peek {
+        override val durationMs = Long.MAX_VALUE
+        override val extraHeightDp: Int get() = 50
+    }
+
     data class TrackChanged(val title: String, val artist: String?, val artwork: Bitmap?) : Peek {
         override val durationMs = 3_000L
     }

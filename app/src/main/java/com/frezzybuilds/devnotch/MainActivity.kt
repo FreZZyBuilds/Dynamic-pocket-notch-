@@ -330,7 +330,11 @@ fun SetupScreen(
                 }
             }
             AnimatedVisibility(visible = displayMode == NotchLayoutMode.NOTCH_TOP && !isTablet) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { NotchSizeSettings(settings) }
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatusBarCoverSetting(settings)
+                    LiveBannerSetting(settings)
+                    NotchSizeSettings(settings)
+                }
             }
             AnimatedVisibility(visible = displayMode == NotchLayoutMode.EDGE_SIDE || isTablet) {
                 Column { EdgePlayerSettings(settings) }

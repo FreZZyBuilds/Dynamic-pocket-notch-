@@ -88,7 +88,7 @@ fun PeekContent(
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
-                        modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE)
+                        modifier = Modifier.fillMaxWidth().smoothMarquee()
                     )
                     spec.subtitle?.let {
                         if (peek is Peek.Notification) {
@@ -99,11 +99,7 @@ fun PeekContent(
                                 color = Color.White.copy(alpha = 0.75f),
                                 style = MaterialTheme.typography.labelMedium,
                                 maxLines = 1,
-                                modifier = Modifier.fillMaxWidth().basicMarquee(
-                                    iterations = Int.MAX_VALUE,
-                                    initialDelayMillis = MARQUEE_DELAY_MS,
-                                    velocity = MARQUEE_VELOCITY
-                                )
+                                modifier = Modifier.fillMaxWidth().smoothMarquee(MARQUEE_DELAY_MS, MARQUEE_VELOCITY)
                             )
                         } else {
                             Text(
@@ -217,6 +213,7 @@ private fun peekSpec(peek: Peek): PeekSpec = when (peek) {
         },
         trailing = { Pulsing { Text("● ● ●", color = Brand.Charge, style = MaterialTheme.typography.labelSmall) } }
     )
+    is Peek.LiveBanner -> liveBannerSpec(peek.live)
     is Peek.TrackChanged -> PeekSpec(
         title = peek.title,
         subtitle = peek.artist,
@@ -361,3 +358,50 @@ fun ActionChip(label: String, highlighted: Boolean, onClick: () -> Unit) {
 /** Lauftext langer Nachrichten: kurz stehen lassen, dann zügig, aber lesbar durchlaufen. */
 private const val MARQUEE_DELAY_MS = 900
 private val MARQUEE_VELOCITY = 60.dp
+
+/** Live-Banner: Navigation mit Pfeil und Entfernung, Anruf mit Dauer, Timer mit Restzeit. */
+@Composable
+private fun liveBannerSpec(live: LiveActivity): PeekSpec {
+    val now = rememberNow(ticking = live is LiveActivity.Call || live is LiveActivity.Timer)
+    @Composable
+    fun icon(bitmap: android.graphics.Bitmap?, fallback: String, brush: Brush) {
+        if (bitmap != null) {
+            val image = remember(bitmap) { bitmap.asImageBitmap() }
+            Image(image, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(28.dp))
+        } else {
+            Badge(fallback, brush)
+        }
+    }
+    @Composable
+    fun value(text: String, color: Color) =
+        Text(text, color = color, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+
+    return when (live) {
+        is LiveActivity.Navigation -> PeekSpec(
+            title = live.instruction,
+            subtitle = live.detail ?: live.app,
+            leading = { icon(live.turnIcon, "➤", Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))) },
+            trailing = { navDistance(live)?.let { value(it, Brand.Cyan) } }
+        )
+        is LiveActivity.Call -> PeekSpec(
+            title = live.caller,
+            subtitle = "Im Gespräch",
+            leading = { icon(live.avatar, "📞", Brush.linearGradient(listOf(Brand.Charge, Color(0xFF00C853)))) },
+            trailing = {
+                if (plausibleDuration(live.since, now)) value(formatDuration(now - live.since), Brand.Charge)
+            }
+        )
+        is LiveActivity.Timer -> PeekSpec(
+            title = live.title,
+            subtitle = live.app,
+            leading = { icon(live.icon, "⏱", Brand.Horizontal) },
+            trailing = { value(formatDuration(if (live.countDown) live.base - now else now - live.base), Color.White) }
+        )
+        is LiveActivity.Progress -> PeekSpec(
+            title = live.title,
+            subtitle = live.app,
+            leading = { icon(live.icon, "↓", Brand.Horizontal) },
+            trailing = { value("${(live.fraction * 100).toInt()} %", Brand.Lilac) }
+        )
+    }
+}

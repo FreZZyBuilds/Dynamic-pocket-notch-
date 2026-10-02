@@ -146,13 +146,16 @@ fremder Apps heraus. Alle anderen Funktionen laufen auch ohne den Zugriff.
 > app names are stored for the per-app filter. Each feature can be turned off individually;
 > on the lock screen only the app name is shown by default.
 
-### `BIND_ACCESSIBILITY_SERVICE` – Bedienungshilfe (optional, Sperrbildschirm)
+### `BIND_ACCESSIBILITY_SERVICE` – Bedienungshilfe (optional: Sperrbildschirm, Statusleiste)
 
 **Wofür:** Seit Android 8 blendet das System Overlay-Fenster (`TYPE_APPLICATION_OVERLAY`) bei
 aktiver Sperre immer aus. Nur Fenster einer Bedienungshilfe (`TYPE_ACCESSIBILITY_OVERLAY`)
 dürfen über dem Sperrbildschirm liegen. `NotchAccessibilityService` stellt ausschließlich
 dieses Fenster bereit, solange das Gerät gesperrt ist; entsperrt nutzt die Notch wieder das
-normale Overlay.
+normale Overlay. Optional („Statusleiste überdecken“) bleibt die Notch auch entsperrt in
+diesem Fenster: Es liegt über der Statusleiste, sodass die Pille Uhr und Symbole hinter sich
+verdeckt statt von ihnen überlagert zu werden. Sobald ein Textfeld die Tastatur braucht,
+wechselt die Notch ins normale Overlay.
 
 **Was nicht passiert:** keine Ereignisse anderer Apps (`packageNames` = nur DevNotch), kein
 Fensterinhalt (`canRetrieveWindowContent=false`), keine Gesten, keine Eingaben, keine

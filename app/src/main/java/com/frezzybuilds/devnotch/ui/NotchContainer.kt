@@ -250,6 +250,16 @@ fun NotchContainer(
     val notifyPrefs by remember { notifySettings.notifyPrefsFlow() }
         .collectAsStateWithLifecycle(initialValue = notifySettings.notifyPrefs)
     val ringingCall = (live as? LiveActivity.Call)?.takeIf { it.ringing }
+    // Live-Banner unter der Kamera (wie Apples Live-Aktivitäten); nach oben gewischt bleibt
+    // diese Ansicht klein, bis eine andere kommt.
+    var minimizedLiveKey by remember { mutableStateOf<String?>(null) }
+    val bannerLive = live?.takeIf {
+        notifyPrefs.live.banner && it.key != minimizedLiveKey && when (it) {
+            is LiveActivity.Navigation, is LiveActivity.Timer -> true
+            is LiveActivity.Call -> !it.ringing
+            is LiveActivity.Progress -> false
+        }
+    }
     val activePeek: Peek? = when {
         layout.mode != NotchLayoutMode.NOTCH_TOP || isExpanded -> null
         // Klingelt das Telefon, bleibt die Notch groß mit Annehmen/Ablehnen.
@@ -260,6 +270,7 @@ fun NotchContainer(
         peek is Peek.Notification -> (peek as Peek.Notification).let { p ->
             NotificationRules.redact(p.notification, locked, notifyPrefs.lockContent)?.let { p.copy(notification = it) }
         }
+        peek == null && bannerLive != null -> Peek.LiveBanner(bannerLive)
         else -> peek
     }
     val peekContext = LocalContext.current
@@ -437,7 +448,8 @@ fun NotchContainer(
     val beamShapeFits = !edgeMini && (layout.mode == NotchLayoutMode.NOTCH_TOP || isExpanded)
     val beamOn = beamShapeFits && when (beamPrefs.mode) {
         BeamMode.ALWAYS -> !timerRingVisible
-        BeamMode.EVENTS -> isExpanded || activePeek != null
+        // Das dauerhafte Live-Banner zählt nicht als Ereignis (sonst liefe der Strahl die ganze Fahrt).
+        BeamMode.EVENTS -> isExpanded || (activePeek != null && activePeek !is Peek.LiveBanner)
         BeamMode.OFF -> false
     }
     val beamStrength = animateFloatAsState(if (beamOn) 1f else 0f, tween(450), label = "beamStrength")
@@ -487,8 +499,17 @@ fun NotchContainer(
                             side = layout.edgeSide,
                             expanded = isExpanded,
                             thresholdPx = dragThreshold,
-                            haptic = haptic
-                        ) { action -> setExpanded(action == NotchGestureAction.EXPAND) }
+                            haptic = haptic,
+                            peeking = activePeek != null && activePeek !is Peek.LiveCall
+                        ) { action ->
+                            when {
+                                action == NotchGestureAction.EXPAND -> setExpanded(true)
+                                isExpanded -> setExpanded(false)
+                                // Eingeklappt nach oben: Einblendung wegschieben.
+                                activePeek is Peek.LiveBanner -> minimizedLiveKey = activePeek.live.key
+                                else -> PeekCenter.current.value?.let(PeekCenter::dismiss)
+                            }
+                        }
                     )
                     // Nur eingeklappt klickbar, sonst schluckt die Box Taps im Dashboard.
                     .clickable(
@@ -501,6 +522,7 @@ fun NotchContainer(
                         when (val shown = activePeek) {
                             is Peek.Notification -> sendIntent(shown.notification.contentIntent)
                             is Peek.LiveCall -> sendIntent(shown.call.contentIntent)
+                            is Peek.LiveBanner -> sendIntent(shown.live.contentIntent)
                             else -> setExpanded(true)
                         }
                     },

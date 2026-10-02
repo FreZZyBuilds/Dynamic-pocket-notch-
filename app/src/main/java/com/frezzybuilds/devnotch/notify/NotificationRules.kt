@@ -12,7 +12,9 @@ data class LivePrefs(
     val calls: Boolean = true,
     val navigation: Boolean = true,
     val timers: Boolean = true,
-    val progress: Boolean = true
+    val progress: Boolean = true,
+    /** Navigation, Anruf und Timer groß als Banner unter der Kamera (sonst nur in der Pille). */
+    val banner: Boolean = true
 ) {
     val any: Boolean get() = calls || navigation || timers || progress
 }

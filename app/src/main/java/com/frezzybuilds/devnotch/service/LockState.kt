@@ -42,12 +42,27 @@ enum class OverlayHost {
 
     companion object {
         /**
-         * Nur während der Sperre (schon ab Bildschirm aus, damit beim Einschalten nichts springt)
-         * und nur, wenn die Notch dort erscheinen soll und die Bedienungshilfe verbunden ist.
-         * Entsperrt immer das normale Overlay: Das Accessibility-Fenster läge sonst auch über
-         * der heruntergezogenen Benachrichtigungsleiste.
+         * Accessibility-Fenster, wenn die Bedienungshilfe verbunden ist und
+         * - die Statusleiste überdeckt werden soll (dann immer – auch über der heruntergezogenen
+         *   Benachrichtigungsleiste, das lässt sich ohne Bildschirmauslesen nicht erkennen), oder
+         * - gesperrt (schon ab Bildschirm aus, damit beim Einschalten nichts springt) und die Notch
+         *   dort erscheinen soll.
+         * Sonst das normale Overlay unter der Statusleiste – auch, solange ein Textfeld die
+         * Bildschirmtastatur braucht.
          */
-        fun choose(lock: DeviceLock, mode: LockscreenMode, accessibilityConnected: Boolean): OverlayHost =
-            if (lock.isLocked && mode == LockscreenMode.SHOW && accessibilityConnected) ACCESSIBILITY else APP
+        fun choose(
+            lock: DeviceLock,
+            mode: LockscreenMode,
+            coverStatusBar: Boolean,
+            accessibilityConnected: Boolean,
+            needsKeyboard: Boolean = false
+        ): OverlayHost = when {
+            !accessibilityConnected -> APP
+            lock.isLocked -> if (mode == LockscreenMode.SHOW) ACCESSIBILITY else APP
+            // Textfelder (Notizen, Antworten) brauchen die Bildschirmtastatur → normales Overlay.
+            needsKeyboard -> APP
+            coverStatusBar -> ACCESSIBILITY
+            else -> APP
+        }
     }
 }

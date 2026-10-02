@@ -1,5 +1,11 @@
 package com.frezzybuilds.devnotch.service
 
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CoroutineScope
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.platform.AndroidUiDispatcher
+import androidx.compose.runtime.Recomposer
 import com.frezzybuilds.devnotch.notify.NotificationHub
 import android.view.View
 import kotlinx.coroutines.launch
@@ -84,6 +90,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         get() = savedStateRegistryController.savedStateRegistry
 
     private lateinit var windowManager: WindowManager
+
+    private val overlayRecomposer = Recomposer(AndroidUiDispatcher.Main)
+    private val recomposeScope = CoroutineScope(AndroidUiDispatcher.Main + SupervisorJob())
 
     /** Fenstertyp, in dem die Notch gerade hängt, und der zugehörige WindowManager. */
     private var host = OverlayHost.APP
@@ -240,7 +249,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             screenOn = getSystemService(PowerManager::class.java)?.isInteractive != false,
             keyguardLocked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
         )
-        lockSettingsListener = settings.addListener(setOf(NotchSettings.KEY_LOCKSCREEN_MODE)) { applyLayout() }
+        lockSettingsListener = settings.addListener(setOf(NotchSettings.KEY_LOCKSCREEN_MODE, NotchSettings.KEY_COVER_STATUS_BAR)) { applyLayout() }
         // Bedienungshilfe ein-/ausgeschaltet: Fenster ggf. in den anderen Typ umhängen.
         lifecycleScope.launch { NotchAccessibilityService.instance.collect { applyLayout() } }
     }
@@ -276,6 +285,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     }
 
     override fun onDestroy() {
+        overlayRecomposer.cancel()
+        recomposeScope.cancel()
         snapAnimator?.cancel()
         clipboardListener.stop()
         appContainer.notchSettings.removeListener(displayModeListener)
@@ -316,7 +327,12 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         }
         updatePosition()
 
+        // Eigener Recomposer statt des fensterbezogenen: Beim Umhängen zwischen normalem Overlay und
+        // Accessibility-Fenster bleibt der Inhalt samt Zustand erhalten (offene Nachricht, Entwurf …).
+        recomposeScope.launch { overlayRecomposer.runRecomposeAndApplyChanges() }
         val content = ComposeView(this).apply {
+            setParentCompositionContext(overlayRecomposer)
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnLifecycleDestroyed(this@NotchOverlayService))
             setContent {
                 NotchContainer(
                     layout = notchLayout,
@@ -437,7 +453,10 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private fun targetHost(): OverlayHost = OverlayHost.choose(
         deviceLock,
         appContainer.notchSettings.lockscreenMode,
-        NotchAccessibilityService.instance.value != null
+        appContainer.notchSettings.coverStatusBar,
+        NotchAccessibilityService.instance.value != null,
+        // Tastatur nur im normalen Overlay – dorthin wechselt die Notch, solange ein Textfeld offen ist.
+        needsKeyboard = expanded && windowFocusable
     )
 
     /** Hängt das Fenster in [target] ein; scheitert die Bedienungshilfe, im normalen Overlay. */
