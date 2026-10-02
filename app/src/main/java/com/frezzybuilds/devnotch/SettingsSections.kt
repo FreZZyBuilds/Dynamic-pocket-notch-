@@ -46,6 +46,8 @@ import com.frezzybuilds.devnotch.data.settings.NotchSettings
 import com.frezzybuilds.devnotch.notify.LockContent
 import com.frezzybuilds.devnotch.notify.NotchNotification
 import com.frezzybuilds.devnotch.notify.NotifyPrefs
+import com.frezzybuilds.devnotch.notify.NotificationStyle
+import androidx.compose.foundation.layout.height
 import com.frezzybuilds.devnotch.peek.Peek
 import com.frezzybuilds.devnotch.peek.PeekCenter
 import com.frezzybuilds.devnotch.service.LockscreenMode
@@ -157,6 +159,7 @@ internal fun NotificationSettings(settings: NotchSettings, hasListenerAccess: Bo
     var skipSilent by remember { mutableStateOf(settings.notifySkipSilent) }
     var respectDnd by remember { mutableStateOf(settings.notifyRespectDnd) }
     var blocked by remember { mutableStateOf(settings.notifyBlockedApps) }
+    var style by remember { mutableStateOf(settings.notifyStyle) }
 
     if (!hasListenerAccess) {
         HintBox(
@@ -172,6 +175,10 @@ internal fun NotificationSettings(settings: NotchSettings, hasListenerAccess: Bo
     }
     AnimatedVisibility(enabled) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SettingLabel("Stil")
+            ChoiceRow(NotificationStyle.entries, style, { it.label }) { style = it; settings.notifyStyle = it }
+            Text(style.description, color = Glass.TextSecondary, style = MaterialTheme.typography.bodySmall)
+            NotificationStylePreview(style)
             ValueSlider(
                 label = "Anzeigedauer",
                 valueText = "%.1f s".format(java.util.Locale.GERMANY, duration),
@@ -196,7 +203,47 @@ internal fun NotificationSettings(settings: NotchSettings, hasListenerAccess: Bo
                 blocked = it
                 settings.notifyBlockedApps = it
             }
+            val context = LocalContext.current
+            HintBox(
+                "Nachricht doppelt (Notch und Android-Pop-up)? Schalte bei der App die Pop-ups " +
+                    "(„Pop-up-Benachrichtigungen“ bzw. „Auf Bildschirm einblenden“) aus – die Notch zeigt sie dann allein.",
+                action = "Android öffnen"
+            ) { openSystemNotificationSettings(context) }
         }
+    }
+}
+
+/** So sieht eine Nachricht im gewählten Stil aus (echte Peek-Darstellung, verkleinert ohne Kamerazeile). */
+@Composable
+private fun NotificationStylePreview(style: NotificationStyle) {
+    val sample = remember {
+        NotchNotification(
+            key = "preview", packageName = "org.telegram.messenger", appLabel = "Telegram",
+            title = "Lena", text = "Kommst du heute Abend mit ins Kino? 🍿",
+            postTime = System.currentTimeMillis(), accent = 0xFF2AABEE.toInt()
+        )
+    }
+    val peek = Peek.Notification(sample, 0L, style, more = 2)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .height((peek.extraHeightDp + 8).dp)
+            .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp, topStart = 12.dp, topEnd = 12.dp))
+            .background(Color.Black)
+    ) {
+        com.frezzybuilds.devnotch.ui.PeekContent(peek, pillHeight = 6.dp, lensGap = 0.dp)
+    }
+}
+
+/** Android-Benachrichtigungseinstellungen (dort lassen sich Pop-ups je App ausschalten). */
+private fun openSystemNotificationSettings(context: Context) {
+    val intents = listOf(
+        android.content.Intent("android.settings.NOTIFICATION_SETTINGS"),
+        android.content.Intent(android.provider.Settings.ACTION_SETTINGS)
+    )
+    intents.firstOrNull { intent ->
+        runCatching { context.startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
     }
 }
 
@@ -336,7 +383,7 @@ internal fun QuickActions(settings: NotchSettings, notchRunning: Boolean) {
     }
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         ActionTile("🔔", "Benachrichtigung", "Test-Peek zeigen", notchRunning, Modifier.weight(1f)) {
-            PeekCenter.show(Peek.Notification(testNotification(context), (settings.notifyDuration * 1000).toLong()))
+            PeekCenter.show(Peek.Notification(testNotification(context), (settings.notifyDuration * 1000).toLong(), settings.notifyStyle, more = 2))
         }
         ActionTile("⚡", "Laden", "Lade-Animation", notchRunning, Modifier.weight(1f)) {
             PeekCenter.show(Peek.Charging(percent = 80))

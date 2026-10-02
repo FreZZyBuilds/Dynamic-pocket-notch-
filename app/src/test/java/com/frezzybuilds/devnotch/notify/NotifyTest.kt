@@ -225,4 +225,37 @@ class NotifyTest {
         val route = idle.copy(title = "Rechts abbiegen auf Hermannstraße", text = "Ankunft 14:32")
         assertTrue(LiveParsers.parse(route, prefs) is LiveActivity.Navigation)
     }
+
+    @Test
+    fun `discord posting the same message under two keys peeks once`() {
+        var now = 5_000_000L
+        NotificationHub.clock = { now }
+        try {
+            val prefs = NotifyPrefs()
+            val first = msg(pkg = "com.discord", title = "frezzy", text = "gg").copy(key = "discord-dm")
+            NotificationHub.onPosted(first, prefs, false, own)
+            assertEquals(first, (PeekCenter.current.value as Peek.Notification).notification)
+            PeekCenter.current.value?.let(PeekCenter::dismiss)
+            // Dieselbe Nachricht als Kanal-/Bubble-Kopie unter anderem Schlüssel: kein zweiter Peek.
+            now += 400
+            NotificationHub.onPosted(first.copy(key = "discord-channel"), prefs, false, own)
+            assertNull(PeekCenter.current.value)
+            assertEquals(1, NotificationHub.recent.value.size)
+            // Neue Nachricht derselben App kommt durch; „+1 weitere“.
+            val second = first.copy(key = "discord-dm-2", text = "noch eine Runde?")
+            NotificationHub.onPosted(second, prefs, false, own)
+            assertEquals(second, (PeekCenter.current.value as Peek.Notification).notification)
+            assertEquals(1, NotificationHub.moreFrom(second))
+            // Gleicher Text viel später ist eine echte neue Nachricht.
+            PeekCenter.current.value?.let(PeekCenter::dismiss)
+            now += 60_000
+            NotificationHub.onPosted(first.copy(key = "discord-dm-3"), prefs, false, own)
+            assertTrue(PeekCenter.current.value is Peek.Notification)
+            // Entfernt die App eine, verschwindet sie aus dem Stapel.
+            NotificationHub.onRemoved("discord-dm-2")
+            assertFalse(NotificationHub.recent.value.any { it.key == "discord-dm-2" })
+        } finally {
+            NotificationHub.clock = System::currentTimeMillis
+        }
+    }
 }

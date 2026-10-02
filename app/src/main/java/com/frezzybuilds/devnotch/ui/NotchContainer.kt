@@ -156,7 +156,8 @@ private enum class NotchTab(val title: String) {
     NOTES("Notizen"),
     CLIP("Clip"),
     AI("AI"),
-    PHONE("Tel")
+    PHONE("Tel"),
+    INBOX("Neu")
 }
 
 /** Eine Feder für Größe und Eckenradius, damit beides synchron „nachfedert“. */
@@ -299,6 +300,9 @@ fun NotchContainer(
             is LiveActivity.Progress, is LiveActivity.Recording, LiveActivity.Torch -> false
         }
     }
+    // Anruf vorbei (auch ohne Anrufsteuerung): Steuerung beim nächsten Anruf wieder zugeklappt.
+    val inCall = live is LiveActivity.Call
+    LaunchedEffect(inCall) { if (!inCall) CallControl.keypadOpen.value = false }
     val activePeek: Peek? = when {
         layout.mode != NotchLayoutMode.NOTCH_TOP || isExpanded -> null
         // Klingelt das Telefon, bleibt die Notch groß mit Annehmen/Ablehnen.
@@ -309,7 +313,7 @@ fun NotchContainer(
         peek is Peek.Notification -> (peek as Peek.Notification).let { p ->
             NotificationRules.redact(p.notification, locked, notifyPrefs.lockContent)?.let { p.copy(notification = it) }
         }
-        peek == null && bannerLive != null -> Peek.LiveBanner(bannerLive, keypad = callKeypad && bannerLive is LiveActivity.Call)
+        peek == null && bannerLive != null -> Peek.LiveBanner(bannerLive, keypad = callKeypad && bannerLive is LiveActivity.Call, companion = companionCall != null)
         else -> peek
     }
     val peekContext = LocalContext.current
@@ -623,6 +627,7 @@ fun NotchContainer(
                             opened = openedNotification?.let { NotificationRules.redact(it, locked, notifyPrefs.lockContent) },
                             locked = locked,
                             onCloseDetail = { openedNotification = null },
+                            onOpenNotification = { openedNotification = it },
                             // Die App aktualisiert ihre Benachrichtigung nach der Antwort selbst.
                             onReplied = { setExpanded(false) },
                             live = live,
@@ -648,6 +653,11 @@ fun NotchContainer(
                             lensGap = lensGap(layout),
                             onSend = ::sendIntent,
                             onExpand = { setExpanded(true) },
+                            onShowAll = {
+                                setExpanded(true)
+                                openedNotification = null
+                                selectedTab = NotchTab.INBOX
+                            },
                             onDismiss = {
                                 (peek as? Peek.Notification)?.let {
                                     NotificationHub.dismiss(it.notification.key)
@@ -763,6 +773,7 @@ private fun Dashboard(
     opened: NotchNotification?,
     locked: Boolean,
     onCloseDetail: () -> Unit,
+    onOpenNotification: (NotchNotification) -> Unit,
     onReplied: () -> Unit,
     live: LiveActivity?,
     onSend: (PendingIntent?) -> Unit,
@@ -849,6 +860,7 @@ private fun Dashboard(
                     NotchTab.DEV -> DevTabContent(onLaunched = onClose)
                     NotchTab.NOTES -> NotesContent(onLeaveForExternalApp = onClose)
                     NotchTab.PHONE -> PhoneTabContent(onLeave = onClose)
+                    NotchTab.INBOX -> NotificationStackContent(onOpen = onOpenNotification)
                 }
             }
         }

@@ -76,8 +76,18 @@ fun PeekContent(
     /** Benachrichtigung schließen. */
     onDismiss: () -> Unit = {},
     /** Groß öffnen (Lesen und Antworten) – wie Herunterziehen. */
-    onExpand: () -> Unit = {}
+    onExpand: () -> Unit = {},
+    /** Alle Benachrichtigungen als Stapel zeigen („+N weitere“). */
+    onShowAll: () -> Unit = onExpand
 ) {
+    if (peek is Peek.Notification && peek.style == com.frezzybuilds.devnotch.notify.NotificationStyle.COMPACT) {
+        Box(modifier.fillMaxSize()) { CompactNotificationPeek(peek, pillHeight) }
+        return
+    }
+    if (peek is Peek.Notification && peek.style == com.frezzybuilds.devnotch.notify.NotificationStyle.GLASS) {
+        Box(modifier.fillMaxSize()) { GlassNotificationPeek(peek, pillHeight, onSend, onExpand, onShowAll) }
+        return
+    }
     if (peek is Peek.MusicPlayer) {
         Box(modifier.fillMaxSize()) { MusicPlayerContent(pillHeight) }
         return
@@ -528,40 +538,57 @@ private fun CallWave() {
 }
 
 /**
- * Laufendes Gespräch wie in der Telefon-App: Stumm, Lautsprecher, Halten, Tasten (Töne ins Gespräch)
- * und Auflegen. Mit Anrufsteuerung (Begleit-App) direkt über Android Telecom; ohne sie Stumm über das
- * Mikrofon, Auflegen über die Aktion der Telefon-App und Tasten öffnen deren Wahltasten.
+ * Laufendes Gespräch: zugeklappt nur „Steuerung“ und „Auflegen“. Ein Tipp auf „Steuerung“ lässt
+ * Stumm, Lautsprecher, Halten und die Wahltasten mit einem federnden „Blob“ aufploppen.
+ * Mit Anrufsteuerung (Begleit-App) direkt über Android Telecom; ohne sie Stumm über das Mikrofon,
+ * Auflegen über die Aktion der Telefon-App und „Tasten“ öffnet deren Wahltasten.
  */
 @Composable
-private fun OngoingCallControls(call: LiveActivity.Call, keypad: Boolean, onSend: (PendingIntent?) -> Unit) {
+private fun OngoingCallControls(call: LiveActivity.Call, open: Boolean, onSend: (PendingIntent?) -> Unit) {
     val control by com.frezzybuilds.devnotch.service.CallControl.state.collectAsStateWithLifecycle()
     val c = control
     val context = androidx.compose.ui.platform.LocalContext.current
     val audio = remember { context.getSystemService(android.media.AudioManager::class.java) }
     var fallbackMuted by remember { androidx.compose.runtime.mutableStateOf(audio?.isMicrophoneMute == true) }
+    val blob = androidx.compose.animation.core.spring<Float>(dampingRatio = 0.55f, stiffness = 500f)
 
     Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            val muted = c?.muted ?: fallbackMuted
-            CallToggle("Stumm", muted, Modifier.weight(1f)) {
-                if (c != null) {
-                    com.frezzybuilds.devnotch.service.CallControl.toggleMute()
-                } else {
-                    audio?.let { it.isMicrophoneMute = !it.isMicrophoneMute; fallbackMuted = it.isMicrophoneMute }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = open,
+            enter = androidx.compose.animation.scaleIn(blob, initialScale = 0.6f, transformOrigin = TransformOrigin(0.15f, 1f)) +
+                androidx.compose.animation.fadeIn(tween(140)),
+            exit = androidx.compose.animation.scaleOut(tween(140), targetScale = 0.7f, transformOrigin = TransformOrigin(0.15f, 1f)) +
+                androidx.compose.animation.fadeOut(tween(120))
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val muted = c?.muted ?: fallbackMuted
+                    CallToggle("Stumm", muted, Modifier.weight(1f)) {
+                        if (c != null) {
+                            com.frezzybuilds.devnotch.service.CallControl.toggleMute()
+                        } else {
+                            audio?.let { it.isMicrophoneMute = !it.isMicrophoneMute; fallbackMuted = it.isMicrophoneMute }
+                        }
+                    }
+                    if (c != null) {
+                        CallToggle("Lautspr.", c.speaker, Modifier.weight(1f)) { com.frezzybuilds.devnotch.service.CallControl.toggleSpeaker() }
+                        if (c.canHold) CallToggle(if (c.onHold) "Fortsetzen" else "Halten", c.onHold, Modifier.weight(1f)) { com.frezzybuilds.devnotch.service.CallControl.toggleHold() }
+                    } else {
+                        // Ohne Anrufsteuerung kann nur die Telefon-App Töne ins Gespräch senden.
+                        CallToggle("Tasten", false, Modifier.weight(1f)) { onSend(call.contentIntent) }
+                    }
                 }
-            }
-            if (c != null) {
-                CallToggle("Lautspr.", c.speaker, Modifier.weight(1f)) { com.frezzybuilds.devnotch.service.CallControl.toggleSpeaker() }
-                if (c.canHold) CallToggle(if (c.onHold) "Fortsetzen" else "Halten", c.onHold, Modifier.weight(1f)) { com.frezzybuilds.devnotch.service.CallControl.toggleHold() }
-            }
-            CallToggle("Tasten", keypad, Modifier.weight(1f)) {
-                // Ohne Anrufsteuerung kann nur die Telefon-App Töne ins Gespräch senden.
-                if (c != null) com.frezzybuilds.devnotch.service.CallControl.keypadOpen.value = !keypad else onSend(call.contentIntent)
+                if (c != null) InCallKeypad()
             }
         }
-        if (keypad && c != null) InCallKeypad()
-        CallButton("Auflegen", Color(0xFFFF453A), Modifier.fillMaxWidth(), textColor = Color.White) {
-            if (c != null) com.frezzybuilds.devnotch.service.CallControl.hangUp() else onSend(call.hangUp ?: call.contentIntent)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Ein Knopf für alles: Steuerung und Wahltasten auf-/zuklappen.
+            CallToggle(if (open) "✕  Schließen" else "⋯  Steuerung", open, Modifier.weight(1f)) {
+                com.frezzybuilds.devnotch.service.CallControl.keypadOpen.value = !open
+            }
+            CallButton("Auflegen", Color(0xFFFF453A), Modifier.weight(1f), textColor = Color.White) {
+                if (c != null) com.frezzybuilds.devnotch.service.CallControl.hangUp() else onSend(call.hangUp ?: call.contentIntent)
+            }
         }
     }
 }

@@ -34,10 +34,19 @@ sealed interface Peek {
     /** Benachrichtigung einer App (Dauer aus den Einstellungen). */
     data class Notification(
         val notification: com.frezzybuilds.devnotch.notify.NotchNotification,
-        override val durationMs: Long
+        override val durationMs: Long,
+        val style: com.frezzybuilds.devnotch.notify.NotificationStyle = com.frezzybuilds.devnotch.notify.NotificationStyle.CLASSIC,
+        /** Weitere aktuelle Benachrichtigungen derselben App („+N weitere“). */
+        val more: Int = 0
     ) : Peek {
-        // Kopfzeile (Titel + Lauftext) und immer die Aktionszeile („Öffnen“, ✕).
-        override val extraHeightDp: Int get() = 86
+        override val extraHeightDp: Int get() = when (style) {
+            // Kopfzeile (Titel + Lauftext) und immer die Aktionszeile („Öffnen“, ✕).
+            com.frezzybuilds.devnotch.notify.NotificationStyle.CLASSIC -> 86
+            // Eine schmale Zeile wie auf dem iPhone.
+            com.frezzybuilds.devnotch.notify.NotificationStyle.COMPACT -> 48
+            // Karte mit Kopf, Text und Fußzeile („+N weitere“ oder Aktionen).
+            com.frezzybuilds.devnotch.notify.NotificationStyle.GLASS -> 122
+        }
     }
 
     /** Eingehender Anruf – bleibt groß, solange es klingelt (nicht in [PeekCenter] abgelegt). */
@@ -85,14 +94,23 @@ sealed interface Peek {
         override val extraHeightDp: Int get() = 112
     }
 
-    /** Live-Ansicht als Banner unter der Kamera (Navigation, Anruf, Timer) – bleibt, solange sie läuft. */
-    data class LiveBanner(val live: com.frezzybuilds.devnotch.notify.LiveActivity, val keypad: Boolean = false) : Peek {
+    /**
+     * Live-Ansicht als Banner unter der Kamera (Navigation, Anruf, Timer) – bleibt, solange sie läuft.
+     * [keypad]: Anrufsteuerung aufgeklappt; [companion]: Android hat DevNotch an den Anruf gebunden
+     * (dann gibt es auch Wahltasten im Gespräch).
+     */
+    data class LiveBanner(
+        val live: com.frezzybuilds.devnotch.notify.LiveActivity,
+        val keypad: Boolean = false,
+        val companion: Boolean = true
+    ) : Peek {
         override val durationMs = Long.MAX_VALUE
-        // Anrufe mit Steuerung (Stumm, Lautsprecher, Halten, Tasten, Auflegen); Wahltasten klappen darunter auf.
+        // Anrufe: zu nur „Steuerung“ und „Auflegen“; aufgeklappt Stumm/Lautsprecher/Halten und Tasten.
         override val extraHeightDp: Int get() = when {
             live !is com.frezzybuilds.devnotch.notify.LiveActivity.Call -> 50
-            keypad -> 262
-            else -> 124
+            keypad && companion -> 262
+            keypad -> 124
+            else -> 88
         }
     }
 

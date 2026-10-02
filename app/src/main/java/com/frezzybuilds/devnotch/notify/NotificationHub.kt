@@ -43,6 +43,36 @@ object NotificationHub {
 
     private fun NotchNotification.contentSignature() = "$title\u0000$text"
 
+    /**
+     * Zuletzt gezeigter Inhalt je App (Paket + Titel + Text → Zeit), schlüsselübergreifend:
+     * Discord & Co. posten dieselbe Nachricht unter zwei Schlüsseln (Unterhaltung + Kanal/Bubble);
+     * die zweite Kopie kurz danach löst keinen Peek mehr aus.
+     */
+    private val recentContent = object : LinkedHashMap<String, Long>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>) = size > 100
+    }
+
+    private fun NotchNotification.appSignature() = "$packageName\u0000${title.trim()}\u0000${text?.trim()}"
+
+    /** Gleicher Inhalt derselben App innerhalb dieses Fensters gilt als Doppel. */
+    internal const val DUPLICATE_WINDOW_MS = 15_000L
+
+    private val _recent = MutableStateFlow<List<NotchNotification>>(emptyList())
+    /**
+     * Zuletzt in der Notch gezeigte Benachrichtigungen (neueste zuerst, höchstens [RECENT_MAX]) –
+     * für den Stapel „Benachrichtigungen“ und „+N weitere“. Nur im Arbeitsspeicher; verschwindet,
+     * sobald die App die Benachrichtigung entfernt.
+     */
+    val recent: StateFlow<List<NotchNotification>> = _recent.asStateFlow()
+    private const val RECENT_MAX = 30
+
+    /** Weitere aktuelle Benachrichtigungen derselben App (für „+N weitere von …“). */
+    fun moreFrom(n: NotchNotification): Int = _recent.value.count { it.packageName == n.packageName && it.key != n.key }
+
+    private fun addRecent(n: NotchNotification) {
+        _recent.value = (listOf(n) + _recent.value.filter { it.key != n.key }).take(RECENT_MAX)
+    }
+
     private val _primaryLive = MutableStateFlow<LiveActivity?>(null)
     /** Die wichtigste laufende Live-Ansicht (Anruf > Navigation > Timer > Fortschritt). */
     val primaryLive: StateFlow<LiveActivity?> = _primaryLive.asStateFlow()
@@ -84,7 +114,12 @@ object NotificationHub {
         if (NotificationRules.shouldPeek(n, prefs, dndActive, ownPackage)) {
             lastShown[n.key] = n.contentSignature()
             onAppSeen(n.packageName, n.appLabel)
-            PeekCenter.show(Peek.Notification(n, peekDurationMs(n, prefs)))
+            val now = clock()
+            val seenAt = recentContent[n.appSignature()]
+            recentContent[n.appSignature()] = now
+            if (seenAt != null && now - seenAt in 0..DUPLICATE_WINDOW_MS) return
+            addRecent(n)
+            PeekCenter.show(Peek.Notification(n, peekDurationMs(n, prefs), prefs.style, moreFrom(n)))
         } else if (!n.isMedia && n.packageName != ownPackage) {
             onAppSeen(n.packageName, n.appLabel)
         }
@@ -92,6 +127,7 @@ object NotificationHub {
 
     @Synchronized
     fun onRemoved(key: String) {
+        if (_recent.value.any { it.key == key }) _recent.value = _recent.value.filter { it.key != key }
         callStarts.remove(key)
         lastShown.remove(key)
         hidden.remove(key)
@@ -106,6 +142,7 @@ object NotificationHub {
      */
     @Synchronized
     fun retain(activeKeys: Set<String>) {
+        if (_recent.value.any { it.key !in activeKeys }) _recent.value = _recent.value.filter { it.key in activeKeys }
         lastShown.keys.retainAll(activeKeys)
         hidden.retainAll(activeKeys)
         if (live.keys.retainAll(activeKeys)) publish()
@@ -121,6 +158,8 @@ object NotificationHub {
     /** Live-Ansichten neu bewerten (z. B. nach Änderung der Einstellungen). */
     @Synchronized
     fun clearLive() {
+        recentContent.clear()
+        _recent.value = emptyList()
         live.clear()
         callStarts.clear()
         lastShown.clear()
@@ -130,6 +169,11 @@ object NotificationHub {
     fun dismiss(key: String) {
         controller?.cancel(key)
         onRemoved(key)
+    }
+
+    /** „Alle löschen“ im Stapel: alle gezeigten Benachrichtigungen schließen. */
+    fun dismissAllRecent() {
+        _recent.value.map { it.key }.forEach(::dismiss)
     }
 
     /**

@@ -179,6 +179,11 @@ class NotchSettings(context: Context) {
             ?.let { name -> LockContent.entries.firstOrNull { it.name == name } }
             ?: LockContent.APP_ONLY
         set(value) = prefs.edit { putString(KEY_NOTIFY_LOCK_CONTENT, value.name) }
+    var notifyStyle: com.frezzybuilds.devnotch.notify.NotificationStyle
+        get() = prefs.getString(KEY_NOTIFY_STYLE, null)
+            ?.let { name -> com.frezzybuilds.devnotch.notify.NotificationStyle.entries.firstOrNull { it.name == name } }
+            ?: com.frezzybuilds.devnotch.notify.NotificationStyle.CLASSIC
+        set(value) = prefs.edit { putString(KEY_NOTIFY_STYLE, value.name) }
     var notifySkipOngoing: Boolean
         get() = prefs.getBoolean(KEY_NOTIFY_SKIP_ONGOING, true)
         set(value) = prefs.edit { putBoolean(KEY_NOTIFY_SKIP_ONGOING, value) }
@@ -252,6 +257,7 @@ class NotchSettings(context: Context) {
             respectDnd = notifyRespectDnd,
             blockedApps = notifyBlockedApps,
             payments = isSystemEventOn(SystemEvent.PAYMENT),
+            style = notifyStyle,
             live = LivePrefs(liveCalls, liveNavigation, liveTimers, liveProgress, liveBanner, isSystemEventOn(SystemEvent.RECORDING))
         )
 
@@ -325,6 +331,7 @@ class NotchSettings(context: Context) {
         const val KEY_NOTIFY_DURATION = "notify_duration"
         const val KEY_NOTIFY_LOCK_CONTENT = "notify_lock_content"
         const val KEY_NOTIFY_SKIP_ONGOING = "notify_skip_ongoing"
+        const val KEY_NOTIFY_STYLE = "notify_style"
         const val KEY_NOTIFY_SKIP_SILENT = "notify_skip_silent"
         const val KEY_NOTIFY_DND = "notify_dnd"
         const val KEY_NOTIFY_BLOCKED = "notify_blocked"
@@ -342,7 +349,7 @@ class NotchSettings(context: Context) {
         const val KEY_LOCALSEND_ALIAS = "localsend_alias"
         val NOTIFY_PREF_KEYS = setOf(
             KEY_NOTIFY_ENABLED, KEY_NOTIFY_DURATION, KEY_NOTIFY_LOCK_CONTENT, KEY_NOTIFY_SKIP_ONGOING,
-            KEY_NOTIFY_SKIP_SILENT, KEY_NOTIFY_DND, KEY_NOTIFY_BLOCKED,
+            KEY_NOTIFY_SKIP_SILENT, KEY_NOTIFY_DND, KEY_NOTIFY_BLOCKED, KEY_NOTIFY_STYLE,
             KEY_LIVE_CALLS, KEY_LIVE_NAV, KEY_LIVE_TIMERS, KEY_LIVE_PROGRESS, KEY_LIVE_BANNER, KEY_SYSTEM_OFF
         )
         private const val KEY_DISPLAY_MODE = "display_mode"

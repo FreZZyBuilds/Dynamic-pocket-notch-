@@ -7,6 +7,13 @@ enum class LockContent(val label: String) {
     HIDDEN("Nichts")
 }
 
+/** Aussehen von Benachrichtigungen in der Notch. */
+enum class NotificationStyle(val label: String, val description: String) {
+    CLASSIC("Klassisch", "In App-Farbe mit Aktionen (Antworten, Öffnen, ✕)"),
+    COMPACT("iOS kompakt", "Eine schmale Zeile: Symbol, Name, Text und „jetzt“ – wie auf dem iPhone"),
+    GLASS("Glas", "Milchglas-Karte mit Leuchtrand und „+N weitere · alle zeigen“")
+}
+
 /** Welche Live-Ansichten erkannt werden. */
 data class LivePrefs(
     val calls: Boolean = true,
@@ -32,6 +39,7 @@ data class NotifyPrefs(
     val blockedApps: Set<String> = emptySet(),
     /** Zahlungsbestätigung (Google/Samsung Wallet) wie Apple Pay. */
     val payments: Boolean = true,
+    val style: NotificationStyle = NotificationStyle.CLASSIC,
     val live: LivePrefs = LivePrefs()
 ) {
     companion object {

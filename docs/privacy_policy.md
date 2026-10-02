@@ -40,7 +40,7 @@ du die zugehörige Funktion selbst eingerichtet hast.
 | **Zugangsdaten** (GitHub-Token, API-Schlüssel der KI-Anbieter, Ollama-Adresse) | Abruf der jeweiligen Statistiken (siehe 4) | App-privater Speicher, vom Backup ausgeschlossen |
 | **Zwischengespeicherte Statistiken** (KI-Kosten des Monats, GitHub-Profilbild) | Schnelle Anzeige ohne erneuten Abruf | App-privater Speicher bzw. App-Cache |
 | **Pro-Status** | Freischaltung der Pro-Funktionen | App-privater Speicher |
-| **Benachrichtigungen** (App, Titel, Text, Symbol, Aktionen) | Kurze Anzeige in der Notch („Peek“) mit Öffnen, Schließen und direkten Aktionen | Nur im Arbeitsspeicher, solange die Benachrichtigung angezeigt wird |
+| **Benachrichtigungen** (App, Titel, Text, Symbol, Aktionen) | Kurze Anzeige in der Notch („Peek“) mit Öffnen, Schließen und direkten Aktionen; Stapel der zuletzt gezeigten (höchstens 30) im Tab „Neu“ | Nur im Arbeitsspeicher, solange die Benachrichtigung in Android aktiv ist |
 | **Live-Ansichten** (Anrufer und Gesprächsdauer, nächste Abbiegung der Navigation, Timer, Fortschritt von Downloads) | Dauerhafte Anzeige laufender Vorgänge in der Pille, Annehmen/Ablehnen/Auflegen von Anrufen über die Knöpfe der Telefon-App | Nur im Arbeitsspeicher, solange die Benachrichtigung besteht |
 | **Liste der Apps, die Benachrichtigungen geschickt haben** (Paketname und App-Name, höchstens 60) | Auswahl in den Einstellungen, welche Apps in der Notch erscheinen | App-privater Speicher, vom Backup ausgeschlossen |
 

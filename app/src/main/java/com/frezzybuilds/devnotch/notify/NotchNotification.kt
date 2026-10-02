@@ -81,7 +81,9 @@ data class NotchNotification(
     /** Direktantwort, falls die App eine anbietet (Messenger, SMS, Mail …). */
     val reply: ReplyAction? = null,
     /** Leitfarbe aus dem App-Icon (ARGB) – tönt den Hintergrund des Peeks. */
-    val accent: Int? = null
+    val accent: Int? = null,
+    /** App-Icon (klein als Abzeichen am Avatar, wie auf dem iPhone). */
+    val appIcon: Bitmap? = null
 ) {
     val progressFraction: Float? =
         if (progressMax > 0 && !progressIndeterminate) (progress.toFloat() / progressMax).coerceIn(0f, 1f) else null
@@ -142,6 +144,7 @@ data class NotchNotification(
                 hangUpIntent = intentExtra("android.hangUpIntent"),
                 isCallStyle = template.endsWith("CallStyle"),
                 accent = app.accent,
+                appIcon = app.icon,
                 reply = n.actions.orEmpty().firstNotNullOfOrNull { a ->
                     val inputs = a.remoteInputs?.filter { it.allowFreeFormInput }
                     if (a.actionIntent != null && !inputs.isNullOrEmpty()) {
