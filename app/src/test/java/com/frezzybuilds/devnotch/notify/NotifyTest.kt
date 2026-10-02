@@ -194,4 +194,26 @@ class NotifyTest {
         assertEquals(1_500L + 100 * 120L, NotificationHub.peekDurationMs(msg(text = "x".repeat(100)), prefs))
         assertEquals("höchstens 20 s", 20_000L, NotificationHub.peekDurationMs(msg(text = "x".repeat(1000)), prefs))
     }
+
+    @Test
+    fun `call duration starts even when the dialer sets no clock`() {
+        var now = 1_000_000L
+        NotificationHub.clock = { now }
+        try {
+            val prefs = NotifyPrefs()
+            // Samsung: laufender Anruf ohne Uhr und ohne „when“.
+            val call = msg(title = "Ayomini").copy(category = Notification.CATEGORY_CALL, ongoing = true, actions = listOf(NotchAction("Beenden", null)))
+            NotificationHub.onPosted(call, prefs, false, own)
+            assertEquals(1_000_000L, (NotificationHub.primaryLive.value as LiveActivity.Call).since)
+            // Erneut gepostet: Beginn bleibt.
+            now += 65_000
+            NotificationHub.onPosted(call, prefs, false, own)
+            assertEquals(1_000_000L, (NotificationHub.primaryLive.value as LiveActivity.Call).since)
+            // Meldet die App einen früheren, plausiblen Beginn, gilt der.
+            NotificationHub.onPosted(call.copy(whenTime = 990_000L), prefs, false, own)
+            assertEquals(990_000L, (NotificationHub.primaryLive.value as LiveActivity.Call).since)
+        } finally {
+            NotificationHub.clock = System::currentTimeMillis
+        }
+    }
 }

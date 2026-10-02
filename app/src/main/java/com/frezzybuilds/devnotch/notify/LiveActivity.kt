@@ -152,7 +152,8 @@ object LiveParsers {
             caller = n.title,
             avatar = n.icon,
             ringing = ringing,
-            since = if (!ringing && n.usesChronometer) n.whenTime else 0L,
+            // Samsung & Co. setzen keine Uhr, aber „when“ = Gesprächsbeginn; der Hub prüft Plausibilität.
+            since = if (!ringing && n.whenTime > 0) n.whenTime else 0L,
             answer = answer,
             decline = n.declineIntent ?: n.action(DECLINE),
             hangUp = hangUp

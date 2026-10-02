@@ -18,6 +18,21 @@ fun interface NotificationController {
 object NotificationHub {
     private val live = LinkedHashMap<String, LiveActivity>()
 
+    /** Wann ein Gespräch zuerst als aktiv gesehen wurde – Ersatz, wenn die App keine Startzeit liefert. */
+    private val callStarts = mutableMapOf<String, Long>()
+
+    /** Laufende Dauer für Anrufe: frühester plausibler Wert aus App-Angabe und eigener Beobachtung. */
+    private fun withCallStart(activity: LiveActivity): LiveActivity {
+        if (activity !is LiveActivity.Call || activity.ringing) return activity
+        val now = clock()
+        val seen = callStarts.getOrPut(activity.key) { now }
+        val reported = activity.since.takeIf { it > 0 && now - it in 0..86_400_000L }
+        return activity.copy(since = minOf(seen, reported ?: seen))
+    }
+
+    /** Uhr (für Tests austauschbar). */
+    internal var clock: () -> Long = System::currentTimeMillis
+
     /** Live-Ansichten, die der Nutzer ausgeblendet hat (Schlüssel). */
     private val hidden = mutableSetOf<String>()
 
@@ -48,7 +63,7 @@ object NotificationHub {
      */
     @Synchronized
     fun onPosted(n: NotchNotification, prefs: NotifyPrefs, dndActive: Boolean, ownPackage: String, initialScan: Boolean = false) {
-        val activity = LiveParsers.parse(n, prefs.live)
+        val activity = LiveParsers.parse(n, prefs.live)?.let(::withCallStart)
         // Entfernen + neu einfügen: Die Reihenfolge der Map ist so die der letzten Aktualisierung.
         live.remove(n.key)
         if (activity != null && n.key !in hidden) live[n.key] = activity
@@ -77,6 +92,7 @@ object NotificationHub {
 
     @Synchronized
     fun onRemoved(key: String) {
+        callStarts.remove(key)
         lastShown.remove(key)
         hidden.remove(key)
         if (live.remove(key) != null) publish()
@@ -106,6 +122,7 @@ object NotificationHub {
     @Synchronized
     fun clearLive() {
         live.clear()
+        callStarts.clear()
         lastShown.clear()
         publish()
     }

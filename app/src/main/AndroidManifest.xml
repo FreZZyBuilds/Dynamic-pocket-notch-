@@ -28,6 +28,9 @@
     -->
 
     <!-- Paketsichtbarkeit (Android 11+) für die Dev-Shortcuts: Termux und GitHub Mobile starten. -->
+    <!-- Anruf in der Notch: Mikrofon stummschalten (normale Berechtigung, keine Abfrage) -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
     <!-- NameDrop: Kontaktkarte per NFC-Kartenemulation (HCE). NFC ist optional. -->
     <uses-permission android:name="android.permission.NFC" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />

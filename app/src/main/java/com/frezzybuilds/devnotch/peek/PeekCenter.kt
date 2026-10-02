@@ -88,7 +88,8 @@ sealed interface Peek {
     /** Live-Ansicht als Banner unter der Kamera (Navigation, Anruf, Timer) – bleibt, solange sie läuft. */
     data class LiveBanner(val live: com.frezzybuilds.devnotch.notify.LiveActivity) : Peek {
         override val durationMs = Long.MAX_VALUE
-        override val extraHeightDp: Int get() = 50
+        // Anrufe mit Knopfreihe (Stumm, Auflegen) wie beim iPhone.
+        override val extraHeightDp: Int get() = if (live is com.frezzybuilds.devnotch.notify.LiveActivity.Call) 92 else 50
     }
 
     data class TrackChanged(val title: String, val artist: String?, val artwork: Bitmap?) : Peek {

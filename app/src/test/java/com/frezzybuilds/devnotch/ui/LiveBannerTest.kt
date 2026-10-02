@@ -126,4 +126,44 @@ class LiveBannerTest {
             image.compress(Bitmap.CompressFormat.PNG, 100, it)
         }
     }
+
+    @Test
+    fun `dark dialer icons are not used as avatar`() {
+        val dark = android.graphics.Bitmap.createBitmap(48, 48, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF111111.toInt()) }
+        val photo = android.graphics.Bitmap.createBitmap(48, 48, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(0xFFC8A27A.toInt()) }
+        val transparent = android.graphics.Bitmap.createBitmap(48, 48, android.graphics.Bitmap.Config.ARGB_8888)
+        org.junit.Assert.assertTrue(dark.isMostlyDark())
+        org.junit.Assert.assertFalse(photo.isMostlyDark())
+        org.junit.Assert.assertTrue(transparent.isMostlyDark())
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w380dp-h260dp-xxhdpi")
+    fun renderCallBanner() {
+        val darkIcon = android.graphics.Bitmap.createBitmap(48, 48, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF111111.toInt()) }
+        val call = LiveActivity.Call("c", "com.samsung.android.dialer", null, "Ayomini", darkIcon, ringing = false,
+            since = System.currentTimeMillis() - 83_000, answer = null, decline = null, hangUp = null)
+        lateinit var view: View
+        compose.setContent {
+            view = LocalView.current
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme(colorScheme = Brand.NotchScheme) {
+                    Column(Modifier.fillMaxSize().background(Color(0xFF2B2E6E)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.size(320.dp, 128.dp).clip(RoundedCornerShape(30.dp)).background(Color.Black)) {
+                            PeekContent(Peek.LiveBanner(call), pillHeight = 36.dp, lensGap = 42.dp)
+                        }
+                        Box(Modifier.size(166.dp, 36.dp).clip(RoundedCornerShape(18.dp)).background(Color.Black)) {
+                            LivePill(call, 42.dp)
+                        }
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        val image = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(image))
+        File("build/screenshots/call_banner.png").apply { parentFile?.mkdirs() }.outputStream().use {
+            image.compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
+    }
 }

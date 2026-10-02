@@ -1,5 +1,7 @@
 package com.frezzybuilds.devnotch.ui
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import com.frezzybuilds.devnotch.share.localsend.LocalSend
 import androidx.compose.animation.core.Animatable
 import com.frezzybuilds.devnotch.notify.NotchNotification
@@ -131,6 +133,7 @@ fun PeekContent(
             when (peek) {
                 is Peek.Notification -> NotificationActions(peek.notification, onSend, onDismiss, onExpand)
                 is Peek.LiveCall -> CallButtons(peek.call, onSend)
+                is Peek.LiveBanner -> (peek.live as? LiveActivity.Call)?.let { OngoingCallControls(it, onSend) }
                 is Peek.ShareRequest -> Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CallButton("Ablehnen", Color.White.copy(alpha = 0.85f), Modifier.weight(1f)) {
                         LocalSend.decide(peek.request.id, false)
@@ -224,7 +227,7 @@ private fun peekSpec(peek: Peek): PeekSpec = when (peek) {
         title = peek.call.caller,
         subtitle = "Eingehender Anruf",
         leading = {
-            val avatar = peek.call.avatar
+            val avatar = rememberUsableAvatar(peek.call.avatar)
             if (avatar != null) {
                 val image = remember(avatar) { avatar.asImageBitmap() }
                 Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(26.dp).clip(CircleShape))
@@ -375,7 +378,7 @@ private fun CallButtons(call: LiveActivity.Call, onSend: (PendingIntent?) -> Uni
 }
 
 @Composable
-private fun CallButton(label: String, color: Color, modifier: Modifier, onClick: () -> Unit) {
+private fun CallButton(label: String, color: Color, modifier: Modifier, textColor: Color = Color.Black, onClick: () -> Unit) {
     Box(
         modifier
             .height(30.dp)
@@ -383,7 +386,7 @@ private fun CallButton(label: String, color: Color, modifier: Modifier, onClick:
             .background(color)
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center
-    ) { Text(label, color = Color.Black, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
+    ) { Text(label, color = textColor, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
 }
 
 @Composable
@@ -435,11 +438,9 @@ private fun liveBannerSpec(live: LiveActivity): PeekSpec {
         )
         is LiveActivity.Call -> PeekSpec(
             title = live.caller,
-            subtitle = "Im Gespräch",
-            leading = { icon(live.avatar, "📞", Brush.linearGradient(listOf(Brand.Charge, Color(0xFF00C853)))) },
-            trailing = {
-                if (plausibleDuration(live.since, now)) value(formatDuration(now - live.since), Brand.Charge)
-            }
+            subtitle = if (plausibleDuration(live.since, now)) "Im Gespräch · ${formatDuration(now - live.since)}" else "Im Gespräch",
+            leading = { icon(rememberUsableAvatar(live.avatar), "📞", Brush.linearGradient(listOf(Brand.Charge, Color(0xFF00C853)))) },
+            trailing = { CallWave() }
         )
         is LiveActivity.Timer -> PeekSpec(
             title = live.title,
@@ -480,4 +481,52 @@ fun formatBytes(bytes: Long): String = when {
     bytes >= 1_000_000 -> "%.1f MB".format(java.util.Locale.GERMANY, bytes / 1e6)
     bytes >= 1_000 -> "%.0f KB".format(java.util.Locale.GERMANY, bytes / 1e3)
     else -> "$bytes B"
+}
+
+/** Grüne Gesprächs-Wellenform wie in Apples Anrufansicht (Layer-Phase, keine Recomposition). */
+@Composable
+private fun CallWave() {
+    val inspection = LocalInspectionMode.current
+    val transition = rememberInfiniteTransition(label = "callWave")
+    val bars = listOf(360, 260, 420, 300).map { d ->
+        if (inspection) null else transition.animateFloat(0.3f, 1f, infiniteRepeatable(tween(d), RepeatMode.Reverse), label = "cw$d")
+    }
+    Row(Modifier.height(18.dp), horizontalArrangement = Arrangement.spacedBy(2.5.dp), verticalAlignment = Alignment.CenterVertically) {
+        bars.forEachIndexed { i, bar ->
+            Box(
+                Modifier
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .graphicsLayer { scaleY = bar?.value ?: listOf(0.5f, 0.9f, 0.6f, 0.8f)[i] }
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Brand.Charge)
+            )
+        }
+    }
+}
+
+/**
+ * Laufendes Gespräch: Stummschalten (Mikrofon) und Auflegen über die Aktion der Telefon-App,
+ * daneben „Anruf“ zum Öffnen – wie die erweiterte Anrufansicht auf dem iPhone.
+ */
+@Composable
+private fun OngoingCallControls(call: LiveActivity.Call, onSend: (PendingIntent?) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val audio = remember { context.getSystemService(android.media.AudioManager::class.java) }
+    var muted by remember { androidx.compose.runtime.mutableStateOf(audio?.isMicrophoneMute == true) }
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        CallButton(
+            if (muted) "Stumm ✓" else "Stumm",
+            if (muted) Color.White else Color.White.copy(alpha = 0.18f),
+            Modifier.weight(1f),
+            textColor = if (muted) Color.Black else Color.White
+        ) {
+            audio?.let {
+                it.isMicrophoneMute = !it.isMicrophoneMute
+                muted = it.isMicrophoneMute
+            }
+        }
+        CallButton("Anruf", Color.White.copy(alpha = 0.18f), Modifier.weight(1f), textColor = Color.White) { onSend(call.contentIntent) }
+        CallButton("Auflegen", Color(0xFFFF453A), Modifier.weight(1f), textColor = Color.White) { onSend(call.hangUp ?: call.contentIntent) }
+    }
 }

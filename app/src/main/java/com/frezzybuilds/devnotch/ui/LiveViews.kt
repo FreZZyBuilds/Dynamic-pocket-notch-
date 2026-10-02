@@ -101,7 +101,7 @@ fun LivePill(live: LiveActivity, lensGap: Dp) {
     ) {
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             when (live) {
-                is LiveActivity.Call -> LiveIcon(live.avatar, "📞", Brand.Charge)
+                is LiveActivity.Call -> LiveIcon(rememberUsableAvatar(live.avatar), "📞", Brand.Charge, solid = true)
                 is LiveActivity.Navigation -> LiveIcon(live.turnIcon, "➤", Brand.Cyan)
                 is LiveActivity.Timer -> LiveIcon(null, "⏱", Brand.Violet)
                 is LiveActivity.Progress -> LiveIcon(live.icon, "↓", Brand.Lilac)
@@ -128,12 +128,13 @@ fun LivePill(live: LiveActivity, lensGap: Dp) {
 }
 
 @Composable
-private fun LiveIcon(bitmap: Bitmap?, fallback: String, tint: Color, size: Dp = 20.dp) {
+private fun LiveIcon(bitmap: Bitmap?, fallback: String, tint: Color, size: Dp = 20.dp, solid: Boolean = false) {
     if (bitmap != null) {
         val image = remember(bitmap) { bitmap.asImageBitmap() }
         Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(size).clip(CircleShape))
     } else {
-        Box(Modifier.size(size).clip(CircleShape).background(tint.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
+        // solid: kräftiger Kreis (Anruf) – Emojis wie 📞 sind selbst dunkel und brauchen hellen Grund.
+        Box(Modifier.size(size).clip(CircleShape).background(if (solid) tint else tint.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
             Text(fallback, color = tint, style = MaterialTheme.typography.labelSmall)
         }
     }
@@ -155,7 +156,7 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             when (live) {
-                is LiveActivity.Call -> LiveIcon(live.avatar, "📞", Brand.Charge, 32.dp)
+                is LiveActivity.Call -> LiveIcon(rememberUsableAvatar(live.avatar), "📞", Brand.Charge, 32.dp, solid = true)
                 is LiveActivity.Navigation -> LiveIcon(live.turnIcon, "➤", Brand.Cyan, 32.dp)
                 is LiveActivity.Timer -> LiveIcon(live.icon, "⏱", Brand.Violet, 32.dp)
                 is LiveActivity.Progress -> LiveIcon(live.icon, "↓", Brand.Lilac, 32.dp)
@@ -229,4 +230,25 @@ private fun RecordingDot() {
     Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
         Box(Modifier.size(10.dp).graphicsLayer { this.alpha = alpha.value }.clip(CircleShape).background(RecordingRed))
     }
+}
+
+/**
+ * Bild aus der Anruf-Benachrichtigung nur, wenn man es auf Schwarz sieht. Samsungs Telefon-App
+ * liefert ohne Kontaktfoto ein dunkles Telefon-Symbol – das verschwand auf der schwarzen Insel.
+ */
+@Composable
+fun rememberUsableAvatar(bitmap: Bitmap?): Bitmap? = remember(bitmap) { bitmap?.takeUnless { it.isMostlyDark() } }
+
+/** Durchschnittliche Helligkeit der sichtbaren Pixel (Raster 10 × 10) unter 30 % = zu dunkel. */
+fun Bitmap.isMostlyDark(): Boolean {
+    var visible = 0
+    var luminance = 0f
+    for (y in 0 until 10) for (x in 0 until 10) {
+        val c = getPixel(x * (width - 1) / 9, y * (height - 1) / 9)
+        val a = (c ushr 24) and 0xFF
+        if (a < 40) continue
+        visible++
+        luminance += (0.299f * ((c shr 16) and 0xFF) + 0.587f * ((c shr 8) and 0xFF) + 0.114f * (c and 0xFF)) / 255f
+    }
+    return visible < 10 || luminance / visible < 0.3f
 }
