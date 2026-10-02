@@ -1,5 +1,9 @@
 package com.frezzybuilds.devnotch
 
+import com.frezzybuilds.devnotch.service.NotchAccessibilityService
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -263,6 +267,14 @@ internal fun LiveViewSettings(settings: NotchSettings) {
 internal fun LockscreenSettings(settings: NotchSettings) {
     var mode by remember { mutableStateOf(settings.lockscreenMode) }
     var content by remember { mutableStateOf(settings.notifyLockContent) }
+    val context = LocalContext.current
+    var a11yOn by remember { mutableStateOf(NotchAccessibilityService.isEnabled(context)) }
+    LifecycleResumeEffect(Unit) {
+        a11yOn = NotchAccessibilityService.isEnabled(context)
+        onPauseOrDispose { }
+    }
+    var showDisclosure by remember { mutableStateOf(false) }
+
     SettingLabel("Notch auf dem Sperrbildschirm")
     ChoiceRow(LockscreenMode.entries, mode, { it.label }) { mode = it; settings.lockscreenMode = it }
     Text(
@@ -273,6 +285,43 @@ internal fun LockscreenSettings(settings: NotchSettings) {
         color = Glass.TextSecondary,
         style = MaterialTheme.typography.bodySmall
     )
+    if (mode == LockscreenMode.SHOW) {
+        if (a11yOn) {
+            Text("✓ Bedienungshilfe aktiv – die Notch erscheint über der Sperre.", color = Brand.Cyan, style = MaterialTheme.typography.bodySmall)
+        } else {
+            HintBox(
+                "Über dem Sperrbildschirm erlaubt Android nur Fenster von Bedienungshilfen. " +
+                    "Schalte dafür „DevNotch auf dem Sperrbildschirm“ ein.",
+                action = "Einrichten",
+                onAction = { showDisclosure = true }
+            )
+        }
+    }
+    if (showDisclosure) {
+        AlertDialog(
+            onDismissRequest = { showDisclosure = false },
+            title = { Text("Bedienungshilfe für den Sperrbildschirm") },
+            text = {
+                Text(
+                    "DevNotch nutzt die Bedienungshilfe-Schnittstelle (AccessibilityService) " +
+                        "ausschließlich, um die Notch über dem Sperrbildschirm anzuzeigen.\n\n" +
+                        "DevNotch liest dabei keine Bildschirminhalte, beobachtet keine Eingaben, " +
+                        "steuert keine anderen Apps und sendet keine Daten.\n\n" +
+                        "Tippe in den Einstellungen auf „Installierte Apps“ bzw. „Heruntergeladene Apps“ → " +
+                        "„DevNotch auf dem Sperrbildschirm“ und schalte sie ein.\n\n" +
+                        "Ist der Schalter ausgegraut (bei Installation außerhalb des Play Store): " +
+                        "App-Info von DevNotch öffnen → ⋮ → „Eingeschränkte Einstellungen zulassen“."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDisclosure = false
+                    NotchAccessibilityService.openSettings(context)
+                }) { Text("Zustimmen und öffnen") }
+            },
+            dismissButton = { TextButton(onClick = { showDisclosure = false }) { Text("Abbrechen") } }
+        )
+    }
     AnimatedVisibility(mode == LockscreenMode.SHOW) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SettingLabel("Inhalt von Benachrichtigungen")

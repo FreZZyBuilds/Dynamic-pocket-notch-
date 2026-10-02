@@ -1,5 +1,6 @@
 package com.frezzybuilds.devnotch.ui
 
+import kotlin.math.roundToInt
 import androidx.compose.animation.animateContentSize
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -171,7 +172,9 @@ fun NotchContainer(
     /** Peek beginnt/endet – der Service passt die Fenstergröße einmalig an. */
     onPeekChange: (extraHeightDp: Int?) -> Unit = {},
     /** Dashboard-Größe (dp) – der Service setzt das Fenster passend, auch live beim Ziehen. */
-    onDashboardSizeChange: (widthDp: Int, heightDp: Int) -> Unit = { _, _ -> }
+    onDashboardSizeChange: (widthDp: Int, heightDp: Int) -> Unit = { _, _ -> },
+    /** Eingeklappte Pille mit Text: gewünschte Breite in dp, null = normale Kamera-Pille. */
+    onPillWidthChange: (widthDp: Int?) -> Unit = {}
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     // Erster Eindruck mit sofortigem Nutzen: ohne GitHub-Token startet die Notch im Timer.
@@ -325,8 +328,17 @@ fun NotchContainer(
     val (pillWidth, pillHeight) =
         collapsedSize(layout, hasMedia = nowPlaying != null, minimized = edgeMini)
     val peekConfig = LocalConfiguration.current
+    // Text neben der Kamera (Timer, Kosten, Live-Wert) braucht mehr Platz als die Kamera-Pille:
+    // dann wird sie breiter, wie die Dynamic Island. Der Service bekommt die Breite vorab gemeldet.
+    val pillHasText = layout.mode == NotchLayoutMode.NOTCH_TOP && !isExpanded && activePeek == null &&
+        (live != null || showTimerInPill || (showCostInPill && aiUsage.usages.isNotEmpty()))
+    val gapDp = lensGap(layout)
+    val widePillDp = ExpandedSize.widePillWidthDp(peekConfig.screenWidthDp, pillWidth.value.roundToInt(), gapDp.value.roundToInt())
+    LaunchedEffect(pillHasText, widePillDp) { onPillWidthChange(if (pillHasText) widePillDp else null) }
     val (collapsedWidth, collapsedHeight) = if (activePeek != null) {
         ExpandedSize.peek(peekConfig.screenWidthDp, pillHeight.value, activePeek.extraHeightDp).let { (w, h) -> w.dp to h.dp }
+    } else if (pillHasText) {
+        widePillDp.dp to pillHeight
     } else {
         pillWidth to pillHeight
     }
@@ -359,7 +371,9 @@ fun NotchContainer(
     val savedSize by remember { sizeSettings.dashboardSizeFlow() }
         .collectAsStateWithLifecycle(initialValue = sizeSettings.dashboardSize)
     var dragHeightDp by remember { mutableStateOf<Float?>(null) }
-    val wantedHeightDp = dragHeightDp?.toInt() ?: savedSize.heightDp
+    // Live-Karte (Anruf, Navigation …) bekommt eigene Höhe, statt den Tab-Inhalt zu quetschen.
+    val liveCardDp = if (live != null && layout.mode == NotchLayoutMode.NOTCH_TOP) LIVE_CARD_HEIGHT_DP else 0
+    val wantedHeightDp = (dragHeightDp?.toInt() ?: savedSize.heightDp) + liveCardDp
     LaunchedEffect(savedSize.widthDp, wantedHeightDp) { onDashboardSizeChange(savedSize.widthDp, wantedHeightDp) }
     val (expandedWidth, expandedHeight) = ExpandedSize.of(
         layout.mode,
@@ -900,3 +914,6 @@ private fun ResizeGrip(onDrag: (Float) -> Unit, onEnd: () -> Unit) {
     }
 }
 
+
+/** Zusätzliche Dashboard-Höhe für die Live-Karte über den Tabs. */
+private const val LIVE_CARD_HEIGHT_DP = 76

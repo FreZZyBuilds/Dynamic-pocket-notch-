@@ -122,5 +122,23 @@ class FocusTimerViewModelTest {
         assertFalse(vm.isRunning.value)
         collector.cancel()
     }
-}
 
+    @Test
+    fun `stop ends the timer and restores the full preset`() = timerTest { vm ->
+        vm.resetTimer(5)
+        vm.startTimer()
+        advanceTimeBy(30_500)
+        runCurrent()
+        vm.pauseTimer()
+        assertEquals(5 * 60L - 30, vm.remainingTime.value)
+        vm.stopTimer()
+        assertFalse(vm.isRunning.value)
+        assertEquals(5 * 60L, vm.remainingTime.value)
+        assertEquals(5 * 60L, vm.totalTime.value)
+        // Danach startet der Timer wieder bei voller Zeit.
+        vm.startTimer()
+        runCurrent()
+        assertEquals(5 * 60L, vm.remainingTime.value)
+        vm.stopTimer()
+    }
+}

@@ -46,8 +46,19 @@ object NotificationRules {
         prefs.skipSilent && n.silent -> false
         prefs.respectDnd && dndActive -> false
         n.title.isBlank() && n.text.isNullOrBlank() -> false
+        // System-Sammelmeldungen („6 weitere Benachrichtigungen“), Dienste und Statusmeldungen.
+        n.packageName in SYSTEM_PACKAGES -> false
+        n.category in QUIET_CATEGORIES -> false
         else -> true
     }
+
+    private val SYSTEM_PACKAGES = setOf("android", "com.android.systemui", "com.samsung.android.app.smartcapture")
+    private val QUIET_CATEGORIES = setOf(
+        android.app.Notification.CATEGORY_SERVICE,
+        android.app.Notification.CATEGORY_SYSTEM,
+        android.app.Notification.CATEGORY_STATUS,
+        android.app.Notification.CATEGORY_TRANSPORT
+    )
 
     /** Was gesperrt angezeigt wird: Titel/Text nur bei [LockContent.FULL]. */
     fun redact(n: NotchNotification, locked: Boolean, lockContent: LockContent): NotchNotification? = when {

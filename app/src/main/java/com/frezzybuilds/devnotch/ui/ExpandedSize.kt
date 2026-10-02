@@ -38,6 +38,17 @@ object ExpandedSize {
     fun peek(screenWidthDp: Int, pillHeightDp: Float, extraHeightDp: Int = PEEK_EXTRA_HEIGHT_DP): Pair<Float, Float> =
         peekWidthDp(screenWidthDp).toFloat() to pillHeightDp + extraHeightDp
 
+    /** Platz je Seite neben der Linse für Timer, Kosten oder Live-Werte („⏱ 24:59“, „200 m“). */
+    const val WIDE_SIDE_DP = 52
+    private const val WIDE_PADDING_DP = 20
+
+    /**
+     * Eingeklappte Pille mit Text neben der Kamera: breit genug für je einen Wert links und
+     * rechts der Linse, nie schmaler als die normale Pille und nie breiter als der Bildschirm.
+     */
+    fun widePillWidthDp(screenWidthDp: Int, pillWidthDp: Int, lensGapDp: Int): Int =
+        minOf(maxOf(pillWidthDp, lensGapDp + 2 * WIDE_SIDE_DP + WIDE_PADDING_DP), screenWidthDp - 2 * SIDE_MARGIN_DP)
+
     /**
      * @param topInsetDp Abstand für Statusleiste/Kamera über dem Dashboard-Inhalt (nur Notch).
      * @return Breite und Höhe in dp.

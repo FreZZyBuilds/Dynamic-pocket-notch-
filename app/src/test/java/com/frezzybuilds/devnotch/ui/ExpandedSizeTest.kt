@@ -56,4 +56,14 @@ class ExpandedSizeTest {
         // Kleiner Wunsch bleibt klein.
         assertEquals(240, ExpandedSize.dashboardHeightDp(915, 240))
     }
+
+    @Test
+    fun `wide pill leaves room for text beside the camera`() {
+        // Linse 30 dp + 12 dp Luft: je Seite 52 dp + 20 dp Innenabstand.
+        assertEquals(42 + 2 * 52 + 20, ExpandedSize.widePillWidthDp(412, pillWidthDp = 120, lensGapDp = 42))
+        // Breite Notch: nie schmaler als die Kamera-Pille.
+        assertEquals(300, ExpandedSize.widePillWidthDp(412, pillWidthDp = 300, lensGapDp = 100))
+        // Nie breiter als der Bildschirm abzüglich Rand.
+        assertEquals(160 - 16, ExpandedSize.widePillWidthDp(160, pillWidthDp = 120, lensGapDp = 42))
+    }
 }

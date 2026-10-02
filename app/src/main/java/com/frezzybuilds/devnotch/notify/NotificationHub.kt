@@ -18,6 +18,13 @@ fun interface NotificationController {
 object NotificationHub {
     private val live = mutableMapOf<String, LiveActivity>()
 
+    /** Zuletzt angezeigter Inhalt je Schlüssel (begrenzt), damit Wiederholungen keinen Peek auslösen. */
+    private val lastShown = object : LinkedHashMap<String, String>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>) = size > 100
+    }
+
+    private fun NotchNotification.contentSignature() = "$title\u0000$text"
+
     private val _primaryLive = MutableStateFlow<LiveActivity?>(null)
     /** Die wichtigste laufende Live-Ansicht (Anruf > Navigation > Timer > Fortschritt). */
     val primaryLive: StateFlow<LiveActivity?> = _primaryLive.asStateFlow()
@@ -37,8 +44,15 @@ object NotificationHub {
         val activity = LiveParsers.parse(n, prefs.live)
         if (activity != null) live[n.key] = activity else live.remove(n.key)
         publish()
-        if (initialScan || activity != null) return
+        if (initialScan || activity != null) {
+            lastShown[n.key] = n.contentSignature()
+            return
+        }
+        // Apps posten dieselbe Benachrichtigung oft erneut (Sortierung, Zeitstempel) – nur echte
+        // Änderungen am Inhalt zeigen.
+        if (lastShown[n.key] == n.contentSignature()) return
         if (NotificationRules.shouldPeek(n, prefs, dndActive, ownPackage)) {
+            lastShown[n.key] = n.contentSignature()
             onAppSeen(n.packageName, n.appLabel)
             PeekCenter.show(Peek.Notification(n, (prefs.durationSeconds * 1000).toLong()))
         } else if (!n.isMedia && n.packageName != ownPackage) {
@@ -48,6 +62,7 @@ object NotificationHub {
 
     @Synchronized
     fun onRemoved(key: String) {
+        lastShown.remove(key)
         if (live.remove(key) != null) publish()
         // Ein angezeigter Peek zu einer entfernten Benachrichtigung verschwindet mit ihr.
         (PeekCenter.current.value as? Peek.Notification)?.takeIf { it.notification.key == key }?.let(PeekCenter::dismiss)
@@ -57,6 +72,7 @@ object NotificationHub {
     @Synchronized
     fun clearLive() {
         live.clear()
+        lastShown.clear()
         publish()
     }
 

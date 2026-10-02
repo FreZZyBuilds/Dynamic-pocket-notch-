@@ -37,6 +37,15 @@ class LockStateTest {
     }
 
     @Test
+    fun `accessibility window only while locked, wanted and available`() {
+        assertEquals(OverlayHost.ACCESSIBILITY, OverlayHost.choose(DeviceLock.LOCKED, LockscreenMode.SHOW, accessibilityConnected = true))
+        assertEquals("schon bei Bildschirm aus umhängen", OverlayHost.ACCESSIBILITY, OverlayHost.choose(DeviceLock.SCREEN_OFF, LockscreenMode.SHOW, true))
+        assertEquals("entsperrt nie über der Benachrichtigungsleiste", OverlayHost.APP, OverlayHost.choose(DeviceLock.UNLOCKED, LockscreenMode.SHOW, true))
+        assertEquals(OverlayHost.APP, OverlayHost.choose(DeviceLock.LOCKED, LockscreenMode.HIDE, true))
+        assertEquals(OverlayHost.APP, OverlayHost.choose(DeviceLock.LOCKED, LockscreenMode.SHOW, accessibilityConnected = false))
+    }
+
+    @Test
     fun `locked dashboard shows only the timer, no private tabs`() {
         compose.setContent {
             NotchContainer(

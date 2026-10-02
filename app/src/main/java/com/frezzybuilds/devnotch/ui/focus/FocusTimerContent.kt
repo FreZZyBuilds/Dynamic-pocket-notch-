@@ -1,5 +1,6 @@
 package com.frezzybuilds.devnotch.ui.focus
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.LinearEasing
 import com.frezzybuilds.devnotch.ui.theme.Brand
 import androidx.compose.ui.text.font.FontWeight
@@ -54,7 +55,8 @@ fun FocusTimerTab(viewModel: FocusTimerViewModel) {
         totalSeconds = total,
         isRunning = isRunning,
         onToggleTimer = viewModel::toggleTimer,
-        onPreset = viewModel::resetTimer
+        onPreset = viewModel::resetTimer,
+        onStop = viewModel::stopTimer
     )
 }
 
@@ -64,8 +66,11 @@ fun FocusTimerContent(
     totalSeconds: Long,
     isRunning: Boolean,
     onToggleTimer: () -> Unit,
-    onPreset: (minutes: Int) -> Unit
+    onPreset: (minutes: Int) -> Unit,
+    onStop: () -> Unit = {}
 ) {
+    // Läuft oder angebrochen pausiert: dann gibt es „Stopp“ (zurück auf die volle Zeit).
+    val canStop = isRunning || remainingSeconds != totalSeconds
     // Ring leert sich mit der Zeit; die lineare 1-s-Animation lässt ihn gleiten statt springen.
     val progress by animateFloatAsState(
         targetValue = if (totalSeconds > 0) remainingSeconds.toFloat() / totalSeconds else 0f,
@@ -84,7 +89,7 @@ fun FocusTimerContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
             ) {
                 TimerRing(progress, glow, remainingSeconds)
-                TimerControls(isRunning, totalSeconds, onToggleTimer, onPreset)
+                TimerControls(isRunning, totalSeconds, canStop, onToggleTimer, onPreset, onStop)
             }
         } else {
             Row(
@@ -93,7 +98,7 @@ fun FocusTimerContent(
                 horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally)
             ) {
                 TimerRing(progress, glow, remainingSeconds)
-                TimerControls(isRunning, totalSeconds, onToggleTimer, onPreset)
+                TimerControls(isRunning, totalSeconds, canStop, onToggleTimer, onPreset, onStop)
             }
         }
     }
@@ -131,17 +136,20 @@ private fun TimerRing(progress: Float, glow: Float, remainingSeconds: Long) {
 private fun TimerControls(
     isRunning: Boolean,
     totalSeconds: Long,
+    canStop: Boolean,
     onToggleTimer: () -> Unit,
-    onPreset: (minutes: Int) -> Unit
+    onPreset: (minutes: Int) -> Unit,
+    onStop: () -> Unit
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // Start im Markenverlauf; läuft der Timer, wird daraus ein ruhiger Pause-Knopf.
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier
-                .width(128.dp)
+                .width(if (canStop) 80.dp else 128.dp)
                 .height(40.dp)
                 .clip(CircleShape)
                 .background(if (isRunning) SolidColor(PauseSurface) else Brand.Horizontal)
@@ -149,11 +157,25 @@ private fun TimerControls(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                if (isRunning) "Pause" else "Start",
+                if (isRunning) "Pause" else if (canStop) "Weiter" else "Start",
                 color = if (isRunning) Color.White else Color.Black,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold
             )
+        }
+        if (canStop) {
+            // Beendet den Timer und setzt ihn auf die volle Zeit zurück.
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(PauseSurface)
+                    .clickable(role = Role.Button, onClickLabel = "Timer beenden", onClick = onStop),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(Modifier.size(12.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+            }
+        }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PresetButton(FocusTimerViewModel.DEFAULT_MINUTES, totalSeconds, onPreset)

@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -55,8 +56,8 @@ import com.frezzybuilds.devnotch.peek.Peek
 import com.frezzybuilds.devnotch.ui.theme.Brand
 
 /**
- * Inhalt der nach unten gewachsenen Pille: oben die Zeile mit der Kameralinse (links Symbol,
- * rechts Wert – die Linse bleibt frei), darunter Titel und Untertitel.
+ * Inhalt der nach unten gewachsenen Pille: oben die (leere) Zeile mit der Kameralinse, darunter
+ * Symbol, Titel/Untertitel und rechts ein Wert, dann Aktionen.
  */
 @Composable
 fun PeekContent(
@@ -71,28 +72,34 @@ fun PeekContent(
 ) {
     val spec = peekSpec(peek)
     Box(modifier.fillMaxSize().then(if (peek is Peek.Charging) Modifier.chargeSweep() else Modifier)) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-            Row(Modifier.fillMaxWidth().height(pillHeight), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) { spec.leading() }
-                Spacer(Modifier.width(lensGap))
-                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { spec.trailing() }
-            }
-            Text(
-                spec.title,
-                color = Color.White,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE)
-            )
-            spec.subtitle?.let {
-                Text(
-                    it,
-                    color = Color.White.copy(alpha = 0.6f),
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = if (peek is Peek.Notification) 2 else 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+        Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
+            // Die Zeile mit der Kameralinse liegt in der Statusleiste: Dort zeichnet Android Uhr
+            // und Symbole über jedes App-Fenster. Deshalb bleibt sie leer – alles beginnt darunter.
+            Spacer(Modifier.height(pillHeight))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                spec.leading()
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        spec.title,
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE)
+                    )
+                    spec.subtitle?.let {
+                        Text(
+                            it,
+                            color = Color.White.copy(alpha = 0.6f),
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = if (peek is Peek.Notification) 2 else 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(Modifier.widthIn(max = 96.dp)) { spec.trailing() }
             }
             when (peek) {
                 is Peek.Notification -> NotificationActions(peek.notification, onSend, onDismiss)

@@ -86,6 +86,9 @@ class FocusTimerViewModel(
         _remainingTime.value = minutes * 60L
     }
 
+    /** Beendet den Timer: zurück auf die volle Zeit des aktuellen Presets, Pille wieder frei. */
+    fun stopTimer() = resetTimer((_totalTime.value / 60).toInt().coerceAtLeast(1))
+
     companion object {
         const val DEFAULT_MINUTES = 25
         const val BREAK_MINUTES = 5

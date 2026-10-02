@@ -144,6 +144,30 @@ fremder Apps heraus. Alle anderen Funktionen laufen auch ohne den Zugriff.
 > app names are stored for the per-app filter. Each feature can be turned off individually;
 > on the lock screen only the app name is shown by default.
 
+### `BIND_ACCESSIBILITY_SERVICE` – Bedienungshilfe (optional, Sperrbildschirm)
+
+**Wofür:** Seit Android 8 blendet das System Overlay-Fenster (`TYPE_APPLICATION_OVERLAY`) bei
+aktiver Sperre immer aus. Nur Fenster einer Bedienungshilfe (`TYPE_ACCESSIBILITY_OVERLAY`)
+dürfen über dem Sperrbildschirm liegen. `NotchAccessibilityService` stellt ausschließlich
+dieses Fenster bereit, solange das Gerät gesperrt ist; entsperrt nutzt die Notch wieder das
+normale Overlay.
+
+**Was nicht passiert:** keine Ereignisse anderer Apps (`packageNames` = nur DevNotch), kein
+Fensterinhalt (`canRetrieveWindowContent=false`), keine Gesten, keine Eingaben, keine
+Übertragung. Vor dem Öffnen der Systemeinstellungen zeigt die App eine Erklärung
+(„Zustimmen und öffnen“).
+
+**Achtung Play-Richtlinie:** Die Nutzung der Accessibility-API für Nicht-Bedienungshilfe-
+Zwecke muss in der Play Console erklärt werden (*App-Inhalte → Accessibility API*) und kann
+abgelehnt werden. Fallback: den Dienst aus dem Manifest entfernen. Dann bleibt die Notch
+gesperrt einfach ausgeblendet.
+
+> **EN:** Optional. Android hides `TYPE_APPLICATION_OVERLAY` windows while the keyguard is
+> showing; only `TYPE_ACCESSIBILITY_OVERLAY` windows may appear above it. The service only
+> provides that window while the device is locked. It receives no events from other apps,
+> cannot retrieve window content, performs no gestures and transmits nothing. A prominent
+> in-app disclosure is shown before the user is sent to the accessibility settings.
+
 ### `FOREGROUND_SERVICE_SPECIAL_USE` – Vordergrunddienst (Erklärung in der Play Console)
 
 **Subtyp im Manifest:** „Persistent dynamic notch overlay showing media controls and status“.

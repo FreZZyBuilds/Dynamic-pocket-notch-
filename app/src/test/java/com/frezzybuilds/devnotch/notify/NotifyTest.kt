@@ -105,4 +105,47 @@ class NotifyTest {
         assertEquals("1:15", com.frezzybuilds.devnotch.ui.formatDuration(75_000))
         assertEquals("1:02:05", com.frezzybuilds.devnotch.ui.formatDuration(3_725_000))
     }
+
+    @Test
+    fun `system summaries and services never peek`() {
+        val prefs = NotifyPrefs(skipOngoing = false)
+        assertFalse(NotificationRules.shouldPeek(msg(pkg = "com.android.systemui", title = "6 weitere Benachrichtigungen"), prefs, false, own))
+        assertFalse(NotificationRules.shouldPeek(msg(pkg = "android"), prefs, false, own))
+        assertFalse(NotificationRules.shouldPeek(msg().copy(category = Notification.CATEGORY_SERVICE), prefs, false, own))
+        assertFalse(NotificationRules.shouldPeek(msg().copy(category = Notification.CATEGORY_SYSTEM), prefs, false, own))
+        assertTrue(NotificationRules.shouldPeek(msg().copy(category = Notification.CATEGORY_MESSAGE), prefs, false, own))
+    }
+
+    @Test
+    fun `screen recording is neither navigation nor timer`() {
+        val prefs = LivePrefs()
+        // Samsung-Bildschirmaufnahme: laufende Uhr, teils mit Kategorie „navigation“.
+        val recorder = msg(pkg = "com.samsung.android.app.smartcapture", title = "Tippe hier, um die Aufnahme anzuhalten.")
+            .copy(ongoing = true, usesChronometer = true, whenTime = 9_000L, category = Notification.CATEGORY_NAVIGATION)
+        assertNull(LiveParsers.parse(recorder, prefs))
+        assertNull(LiveParsers.parse(recorder.copy(category = null), prefs))
+
+        // Unbekannte Navi-App mit Kategorie und Entfernung zählt weiterhin.
+        val nav = msg(pkg = "de.example.navi", title = "In 300 m links").copy(ongoing = true, category = Notification.CATEGORY_NAVIGATION)
+        assertTrue(LiveParsers.parse(nav, prefs) is LiveActivity.Navigation)
+
+        // Countdown aus beliebiger App ist ein Timer; Kategorie Wecker ebenso.
+        val countdown = msg(pkg = "de.example.kitchen", title = "Nudeln").copy(ongoing = true, usesChronometer = true, whenTime = 60_000L, chronometerCountDown = true)
+        assertTrue(LiveParsers.parse(countdown, prefs) is LiveActivity.Timer)
+        val alarm = msg(pkg = "de.example.clock", title = "Timer").copy(ongoing = true, usesChronometer = true, whenTime = 60_000L, category = Notification.CATEGORY_ALARM)
+        assertTrue(LiveParsers.parse(alarm, prefs) is LiveActivity.Timer)
+    }
+
+    @Test
+    fun `reposted notification with the same content peeks only once`() {
+        val prefs = NotifyPrefs()
+        val n = msg(title = "Paket", text = "Zugestellt")
+        NotificationHub.onPosted(n, prefs, false, own)
+        val first = PeekCenter.current.value as Peek.Notification
+        PeekCenter.dismiss(first)
+        NotificationHub.onPosted(n, prefs, false, own)
+        assertNull("gleicher Inhalt erneut gepostet", PeekCenter.current.value)
+        NotificationHub.onPosted(n.copy(text = "Abholbereit"), prefs, false, own)
+        assertEquals("Abholbereit", (PeekCenter.current.value as Peek.Notification).notification.text)
+    }
 }

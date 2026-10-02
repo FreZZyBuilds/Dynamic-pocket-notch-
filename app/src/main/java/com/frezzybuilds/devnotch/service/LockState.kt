@@ -31,3 +31,23 @@ enum class DeviceLock {
             lock == SCREEN_OFF || (lock == LOCKED && mode == LockscreenMode.HIDE)
     }
 }
+
+/** In welchem Fenstertyp die Notch gerade hängt. */
+enum class OverlayHost {
+    /** Normales Overlay (`TYPE_APPLICATION_OVERLAY`) – unter der Statusleiste, nie über der Sperre. */
+    APP,
+
+    /** Overlay der Bedienungshilfe (`TYPE_ACCESSIBILITY_OVERLAY`) – auch über dem Sperrbildschirm. */
+    ACCESSIBILITY;
+
+    companion object {
+        /**
+         * Nur während der Sperre (schon ab Bildschirm aus, damit beim Einschalten nichts springt)
+         * und nur, wenn die Notch dort erscheinen soll und die Bedienungshilfe verbunden ist.
+         * Entsperrt immer das normale Overlay: Das Accessibility-Fenster läge sonst auch über
+         * der heruntergezogenen Benachrichtigungsleiste.
+         */
+        fun choose(lock: DeviceLock, mode: LockscreenMode, accessibilityConnected: Boolean): OverlayHost =
+            if (lock.isLocked && mode == LockscreenMode.SHOW && accessibilityConnected) ACCESSIBILITY else APP
+    }
+}

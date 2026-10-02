@@ -1,5 +1,7 @@
 package com.frezzybuilds.devnotch.service
 
+import android.view.View
+import kotlinx.coroutines.launch
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.KeyguardManager
@@ -81,6 +83,10 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         get() = savedStateRegistryController.savedStateRegistry
 
     private lateinit var windowManager: WindowManager
+
+    /** Fenstertyp, in dem die Notch gerade hängt, und der zugehörige WindowManager. */
+    private var host = OverlayHost.APP
+    private var hostWindowManager: WindowManager? = null
     private lateinit var layoutParams: WindowManager.LayoutParams
     /** Wurzel des Overlay-Fensters (enthält die ComposeView, fängt die Zurück-Taste ab). */
     private var composeView: OverlayRootView? = null
@@ -116,6 +122,10 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private var dashboardWidthDp = ExpandedSize.DASHBOARD_MAX_WIDTH_DP
     private var dashboardHeightDp = ExpandedSize.DASHBOARD_HEIGHT_DP
 
+    /** Eingeklappte Pille mit Text: gewünschte bzw. aktuell im Fenster gesetzte Breite (dp). */
+    private var pillWideDp: Int? = null
+    private var windowWideDp: Int? = null
+
     /** Höhe des aktuellen Peeks unter der Linsen-Zeile (Benachrichtigungen sind höher). */
     private var peekExtraHeightDp = ExpandedSize.PEEK_EXTRA_HEIGHT_DP
 
@@ -127,6 +137,10 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         }
         if (!peeking && windowPeek) {
             windowPeek = false
+            changed = true
+        }
+        if (windowWideDp != pillWideDp) {
+            windowWideDp = pillWideDp
             changed = true
         }
         if (changed) applyLayout()
@@ -224,6 +238,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             keyguardLocked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
         )
         lockSettingsListener = settings.addListener(setOf(NotchSettings.KEY_LOCKSCREEN_MODE)) { applyLayout() }
+        // Bedienungshilfe ein-/ausgeschaltet: Fenster ggf. in den anderen Typ umhängen.
+        lifecycleScope.launch { NotchAccessibilityService.instance.collect { applyLayout() } }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -265,7 +281,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         unregisterReceiver(powerReceiver)
         unregisterReceiver(screenReceiver)
         appContainer.notchSettings.removeListener(lockSettingsListener)
-        composeView?.let { windowManager.removeView(it) }
+        composeView?.let { view -> runCatching { (hostWindowManager ?: windowManager).removeViewImmediate(view) } }
+        hostWindowManager = null
         composeView = null
         viewModelStore.clear()
         running.value = false
@@ -342,6 +359,20 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                             if (windowExpanded) applyLayout()
                         }
                     },
+                    onPillWidthChange = { widthDp ->
+                        if (widthDp != pillWideDp) {
+                            pillWideDp = widthDp
+                            if (widthDp != null && widthDp > (windowWideDp ?: 0)) {
+                                // Breiter: Fenster sofort auf Endbreite, die Pille wächst darin.
+                                mainHandler.removeCallbacks(shrinkWindow)
+                                windowWideDp = widthDp
+                                applyLayout()
+                            } else {
+                                // Schmaler: erst nach der Animation (onCollapseSettled bzw. Fallback).
+                                mainHandler.postDelayed(shrinkWindow, SHRINK_FALLBACK_MS)
+                            }
+                        }
+                    },
                     onEdgeDrag = ::onEdgeDrag,
                     onEdgeDragEnd = ::onEdgeDragEnd,
                     onFocusableChange = { wantsFocus ->
@@ -377,8 +408,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             v.post(::refreshCutout)
             insets
         }
-        windowManager.addView(view, layoutParams)
         composeView = view
+        attach(view, targetHost())
 
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
@@ -388,7 +419,40 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private fun applyLayout() {
         val view = composeView ?: return
         updatePosition()
-        windowManager.updateViewLayout(view, layoutParams)
+        val target = targetHost()
+        if (target != host || hostWindowManager == null) {
+            // Umhängen: Compose baut den Inhalt im neuen Fenster neu auf (Timer & Co. liegen im
+            // ViewModelStore des Service und laufen weiter).
+            hostWindowManager?.let { wm -> runCatching { wm.removeViewImmediate(view) } }
+            hostWindowManager = null
+            attach(view, target)
+        } else {
+            runCatching { hostWindowManager!!.updateViewLayout(view, layoutParams) }
+        }
+    }
+
+    private fun targetHost(): OverlayHost = OverlayHost.choose(
+        deviceLock,
+        appContainer.notchSettings.lockscreenMode,
+        NotchAccessibilityService.instance.value != null
+    )
+
+    /** Hängt das Fenster in [target] ein; scheitert die Bedienungshilfe, im normalen Overlay. */
+    private fun attach(view: View, target: OverlayHost) {
+        val a11yManager = NotchAccessibilityService.instance.value?.overlayWindowManager()
+        if (target == OverlayHost.ACCESSIBILITY && a11yManager != null) {
+            layoutParams.type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            val added = runCatching { a11yManager.addView(view, layoutParams) }.isSuccess
+            if (added) {
+                host = OverlayHost.ACCESSIBILITY
+                hostWindowManager = a11yManager
+                return
+            }
+        }
+        layoutParams.type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        windowManager.addView(view, layoutParams)
+        host = OverlayHost.APP
+        hostWindowManager = windowManager
     }
 
     // LEFT/RIGHT statt START/END: gemeint ist der physische Rand, an den die Bubble gezogen wurde.
@@ -437,6 +501,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                 val (w, h) = peekSizePx()
                 width = w
                 height = h
+            } else if (windowWideDp != null && notchLayout.mode == NotchLayoutMode.NOTCH_TOP) {
+                width = (windowWideDp!! * resources.displayMetrics.density).roundToInt()
+                height = WindowManager.LayoutParams.WRAP_CONTENT
             } else {
                 width = WindowManager.LayoutParams.WRAP_CONTENT
                 height = WindowManager.LayoutParams.WRAP_CONTENT
@@ -452,12 +519,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             // Sperrbildschirm: je nach Einstellung darüber anzeigen oder ganz ausblenden.
             val lockMode = appContainer.notchSettings.lockscreenMode
             val hidden = DeviceLock.hideOverlay(deviceLock, lockMode)
-            @Suppress("DEPRECATION") // Für Fenster ohne Activity weiterhin der Weg über die Sperre.
-            flags = if (lockMode == LockscreenMode.SHOW) {
-                flags or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
-            } else {
-                flags and WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED.inv()
-            }
+            // Über der Sperre erscheint die Notch nur im Accessibility-Fenster (siehe [targetHost]);
+            // FLAG_SHOW_WHEN_LOCKED wirkt bei Overlay-Fenstern nicht.
             flags = if (hidden) {
                 flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
             } else {

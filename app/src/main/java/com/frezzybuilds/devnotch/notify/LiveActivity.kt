@@ -84,6 +84,12 @@ object LiveParsers {
         "com.google.android.apps.maps", "com.waze", "com.here.app.maps", "net.osmand", "net.osmand.plus",
         "com.sygic.aura", "com.mapswithme.maps.pro", "app.organicmaps", "com.tomtom.gplay.navapp"
     )
+    private val CLOCK_APPS = setOf(
+        "com.google.android.deskclock", "com.android.deskclock", "com.sec.android.app.clockpackage",
+        "com.oneplus.deskclock", "com.coloros.alarmclock", "com.huawei.deskclock", "com.motorola.timeweatherwidget"
+    )
+    private val TIMER_CATEGORIES = setOf(Notification.CATEGORY_ALARM, Notification.CATEGORY_REMINDER, "stopwatch")
+    private val DISTANCE = Regex("(?i)\\b\\d+([.,]\\d+)?\\s?(m|km|ft|mi|yd)\\b")
     private val ANSWER = Regex("(?i)annehmen|antworten|answer|accept|abheben")
     private val DECLINE = Regex("(?i)ablehnen|decline|reject|abweisen")
     private val HANG_UP = Regex("(?i)auflegen|beenden|hang ?up|end call")
@@ -116,13 +122,20 @@ object LiveParsers {
     }
 
     val navigation = LiveParser { n, prefs ->
-        val isNav = n.category == Notification.CATEGORY_NAVIGATION || (n.packageName in NAVIGATION_APPS && n.ongoing)
+        // Bekannte Navi-Apps; andere nur mit Kategorie „navigation“ UND einer Entfernung im Text –
+        // sonst landen z. B. Bildschirmaufnahmen mit falscher Kategorie in der Pille.
+        val isNav = (n.packageName in NAVIGATION_APPS && (n.ongoing || n.category == Notification.CATEGORY_NAVIGATION)) ||
+            (n.category == Notification.CATEGORY_NAVIGATION && n.ongoing && DISTANCE.containsMatchIn("${n.title} ${n.text.orEmpty()}"))
         if (!prefs.navigation || !isNav || n.isMedia) return@LiveParser null
         LiveActivity.Navigation(n.key, n.packageName, n.contentIntent, n.appLabel, n.title, n.text, n.icon)
     }
 
     val timer = LiveParser { n, prefs ->
         if (!prefs.timers || !n.ongoing || !n.usesChronometer || n.whenTime <= 0L) return@LiveParser null
+        // Nur echte Timer/Stoppuhren: Countdown, Uhr-App oder passende Kategorie. Eine laufende
+        // Uhr allein haben auch Bildschirmaufnahmen, Hotspots und Sprachmemos.
+        val isTimer = n.chronometerCountDown || n.packageName in CLOCK_APPS || n.category in TIMER_CATEGORIES
+        if (!isTimer) return@LiveParser null
         LiveActivity.Timer(n.key, n.packageName, n.contentIntent, n.appLabel, n.title, n.whenTime, n.chronometerCountDown, n.icon)
     }
 
