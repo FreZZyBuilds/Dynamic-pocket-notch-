@@ -108,6 +108,8 @@ class NotificationStylesTest {
                             val peek = Peek.Notification(n, 0, style, more = 1)
                             Box(Modifier.size(340.dp, (36 + peek.extraHeightDp).dp).clip(RoundedCornerShape(30.dp)).background(Color.Black)) {
                                 PeekContent(peek, pillHeight = 36.dp, lensGap = 42.dp)
+                                // Kameralinse zur Orientierung.
+                                Box(Modifier.align(androidx.compose.ui.Alignment.TopCenter).padding(top = 12.dp).size(12.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF1C1C2A)))
                             }
                         }
                         Box(Modifier.size(340.dp, 250.dp).clip(RoundedCornerShape(30.dp)).background(Color.Black).padding(14.dp)) {

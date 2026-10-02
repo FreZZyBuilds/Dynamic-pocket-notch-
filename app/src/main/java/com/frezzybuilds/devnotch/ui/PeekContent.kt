@@ -88,6 +88,10 @@ fun PeekContent(
         Box(modifier.fillMaxSize()) { GlassNotificationPeek(peek, pillHeight, onSend, onExpand, onShowAll) }
         return
     }
+    if (peek is Peek.Notification && peek.style == com.frezzybuilds.devnotch.notify.NotificationStyle.APERTURE) {
+        Box(modifier.fillMaxSize()) { ApertureNotificationPeek(peek, pillHeight, lensGap) }
+        return
+    }
     if (peek is Peek.MusicPlayer) {
         Box(modifier.fillMaxSize()) { MusicPlayerContent(pillHeight) }
         return

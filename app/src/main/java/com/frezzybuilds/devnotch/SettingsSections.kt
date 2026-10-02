@@ -176,7 +176,10 @@ internal fun NotificationSettings(settings: NotchSettings, hasListenerAccess: Bo
     AnimatedVisibility(enabled) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SettingLabel("Stil")
-            ChoiceRow(NotificationStyle.entries, style, { it.label }) { style = it; settings.notifyStyle = it }
+            // Zwei Reihen à zwei: vier Kacheln in einer Reihe wären auf schmalen Handys zu eng.
+            NotificationStyle.entries.chunked(2).forEach { row ->
+                ChoiceRow(row, style, { it.label }) { style = it; settings.notifyStyle = it }
+            }
             Text(style.description, color = Glass.TextSecondary, style = MaterialTheme.typography.bodySmall)
             NotificationStylePreview(style)
             ValueSlider(

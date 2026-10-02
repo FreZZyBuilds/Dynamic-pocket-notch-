@@ -46,6 +46,8 @@ sealed interface Peek {
             com.frezzybuilds.devnotch.notify.NotificationStyle.COMPACT -> 48
             // Karte mit Kopf, Text und Fußzeile („+N weitere“ oder Aktionen).
             com.frezzybuilds.devnotch.notify.NotificationStyle.GLASS -> 122
+            // Name in der Kamerazeile, nur die Textzeile darunter.
+            com.frezzybuilds.devnotch.notify.NotificationStyle.APERTURE -> 22
         }
     }
 

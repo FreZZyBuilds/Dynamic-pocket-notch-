@@ -156,6 +156,50 @@ fun CompactNotificationPeek(peek: Peek.Notification, pillHeight: Dp) {
 }
 
 /**
+ * Aperture (wie der iOS-Tweak): Die Pille wird nur breit und etwas tiefer. Symbol links über beide
+ * Zeilen, Name in App-Farbe links der Kamera, „jetzt“ rechts davon, die Nachricht darunter.
+ * In der Kamerazeile zeichnet Android sonst Uhr und Symbole – daher am besten mit überdeckter Statusleiste.
+ */
+@Composable
+fun ApertureNotificationPeek(peek: Peek.Notification, pillHeight: Dp, lensGap: Dp) {
+    val n = peek.notification
+    val now = rememberNow(ticking = false)
+    // Name in App-Farbe, aufgehellt, damit er auf Schwarz leuchtet.
+    val nameColor = n.accent?.let { androidx.compose.ui.graphics.lerp(Color(it), Color.White, 0.2f) } ?: Brand.Cyan
+    val avatar = 30.dp
+    val side = 12.dp
+    // Erste Zeile endet mittig in der Kamerazeile, die zweite direkt darunter.
+    val titleTop = pillHeight * 0.3f
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val half = (maxWidth - lensGap) / 2
+        Box(Modifier.padding(start = side, top = titleTop).height(maxHeight - titleTop), contentAlignment = Alignment.CenterStart) {
+            NotificationAvatar(n, avatar)
+        }
+        val textStart = side + avatar + 8.dp
+        Box(Modifier.padding(start = textStart, top = titleTop).width((half - textStart).coerceAtLeast(24.dp)).height(pillHeight - titleTop), contentAlignment = Alignment.CenterStart) {
+            Text(n.title, color = nameColor, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Box(Modifier.padding(start = half + lensGap, top = titleTop, end = side + 4.dp).fillMaxWidth().height(pillHeight - titleTop), contentAlignment = Alignment.CenterEnd) {
+            Text(
+                if (peek.more > 0) "+${peek.more}" else relativeTime(n.postTime, now),
+                color = Color.White.copy(alpha = 0.5f),
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1
+            )
+        }
+        Box(Modifier.padding(start = textStart, top = pillHeight - 1.dp, end = side + 4.dp).fillMaxWidth()) {
+            Text(
+                (n.text ?: n.appLabel).replace('\n', ' '),
+                color = Color.White.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                modifier = Modifier.fillMaxWidth().smoothMarquee(900, 60.dp)
+            )
+        }
+    }
+}
+
+/**
  * Glas: Milchglas-Karte mit Leuchtrand („✦ App · jetzt“), Avatar, Titel und Text. Unten
  * „+N weitere von App · alle zeigen“ – öffnet den Stapel – oder die Aktionen.
  */

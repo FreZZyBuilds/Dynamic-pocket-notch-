@@ -11,7 +11,8 @@ enum class LockContent(val label: String) {
 enum class NotificationStyle(val label: String, val description: String) {
     CLASSIC("Klassisch", "In App-Farbe mit Aktionen (Antworten, Öffnen, ✕)"),
     COMPACT("iOS kompakt", "Eine schmale Zeile: Symbol, Name, Text und „jetzt“ – wie auf dem iPhone"),
-    GLASS("Glas", "Milchglas-Karte mit Leuchtrand und „+N weitere · alle zeigen“")
+    GLASS("Glas", "Milchglas-Karte mit Leuchtrand und „+N weitere · alle zeigen“"),
+    APERTURE("Aperture", "Ganz flach um die Kamera: Name links der Linse, „jetzt“ rechts, Text darunter – am schönsten mit „Statusleiste überdecken“")
 }
 
 /** Welche Live-Ansichten erkannt werden. */
