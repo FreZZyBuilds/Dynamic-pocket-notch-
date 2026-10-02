@@ -28,6 +28,10 @@
     -->
 
     <!-- Paketsichtbarkeit (Android 11+) für die Dev-Shortcuts: Termux und GitHub Mobile starten. -->
+    <!-- Telefon-Tab: direkt wählen (optional, sonst öffnet die Telefon-App mit der Nummer) -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
     <!-- Anruf in der Notch: Mikrofon stummschalten (normale Berechtigung, keine Abfrage) -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 

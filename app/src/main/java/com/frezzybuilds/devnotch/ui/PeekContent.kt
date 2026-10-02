@@ -1,5 +1,7 @@
 package com.frezzybuilds.devnotch.ui
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import com.frezzybuilds.devnotch.share.localsend.LocalSend
@@ -88,7 +90,15 @@ fun PeekContent(
         return
     }
     val spec = peekSpec(peek)
-    Box(modifier.fillMaxSize().then(if (peek is Peek.Charging) Modifier.chargeSweep() else Modifier)) {
+    // Benachrichtigung: Hintergrund in der Farbe des App-Icons (Telegram blau, WhatsApp grün …),
+    // nach unten ins Schwarz auslaufend – Text bleibt gut lesbar.
+    val tint = (peek as? Peek.Notification)?.notification?.accent?.let { Color(it) }
+    Box(
+        modifier
+            .fillMaxSize()
+            .then(if (tint != null) Modifier.background(Brush.verticalGradient(listOf(tint.copy(alpha = 0.55f), tint.copy(alpha = 0.22f)))) else Modifier)
+            .then(if (peek is Peek.Charging) Modifier.chargeSweep() else Modifier)
+    ) {
         Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
             // Die Zeile mit der Kameralinse liegt in der Statusleiste: Dort zeichnet Android Uhr
             // und Symbole über jedes App-Fenster. Deshalb bleibt sie leer – alles beginnt darunter.
@@ -213,15 +223,8 @@ private fun peekSpec(peek: Peek): PeekSpec = when (peek) {
                 Badge(peek.notification.appLabel.take(1).uppercase(), Brand.Horizontal)
             }
         },
-        trailing = {
-            Text(
-                peek.notification.appLabel,
-                color = Color.White.copy(alpha = 0.7f),
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        // Kein App-Name rechts: Er drängte Titel und Text zusammen; das Symbol zeigt die App.
+        trailing = {}
     )
     is Peek.LiveCall -> PeekSpec(
         title = peek.call.caller,
@@ -360,9 +363,13 @@ private fun NotificationActions(n: NotchNotification, onSend: (PendingIntent?) -
     // „Antworten“ öffnet die große Ansicht mit Eingabefeld; daneben höchstens eine App-Aktion.
     val direct = n.actions.filter { !it.needsInput && it.intent != null && it.title.isNotBlank() }
         .take(if (n.reply != null) 1 else 2)
-    Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    // Seitlich wischbar statt abgeschnitten („Ö…“), lange App-Aktionen gekürzt.
+    Row(
+        Modifier.padding(top = 6.dp).fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
         if (n.reply != null) ActionChip("Antworten", highlighted = true, onClick = onExpand)
-        direct.forEach { action -> ActionChip(action.title, highlighted = false) { onSend(action.intent) } }
+        direct.forEach { action -> ActionChip(action.title.shortLabel(), highlighted = false) { onSend(action.intent) } }
         ActionChip("Öffnen", highlighted = n.reply == null) { onSend(n.contentIntent) }
         ActionChip("✕", highlighted = false, onClick = onDismiss)
     }
@@ -526,7 +533,16 @@ private fun OngoingCallControls(call: LiveActivity.Call, onSend: (PendingIntent?
                 muted = it.isMicrophoneMute
             }
         }
-        CallButton("Anruf", Color.White.copy(alpha = 0.18f), Modifier.weight(1f), textColor = Color.White) { onSend(call.contentIntent) }
+        // Wahltasten während des Gesprächs bietet nur die Telefon-App (Android gibt Tönen im Gespräch nur ihr frei).
+        CallButton("Tasten", Color.White.copy(alpha = 0.18f), Modifier.weight(1f), textColor = Color.White) { onSend(call.contentIntent) }
         CallButton("Auflegen", Color(0xFFFF453A), Modifier.weight(1f), textColor = Color.White) { onSend(call.hangUp ?: call.contentIntent) }
     }
+}
+
+/** „Als gelesen markieren“ → „Gelesen“; sonst höchstens 14 Zeichen. */
+private fun String.shortLabel(): String = when {
+    Regex("(?i)gelesen|mark as read").containsMatchIn(this) -> "Gelesen"
+    Regex("(?i)stumm|mute").containsMatchIn(this) -> "Stumm"
+    length > 14 -> take(13).trimEnd() + "…"
+    else -> this
 }

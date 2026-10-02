@@ -154,7 +154,8 @@ private enum class NotchTab(val title: String) {
     TIMER("Timer"),
     NOTES("Notizen"),
     CLIP("Clip"),
-    AI("AI")
+    AI("AI"),
+    PHONE("Tel")
 }
 
 /** Eine Feder für Größe und Eckenradius, damit beides synchron „nachfedert“. */
@@ -826,6 +827,7 @@ private fun Dashboard(
                     NotchTab.CLIP -> ClipboardContent(onLeave = onClose)
                     NotchTab.DEV -> DevTabContent(onLaunched = onClose)
                     NotchTab.NOTES -> NotesContent(onLeaveForExternalApp = onClose)
+                    NotchTab.PHONE -> PhoneTabContent(onLeave = onClose)
                 }
             }
         }

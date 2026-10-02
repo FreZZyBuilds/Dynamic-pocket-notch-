@@ -127,6 +127,7 @@ object LiveParsers {
         "com.oneplus.deskclock", "com.coloros.alarmclock", "com.huawei.deskclock", "com.motorola.timeweatherwidget"
     )
     private val TIMER_CATEGORIES = setOf(Notification.CATEGORY_ALARM, Notification.CATEGORY_REMINDER, "stopwatch")
+    private val ROUTE_WORDS = Regex("(?i)ankunft|arrival|\\beta\\b|abbiegen|turn (left|right)|\\b\\d+\\s?min\\b")
     private val DISTANCE = Regex("(?i)\\b\\d+([.,]\\d+)?\\s?(m|km|ft|mi|yd)\\b")
     private val ANSWER = Regex("(?i)annehmen|antworten|answer|accept|abheben")
     private val DECLINE = Regex("(?i)ablehnen|decline|reject|abweisen")
@@ -163,8 +164,11 @@ object LiveParsers {
     val navigation = LiveParser { n, prefs ->
         // Bekannte Navi-Apps; andere nur mit Kategorie „navigation“ UND einer Entfernung im Text –
         // sonst landen z. B. Bildschirmaufnahmen mit falscher Kategorie in der Pille.
-        val isNav = (n.packageName in NAVIGATION_APPS && (n.ongoing || n.category == Notification.CATEGORY_NAVIGATION)) ||
-            (n.category == Notification.CATEGORY_NAVIGATION && n.ongoing && DISTANCE.containsMatchIn("${n.title} ${n.text.orEmpty()}"))
+        // Nur mit echter Wegbeschreibung (Entfernung, Ankunft, Abbiegen): „Mit Google Maps fahren“
+        // ohne Route ist keine Navigation.
+        val text = "${n.title} ${n.text.orEmpty()}"
+        val routing = DISTANCE.containsMatchIn(text) || ROUTE_WORDS.containsMatchIn(text)
+        val isNav = routing && n.ongoing && (n.packageName in NAVIGATION_APPS || n.category == Notification.CATEGORY_NAVIGATION)
         if (!prefs.navigation || !isNav || n.isMedia) return@LiveParser null
         LiveActivity.Navigation(n.key, n.packageName, n.contentIntent, n.appLabel, n.title, n.text, n.icon)
     }

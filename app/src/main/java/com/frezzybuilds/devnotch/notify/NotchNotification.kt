@@ -79,7 +79,9 @@ data class NotchNotification(
     val hangUpIntent: PendingIntent? = null,
     val isCallStyle: Boolean = false,
     /** Direktantwort, falls die App eine anbietet (Messenger, SMS, Mail …). */
-    val reply: ReplyAction? = null
+    val reply: ReplyAction? = null,
+    /** Leitfarbe aus dem App-Icon (ARGB) – tönt den Hintergrund des Peeks. */
+    val accent: Int? = null
 ) {
     val progressFraction: Float? =
         if (progressMax > 0 && !progressIndeterminate) (progress.toFloat() / progressMax).coerceIn(0f, 1f) else null
@@ -90,16 +92,15 @@ data class NotchNotification(
             val n = sbn.notification ?: return null
             val extras = n.extras ?: return null
             val pm = context.packageManager
-            val appLabel = runCatching {
-                pm.getApplicationLabel(pm.getApplicationInfo(sbn.packageName, 0)).toString()
-            }.getOrDefault(sbn.packageName)
+            val app = AppVisuals.of(context, sbn.packageName)
+            val appLabel = app.label
             val title = (extras.getCharSequence(Notification.EXTRA_TITLE_BIG) ?: extras.getCharSequence(Notification.EXTRA_TITLE))
                 ?.toString()?.trim().orEmpty()
             val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))
                 ?.toString()?.trim()
             val icon = runCatching {
                 (n.getLargeIcon() ?: n.smallIcon)?.loadDrawable(context)?.toBitmap(96, 96)
-            }.getOrNull() ?: runCatching { pm.getApplicationIcon(sbn.packageName).toBitmap(96, 96) }.getOrNull()
+            }.getOrNull() ?: app.icon
 
             val silent = ranking?.let { map ->
                 val r = NotificationListenerService.Ranking()
@@ -140,6 +141,7 @@ data class NotchNotification(
                 declineIntent = intentExtra("android.declineIntent"),
                 hangUpIntent = intentExtra("android.hangUpIntent"),
                 isCallStyle = template.endsWith("CallStyle"),
+                accent = app.accent,
                 reply = n.actions.orEmpty().firstNotNullOfOrNull { a ->
                     val inputs = a.remoteInputs?.filter { it.allowFreeFormInput }
                     if (a.actionIntent != null && !inputs.isNullOrEmpty()) {
@@ -168,3 +170,29 @@ fun PendingIntent.sendFromNotch(context: Context): Boolean = runCatching {
     }
     true
 }.getOrDefault(false)
+
+/**
+ * App-Name, -Icon und Leitfarbe je Paket – einmal bestimmt, dann aus dem Speicher. Vorher kostete
+ * jede Benachrichtigung (Maps aktualisiert sekündlich) erneut PackageManager-Abfragen.
+ */
+object AppVisuals {
+    class Entry(val label: String, val icon: Bitmap?, val accent: Int?)
+
+    private val cache = object : LinkedHashMap<String, Entry>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>) = size > 64
+    }
+
+    @Synchronized
+    fun of(context: Context, packageName: String): Entry = cache.getOrPut(packageName) {
+        val pm = context.packageManager
+        val label = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString() }.getOrDefault(packageName)
+        val icon = runCatching { pm.getApplicationIcon(packageName).toBitmap(96, 96) }.getOrNull()
+        Entry(label, icon, icon?.let(::accentOf))
+    }
+
+    /** Kräftige Farbe des Icons (Telegram blau, WhatsApp grün …), sonst die häufigste. */
+    fun accentOf(icon: Bitmap): Int? = runCatching {
+        val palette = androidx.palette.graphics.Palette.from(icon).maximumColorCount(12).generate()
+        (palette.vibrantSwatch ?: palette.lightVibrantSwatch ?: palette.dominantSwatch)?.rgb
+    }.getOrNull()
+}

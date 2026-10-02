@@ -86,7 +86,7 @@ class MediaNotificationListener : NotificationListenerService() {
         NotificationHub.onAppSeen = { pkg, label -> applicationContext.appContainer.notchSettings.rememberSeenApp(pkg, label) }
         runCatching { activeNotifications }.getOrNull()?.forEach { sbn ->
             rememberMediaNotification(sbn)
-            routeNotification(sbn, initialScan = true)
+            worker.execute { routeNotification(sbn, initialScan = true) }
         }
         // Regelmäßiger Abgleich: Live-Ansichten zu Benachrichtigungen, deren „entfernt“ verloren
         // ging, verschwinden spätestens nach einer halben Minute.
@@ -102,8 +102,11 @@ class MediaNotificationListener : NotificationListenerService() {
         val settings = applicationContext.appContainer.notchSettings
         notifyPrefsListener?.let(settings::removeListener)
         notifyPrefsListener = settings.addListener(NotchSettings.NOTIFY_PREF_KEYS) {
-            NotificationHub.clearLive()
-            runCatching { activeNotifications }.getOrNull()?.forEach { routeNotification(it, initialScan = true) }
+            val active = runCatching { activeNotifications }.getOrNull().orEmpty()
+            worker.execute {
+                NotificationHub.clearLive()
+                active.forEach { routeNotification(it, initialScan = true) }
+            }
         }
         val manager = getSystemService(MediaSessionManager::class.java)
         try {
@@ -131,12 +134,21 @@ class MediaNotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        if (rememberMediaNotification(sbn)) publish() else routeNotification(sbn, initialScan = false)
+        if (rememberMediaNotification(sbn)) publish() else worker.execute { routeNotification(sbn, initialScan = false) }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         if (mediaNotifications.remove(sbn.packageName) != null) publish()
-        NotificationHub.onRemoved(sbn.key)
+        worker.execute { NotificationHub.onRemoved(sbn.key) }
+    }
+
+    /**
+     * Auswertung im Hintergrund, der Reihe nach: Icons laden, Farben bestimmen und Parser kosten
+     * Zeit – auf dem Main-Thread brachte das bei sekündlichen Updates (Maps-Navigation) die App ins
+     * Stocken bis „reagiert nicht“.
+     */
+    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "notch-notifications").apply { isDaemon = true; priority = Thread.NORM_PRIORITY - 1 }
     }
 
     /**
@@ -156,8 +168,8 @@ class MediaNotificationListener : NotificationListenerService() {
     private fun component() = ComponentName(this, MediaNotificationListener::class.java)
 
     private fun reconcileLive() {
-        val active = runCatching { activeNotifications }.getOrNull() ?: return
-        NotificationHub.retain(active.mapTo(HashSet()) { it.key })
+        val keys = runCatching { activeNotifications }.getOrNull()?.mapTo(HashSet()) { it.key } ?: return
+        worker.execute { NotificationHub.retain(keys) }
     }
 
     private fun release() {
@@ -240,8 +252,10 @@ class MediaNotificationListener : NotificationListenerService() {
         }
         if (uri != null && loadingUris.add(key)) loadArtwork(key, uri)
 
-        // Bis dahin (oder ohne URI): das Cover aus der Medien-Benachrichtigung.
-        return mediaNotifications[snapshot.packageName]?.largeIcon?.toArtwork()
+        // Bis dahin (oder ohne URI): das Cover aus der Medien-Benachrichtigung – ebenfalls zwischen-
+        // gespeichert, sonst lief Palette bei jeder Wiedergabe-Änderung erneut auf dem Main-Thread.
+        val icon = mediaNotifications[snapshot.packageName]?.largeIcon ?: return null
+        return artworkCache.getOrPut("$key|notification|${icon.generationId}") { icon.toArtwork() }
     }
 
     private fun loadArtwork(key: String, uri: String) {

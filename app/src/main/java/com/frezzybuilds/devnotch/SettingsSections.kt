@@ -251,6 +251,7 @@ internal fun LiveViewSettings(settings: NotchSettings) {
     SwitchRow("📞 Anrufe", "Annehmen und Ablehnen direkt in der Notch, Gesprächsdauer", calls) {
         calls = it; settings.liveCalls = it
     }
+    DirectCallPermission()
     SwitchRow("🧭 Navigation", "Nächste Abbiegung aus Google Maps, Waze, HERE und anderen", navigation) {
         navigation = it; settings.liveNavigation = it
     }
@@ -580,5 +581,26 @@ internal fun ShareSettings(settings: NotchSettings) {
     )
     if (wallet != null) {
         com.frezzybuilds.devnotch.ui.glass.GlassButton("Google Pay öffnen", onClick = { com.frezzybuilds.devnotch.share.Wallet.open(context) })
+    }
+}
+
+/** Telefon-Tab: direkt wählen erlauben (sonst öffnet die Telefon-App mit der Nummer). */
+@Composable
+private fun DirectCallPermission() {
+    val context = LocalContext.current
+    fun granted() = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CALL_PHONE) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+    var allowed by remember { mutableStateOf(granted()) }
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { allowed = it }
+    if (allowed) {
+        Text("✓ Telefon-Tab wählt direkt", color = Brand.Cyan, style = MaterialTheme.typography.bodySmall)
+    } else {
+        HintBox(
+            "Telefon-Tab in der Notch: Ohne Erlaubnis öffnet „Anrufen“ die Telefon-App mit der Nummer.",
+            action = "Direkt wählen",
+            onAction = { launcher.launch(android.Manifest.permission.CALL_PHONE) }
+        )
     }
 }

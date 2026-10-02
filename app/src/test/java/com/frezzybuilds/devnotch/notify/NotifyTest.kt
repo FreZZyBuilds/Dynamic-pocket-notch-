@@ -216,4 +216,13 @@ class NotifyTest {
             NotificationHub.clock = System::currentTimeMillis
         }
     }
+
+    @Test
+    fun `maps without a route is no navigation`() {
+        val prefs = LivePrefs()
+        val idle = msg(pkg = "com.google.android.apps.maps", title = "Mit Google Maps fahren", text = "Maps").copy(ongoing = true)
+        assertNull(LiveParsers.parse(idle, prefs))
+        val route = idle.copy(title = "Rechts abbiegen auf Hermannstraße", text = "Ankunft 14:32")
+        assertTrue(LiveParsers.parse(route, prefs) is LiveActivity.Navigation)
+    }
 }
