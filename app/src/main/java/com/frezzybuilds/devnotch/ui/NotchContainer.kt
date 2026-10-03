@@ -1,7 +1,6 @@
 package com.frezzybuilds.devnotch.ui
 
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.layout.layout
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.verticalScroll
@@ -196,6 +195,12 @@ fun NotchContainer(
     onPillWidthChange: (widthDp: Int?) -> Unit = {}
 ) {
     var isExpanded by remember { mutableStateOf(false) }
+    val startSettings = LocalContext.current.appContainer.notchSettings
+    // Gesperrt: Timer und (gekürzte) Mitteilungen; mit „Alles auf dem Sperrbildschirm“ die volle Übersicht.
+    val lockFull = remember(isExpanded, locked) { startSettings.lockscreenFull }
+    val lockContentNow = remember(isExpanded, locked) { startSettings.notifyLockContent }
+    val homeTabs = if (!locked || lockFull) HomeOrder
+        else listOfNotNull(NotchTab.INBOX.takeIf { lockContentNow != com.frezzybuilds.devnotch.notify.LockContent.HIDDEN }, NotchTab.TIMER)
     // Geöffnete Kategorie im Dashboard; null = Übersicht mit Kacheln.
     var selectedTab by remember { mutableStateOf<NotchTab?>(null) }
 
@@ -560,7 +565,14 @@ fun NotchContainer(
                 if (minimalItem != null) Spacer(Modifier.width(pillHeight + MinimalGap))
                 Box(
                     modifier = Modifier
-                        .offset { IntOffset(sidePillShift.value.dp.roundToPx(), 0) }
+                        // Unsymmetrische Seitenpille: Die gemeldete Breite bleibt symmetrisch um die Linse
+                        // (die Ansicht ist nur so breit wie ihr Inhalt und mittig), die Pille sitzt darin
+                        // rechts versetzt. Eine reine Verschiebung würde am Rand der Ansicht abgeschnitten.
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(constraints)
+                            val extra = (sidePillShift.value * 2).dp.roundToPx().coerceAtLeast(0)
+                            layout(placeable.width + extra, placeable.height) { placeable.place(extra, 0) }
+                        }
                         // Antippen: Die Pille „gibt nach“ und federt zurück.
                         .graphicsLayer {
                             scaleX = squish.value
@@ -680,8 +692,10 @@ fun NotchContainer(
                             onSend = ::sendIntent,
                             onResizeDrag = onResizeDrag,
                             onResizeEnd = onResizeEnd,
-                            // Gesperrt nur der Timer – nichts Privates.
-                            section = if (locked) NotchTab.TIMER else selectedTab,
+                            // Gesperrt nur, was nichts Privates zeigt – außer der Nutzer erlaubt alles.
+                            tabs = homeTabs,
+                            section = selectedTab?.takeIf { it in homeTabs },
+                            redact = { NotificationRules.redact(it, locked, notifyPrefs.lockContent) },
                             onOpenSection = { selectedTab = it },
                             focusTimer = focusTimer,
                             nowPlaying = nowPlaying,
@@ -830,8 +844,10 @@ private fun Dashboard(
     onSend: (PendingIntent?) -> Unit,
     onResizeDrag: ((Float) -> Unit)?,
     onResizeEnd: () -> Unit,
+    tabs: List<NotchTab>,
     section: NotchTab?,
     onOpenSection: (NotchTab?) -> Unit,
+    redact: (NotchNotification) -> NotchNotification?,
     focusTimer: FocusTimerViewModel,
     nowPlaying: NowPlaying?,
     onClose: () -> Unit,
@@ -881,6 +897,7 @@ private fun Dashboard(
                 val timerRunning by focusTimer.isRunning.collectAsStateWithLifecycle()
                 val inbox by NotificationHub.recent.collectAsStateWithLifecycle()
                 DashboardHome(
+                    tabs = tabs,
                     subtitle = { t ->
                         when (t) {
                             NotchTab.INBOX -> if (inbox.isEmpty()) "Alles gelesen" else "${inbox.size} neu"
@@ -899,7 +916,7 @@ private fun Dashboard(
                 )
             } else {
                 Column(Modifier.fillMaxSize()) {
-                    SectionTopBar(tab, onBack = if (locked) null else ({ onOpenSection(null) }))
+                    SectionTopBar(tab, onBack = { onOpenSection(null) })
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         when (tab) {
                             NotchTab.AI -> ProGate(ProFeature.AI_TRACKER, onLeave = onClose) { AiStatsTabContent(onLeave = onClose) }
@@ -908,7 +925,7 @@ private fun Dashboard(
                             NotchTab.DEV -> DevTabContent(onLaunched = onClose)
                             NotchTab.NOTES -> NotesContent(onLeaveForExternalApp = onClose)
                             NotchTab.PHONE -> PhoneTabContent(onLeave = onClose)
-                            NotchTab.INBOX -> NotificationStackContent(onOpen = onOpenNotification)
+                            NotchTab.INBOX -> NotificationStackContent(onOpen = onOpenNotification, redact = redact)
                         }
                     }
                 }

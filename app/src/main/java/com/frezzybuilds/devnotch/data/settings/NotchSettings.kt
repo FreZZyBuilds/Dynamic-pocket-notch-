@@ -318,6 +318,11 @@ class NotchSettings(context: Context) {
             ?: LockscreenMode.SHOW
         set(value) = prefs.edit { putString(KEY_LOCKSCREEN_MODE, value.name) }
 
+    /** Gesperrt dieselbe Übersicht wie entsperrt (Notizen, Clip, Dev …) – bewusst einzuschalten. */
+    var lockscreenFull: Boolean
+        get() = prefs.getBoolean(KEY_LOCKSCREEN_FULL, false)
+        set(value) = prefs.edit { putBoolean(KEY_LOCKSCREEN_FULL, value) }
+
     // --- Einstellungen: welche Karten aufgeklappt sind ------------------------------------------
     fun isSectionOpen(id: String, default: Boolean): Boolean = prefs.getBoolean("section_open_$id", default)
     fun setSectionOpen(id: String, open: Boolean) = prefs.edit { putBoolean("section_open_$id", open) }
@@ -327,6 +332,7 @@ class NotchSettings(context: Context) {
 
     companion object {
         const val KEY_LOCKSCREEN_MODE = "lockscreen_mode"
+        const val KEY_LOCKSCREEN_FULL = "lockscreen_full"
         const val KEY_COVER_STATUS_BAR = "cover_status_bar"
         const val KEY_DASH_WIDTH = "dashboard_width"
         const val KEY_DASH_HEIGHT = "dashboard_height"

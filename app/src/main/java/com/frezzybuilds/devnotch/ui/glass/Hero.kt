@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.frezzybuilds.devnotch.peek.Peek
 import com.frezzybuilds.devnotch.ui.PeekContent
+import com.frezzybuilds.devnotch.ui.SIDE_PILL_LEFT_DP
 import com.frezzybuilds.devnotch.ui.theme.Brand
 import kotlinx.coroutines.delay
 
@@ -75,8 +76,9 @@ private val PillHeight = 34.dp
 /** Was die Vorschau nacheinander zeigt – genau das, was die echte Notch kann. */
 private enum class ShowcaseState(val width: Dp, val height: Dp) {
     IDLE(118.dp, PillHeight),
-    CHARGING(300.dp, PillHeight + 46.dp),
-    MUSIC(300.dp, PillHeight + 46.dp),
+    // Wie in der echten Notch: nur breiter, nicht höher – Symbol links, Wert rechts der Kamera.
+    CHARGING(206.dp, PillHeight),
+    MUSIC(290.dp, PillHeight),
     TIMER(200.dp, PillHeight)
 }
 
@@ -145,8 +147,17 @@ private fun NotchShowcase() {
                 Box(Modifier.fillMaxSize()) {
                     when (s) {
                         ShowcaseState.IDLE -> Unit
-                        ShowcaseState.CHARGING -> PeekContent(Peek.Charging(82), PillHeight, lensGap = 26.dp)
-                        ShowcaseState.MUSIC -> PeekContent(Peek.TrackChanged("Midnight City", "M83", null), PillHeight, lensGap = 26.dp)
+                        // Die Seitenpille hat links nur Platz für das Symbol; hier sitzt die Linse mittig,
+                        // also beginnt ihr Inhalt so, dass die Lücke genau unter der Linse liegt.
+                        ShowcaseState.CHARGING, ShowcaseState.MUSIC -> Box(
+                            Modifier.fillMaxSize().padding(start = ((s.width - 26.dp) / 2 - SIDE_PILL_LEFT_DP.dp).coerceAtLeast(0.dp))
+                        ) {
+                            PeekContent(
+                                if (s == ShowcaseState.CHARGING) Peek.Charging(82) else Peek.TrackChanged("Midnight City", "M83", null),
+                                PillHeight,
+                                lensGap = 26.dp
+                            )
+                        }
                         ShowcaseState.TIMER -> Row(
                             Modifier.fillMaxSize().padding(horizontal = 14.dp),
                             verticalAlignment = Alignment.CenterVertically

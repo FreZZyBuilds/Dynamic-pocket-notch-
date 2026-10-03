@@ -279,8 +279,13 @@ fun GlassNotificationPeek(
  * Punkten, „Alle löschen“. Tippen auf eine Zeile öffnet sie groß (lesen und antworten).
  */
 @Composable
-fun NotificationStackContent(onOpen: (NotchNotification) -> Unit) {
-    val items by NotificationHub.recent.collectAsStateWithLifecycle()
+fun NotificationStackContent(
+    onOpen: (NotchNotification) -> Unit,
+    /** Gesperrt: Inhalte wie bei Peeks kürzen bzw. ausblenden. */
+    redact: (NotchNotification) -> NotchNotification? = { it }
+) {
+    val all by NotificationHub.recent.collectAsStateWithLifecycle()
+    val items = remember(all, redact) { all.mapNotNull(redact) }
     val now = rememberNow(ticking = true, stepMs = 30_000L)
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

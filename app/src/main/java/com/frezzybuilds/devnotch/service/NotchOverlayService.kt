@@ -190,29 +190,42 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             }
             deviceLock = next
             applyLayout()
-            mainHandler.removeCallbacks(lockRecheck)
-            if (next == DeviceLock.LOCKED) mainHandler.postDelayed(lockRecheck, LOCK_RECHECK_MS)
+            scheduleLockRecheck()
             // Beim Einschalten/Entsperren veraltete Live-Ansichten (beendete Fahrt …) sofort entfernen.
             if (next != DeviceLock.SCREEN_OFF) NotificationHub.reconciler?.invoke()
             if (intent.action == Intent.ACTION_USER_PRESENT) systemEvents.onUnlocked()
         }
     }
 
+    /** Echter Zustand jetzt (Bildschirm an? Sperre sichtbar?) – unabhängig von Broadcasts. */
+    private fun currentLock(): DeviceLock = DeviceLock.from(
+        screenOn = getSystemService(PowerManager::class.java)?.isInteractive != false,
+        keyguardLocked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
+    )
+
     /**
-     * Gesperrt bleibt die Notch privat (nur Timer). Kommt „entsperrt“ nicht an – z. B. wenn ein
-     * Anruf über dem Sperrbildschirm lief –, korrigiert diese Prüfung den Zustand selbst.
+     * Zustand neu bestimmen. Kommt „entsperrt“ oder „Bildschirm an“ nicht an (Anruf über der Sperre,
+     * Start bei gesperrtem Handy, Näherungssensor …), blieb die Notch sonst im privaten Modus hängen.
      */
-    private val lockRecheck = object : Runnable {
-        override fun run() {
-            if (deviceLock != DeviceLock.LOCKED) return
-            if (getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == false) {
-                deviceLock = DeviceLock.UNLOCKED
-                applyLayout()
-            } else {
-                mainHandler.postDelayed(this, LOCK_RECHECK_MS)
-            }
+    private fun refreshLock() {
+        val now = currentLock()
+        if (now != deviceLock) {
+            deviceLock = now
+            applyLayout()
+        }
+        scheduleLockRecheck()
+    }
+
+    private fun scheduleLockRecheck() {
+        mainHandler.removeCallbacks(lockRecheck)
+        when (deviceLock) {
+            DeviceLock.LOCKED -> mainHandler.postDelayed(lockRecheck, LOCK_RECHECK_MS)
+            DeviceLock.SCREEN_OFF -> mainHandler.postDelayed(lockRecheck, SCREEN_OFF_RECHECK_MS)
+            DeviceLock.UNLOCKED -> Unit
         }
     }
+
+    private val lockRecheck = Runnable { refreshLock() }
 
     /** Ladekabel angesteckt → Lade-Peek mit Akkustand. */
     private val powerReceiver = object : BroadcastReceiver() {
@@ -281,10 +294,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             },
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
-        deviceLock = DeviceLock.from(
-            screenOn = getSystemService(PowerManager::class.java)?.isInteractive != false,
-            keyguardLocked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
-        )
+        deviceLock = currentLock()
+        scheduleLockRecheck()
         lockSettingsListener = settings.addListener(setOf(NotchSettings.KEY_LOCKSCREEN_MODE, NotchSettings.KEY_COVER_STATUS_BAR)) { applyLayout() }
         // LocalSend-Empfang (AirDrop-Ersatz): läuft mit der Notch, solange er eingeschaltet ist.
         syncLocalSend()
@@ -384,6 +395,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                     onExpandRequest = { isExpanded ->
                         expanded = isExpanded
                         if (isExpanded) {
+                            // Beim Aufklappen den echten Sperrzustand nehmen (nicht einen veralteten).
+                            refreshLock()
                             mainHandler.removeCallbacks(shrinkWindow)
                             windowExpanded = true
                         } else {
@@ -828,6 +841,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         private const val LEGACY_CHANNEL_ID = "notch_overlay"
         const val NOTIFICATION_ID = 1
         private const val LOCK_RECHECK_MS = 2_000L
+        private const val SCREEN_OFF_RECHECK_MS = 5_000L
 
         /** Spätestens dann wird das Fenster nach dem Einklappen verkleinert (Feder ≈ 500 ms). */
         private const val SHRINK_FALLBACK_MS = 900L

@@ -15,6 +15,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
@@ -23,6 +25,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import com.frezzybuilds.devnotch.notify.LiveActivity
 import com.frezzybuilds.devnotch.notify.NotchNotification
@@ -33,6 +37,7 @@ import com.frezzybuilds.devnotch.peek.Peek
 import com.frezzybuilds.devnotch.peek.PeekCenter
 import com.frezzybuilds.devnotch.service.CallControl
 import com.frezzybuilds.devnotch.ui.theme.Brand
+import com.frezzybuilds.devnotch.appContainer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -198,5 +203,88 @@ class NotificationStylesTest {
         compose.waitForIdle()
         compose.onAllNodesWithText("25m").assertCountEquals(2)
         save(view, "timer_low")
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w380dp-h200dp-xxhdpi")
+    fun sidePillIsNotClippedByTheWrappingView() {
+        lateinit var view: View
+        PeekCenter.show(Peek.System(com.frezzybuilds.devnotch.system.SystemEvent.RINGER, "📳", "Vibration", null, 0xFFFF9F0AL))
+        compose.setContent {
+            view = LocalView.current
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                Box(Modifier.fillMaxSize().background(Color(0xFF2B2E6E)), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
+                    // Wie im Service: Ansicht nur so breit wie ihr Inhalt, mittig, schneidet am Rand ab.
+                    Box(Modifier.padding(top = 8.dp).clipToBounds()) {
+                        NotchContainer(
+                            layout = com.frezzybuilds.devnotch.service.NotchLayout(
+                                com.frezzybuilds.devnotch.service.NotchLayoutMode.NOTCH_TOP,
+                                lens = com.frezzybuilds.devnotch.service.CameraLens(centerX = 570, centerY = 60, diameter = 36),
+                                pill = com.frezzybuilds.devnotch.service.PillGeometry(390, 105, 0, 8)
+                            ),
+                            onExpandRequest = {}
+                        )
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000)
+        val text = compose.onNodeWithText("Vibration").fetchSemanticsNode().boundsInRoot
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        save(view, "side_pill_in_window")
+        // Ganz sichtbar: rechtes Textende liegt innerhalb der (mittigen) Ansicht.
+        assertTrue("Text ragt aus der Ansicht", text.right <= root.right)
+    }
+
+    @Test
+    fun lockedOverviewShowsSafeCardsOrEverythingWhenAllowed() {
+        val settings = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>().appContainer.notchSettings
+        fun open(full: Boolean) {
+            settings.lockscreenFull = full
+            compose.setContent {
+                NotchContainer(
+                    layout = com.frezzybuilds.devnotch.service.NotchLayout(
+                        com.frezzybuilds.devnotch.service.NotchLayoutMode.NOTCH_TOP,
+                        pill = com.frezzybuilds.devnotch.service.PillGeometry(120, 36, 0, 8)
+                    ),
+                    onExpandRequest = {},
+                    locked = true
+                )
+            }
+            compose.onRoot().performTouchInput { swipe(center, center + androidx.compose.ui.geometry.Offset(0f, 450f), 300) }
+            compose.waitForIdle()
+        }
+        try {
+            open(full = false)
+            compose.onNodeWithText("Timer").assertExists()
+            compose.onNodeWithText("Neu").assertExists()
+            compose.onNodeWithText("Notizen").assertDoesNotExist()
+        } finally {
+            settings.lockscreenFull = false
+        }
+    }
+
+    @Test
+    fun lockedOverviewWithEverythingAllowed() {
+        val settings = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>().appContainer.notchSettings
+        settings.lockscreenFull = true
+        try {
+            compose.setContent {
+                NotchContainer(
+                    layout = com.frezzybuilds.devnotch.service.NotchLayout(
+                        com.frezzybuilds.devnotch.service.NotchLayoutMode.NOTCH_TOP,
+                        pill = com.frezzybuilds.devnotch.service.PillGeometry(120, 36, 0, 8)
+                    ),
+                    onExpandRequest = {},
+                    locked = true
+                )
+            }
+            compose.onRoot().performTouchInput { swipe(center, center + androidx.compose.ui.geometry.Offset(0f, 450f), 300) }
+            compose.waitForIdle()
+            compose.onNodeWithText("Notizen").assertExists()
+        } finally {
+            settings.lockscreenFull = false
+        }
     }
 }

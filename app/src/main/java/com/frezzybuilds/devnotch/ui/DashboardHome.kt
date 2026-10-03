@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.frezzybuilds.devnotch.share.ShareActions
 import com.frezzybuilds.devnotch.share.Wallet
 import com.frezzybuilds.devnotch.ui.theme.Brand
@@ -71,6 +72,7 @@ internal fun Modifier.pressScale(interaction: MutableInteractionSource): Modifie
  */
 @Composable
 internal fun DashboardHome(
+    tabs: List<NotchTab>,
     subtitle: (NotchTab) -> String,
     badge: (NotchTab) -> Int,
     onOpen: (NotchTab) -> Unit,
@@ -80,15 +82,18 @@ internal fun DashboardHome(
     // Kein Scrollen: Die Kacheln passen sich der Höhe an – so bleibt Hochwischen zum Schließen frei.
     BoxWithConstraints(modifier) {
         val columns = if (maxWidth >= 320.dp) 3 else 2
-        val rows = (HomeOrder.size + columns - 1) / columns
+        val rows = ((tabs.size + columns - 1) / columns).coerceAtLeast(1)
         val gap = 8.dp
         val shareRow = 38.dp
-        val cardHeight = ((maxHeight - shareRow - gap * rows) / rows).coerceIn(44.dp, 84.dp)
+        // Hoch genug für Symbol + Titel + Info auch bei großer Systemschrift (Samsung).
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val tallNeeded = 20.dp + 26.dp + 4.dp + with(density) { 20.sp.toDp() + 16.sp.toDp() } + 2.dp
+        val cardHeight = ((maxHeight - shareRow - gap * rows) / rows).coerceIn(44.dp, maxOf(104.dp, tallNeeded))
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-            HomeOrder.chunked(columns).forEachIndexed { row, tabs ->
+            tabs.chunked(columns).forEachIndexed { row, rowTabs ->
                 Row(Modifier.fillMaxWidth().staggerIn(1 + row), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    tabs.forEach { tab -> SectionCard(tab, subtitle(tab), badge(tab), cardHeight, Modifier.weight(1f)) { onOpen(tab) } }
-                    repeat(columns - tabs.size) { Spacer(Modifier.weight(1f)) }
+                    rowTabs.forEach { tab -> SectionCard(tab, subtitle(tab), badge(tab), cardHeight, Modifier.weight(1f)) { onOpen(tab) } }
+                    repeat(columns - rowTabs.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
             ShareActionRow(onClose, Modifier.staggerIn(4))
@@ -98,6 +103,10 @@ internal fun DashboardHome(
 
 @Composable
 private fun SectionCard(tab: NotchTab, subtitle: String, badge: Int, height: androidx.compose.ui.unit.Dp, modifier: Modifier, onClick: () -> Unit) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    // Schrifthöhen inkl. Schriftgröße des Systems – sonst wird die Info-Zeile unten abgeschnitten.
+    val titleLine = with(density) { 20.sp.toDp() }
+    val infoLine = with(density) { 16.sp.toDp() }
     val look = tab.look()
     val interaction = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(20.dp)
@@ -112,20 +121,20 @@ private fun SectionCard(tab: NotchTab, subtitle: String, badge: Int, height: and
             .padding(10.dp)
     ) {
         // Hohe Kachel: Symbol über Titel und Info; niedrige: Symbol neben dem Titel.
-        val tall = height >= 70.dp
+        val tall = height >= 20.dp + 26.dp + 4.dp + titleLine + infoLine
         @Composable
-        fun icon() = Box(Modifier.size(if (tall) 28.dp else 24.dp).clip(CircleShape).background(Brush.linearGradient(look.colors)), contentAlignment = Alignment.Center) {
+        fun icon() = Box(Modifier.size(if (tall) 26.dp else 24.dp).clip(CircleShape).background(Brush.linearGradient(look.colors)), contentAlignment = Alignment.Center) {
             Text(look.symbol, style = MaterialTheme.typography.labelMedium)
         }
         @Composable
         fun texts() = Column {
             Text(look.title, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (height >= 52.dp) {
+            if (height >= 20.dp + titleLine + infoLine) {
                 Text(subtitle, color = Color.White.copy(alpha = 0.55f), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         if (tall) {
-            Column { icon(); Spacer(Modifier.height(6.dp)); texts() }
+            Column { icon(); Spacer(Modifier.height(4.dp)); texts() }
         } else {
             Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) { icon(); Spacer(Modifier.width(8.dp)); texts() }
         }

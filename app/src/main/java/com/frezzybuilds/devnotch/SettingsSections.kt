@@ -336,13 +336,22 @@ internal fun LockscreenSettings(settings: NotchSettings) {
     ChoiceRow(LockscreenMode.entries, mode, { it.label }) { mode = it; settings.lockscreenMode = it }
     Text(
         when (mode) {
-            LockscreenMode.SHOW -> "Musik, Timer und Peeks bleiben sichtbar. Notizen, Zwischenablage & Co. sind gesperrt."
+            LockscreenMode.SHOW -> "Musik, Timer, Mitteilungen und Peeks bleiben sichtbar. Notizen, Zwischenablage & Co. nur, wenn du es unten erlaubst."
             LockscreenMode.HIDE -> "Die Notch verschwindet beim Sperren und kommt beim Entsperren zurück."
         },
         color = Glass.TextSecondary,
         style = MaterialTheme.typography.bodySmall
     )
     if (mode == LockscreenMode.SHOW) {
+        var full by remember { mutableStateOf(settings.lockscreenFull) }
+        SwitchRow(
+            "Alles auf dem Sperrbildschirm",
+            "Gleiche Übersicht wie entsperrt: auch Notizen, Clip, Telefon, Dev und AI. Jeder, der dein Handy hat, sieht sie.",
+            full
+        ) {
+            full = it
+            settings.lockscreenFull = it
+        }
         if (a11yOn) {
             Text("✓ Bedienungshilfe aktiv – die Notch erscheint über der Sperre.", color = Brand.Cyan, style = MaterialTheme.typography.bodySmall)
         } else {
