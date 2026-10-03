@@ -2,6 +2,7 @@ package com.frezzybuilds.devnotch
 
 import com.frezzybuilds.devnotch.service.NotchAccessibilityService
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
 import android.content.Context
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -52,6 +54,7 @@ import com.frezzybuilds.devnotch.peek.Peek
 import com.frezzybuilds.devnotch.peek.PeekCenter
 import com.frezzybuilds.devnotch.service.LockscreenMode
 import com.frezzybuilds.devnotch.ui.ExpandedSize
+import com.frezzybuilds.devnotch.ui.look
 import com.frezzybuilds.devnotch.ui.glass.CollapsibleCard
 import com.frezzybuilds.devnotch.ui.glass.Glass
 import com.frezzybuilds.devnotch.ui.theme.Brand
@@ -70,8 +73,13 @@ internal fun SettingsSection(
     defaultOpen: Boolean = false,
     forceOpen: Boolean = false,
     neon: Boolean = false,
+    /** Zusätzliche Suchbegriffe (was in der Karte steckt). */
+    keywords: String = "",
     content: @Composable ColumnScope.() -> Unit
 ) {
+    // Suche: nicht passende Karten ausblenden, passende aufklappen (ohne das zu speichern).
+    val query = LocalSettingsQuery.current.trim()
+    if (query.isNotEmpty() && query.split(Regex("\\s+")).any { !"$title $subtitle $keywords".contains(it, ignoreCase = true) }) return
     val settings = LocalContext.current.appContainer.notchSettings
     var open by remember(id) { mutableStateOf(settings.isSectionOpen(id, defaultOpen)) }
     LaunchedEffect(forceOpen) {
@@ -84,7 +92,7 @@ internal fun SettingsSection(
         icon = icon,
         title = title,
         subtitle = subtitle,
-        expanded = open,
+        expanded = open || query.isNotEmpty(),
         onToggle = {
             open = !open
             settings.setSectionOpen(id, open)
@@ -182,6 +190,7 @@ internal fun NotificationSettings(settings: NotchSettings, hasListenerAccess: Bo
             }
             Text(style.description, color = Glass.TextSecondary, style = MaterialTheme.typography.bodySmall)
             NotificationStylePreview(style)
+            AppStyleList(settings)
             ValueSlider(
                 label = "Anzeigedauer",
                 valueText = "%.1f s".format(java.util.Locale.GERMANY, duration),
@@ -314,8 +323,37 @@ internal fun LiveViewSettings(settings: NotchSettings) {
     SwitchRow("⏱ Timer & Stoppuhren", "Countdowns aus Uhr-Apps", timers) {
         timers = it; settings.liveTimers = it
     }
-    SwitchRow("⬇ Fortschritt", "Downloads, Uploads und Exporte mit Fortschrittsring", progress) {
+    SwitchRow("⬇ Fortschritt & Lieferungen", "Downloads, Exporte sowie Lieferungen und Fahrten (Lieferando, Uber, Bolt, DHL …) mit Ankunftszeit", progress) {
         progress = it; settings.liveProgress = it
+    }
+    Text(
+        "⏰ Klingelt ein Wecker, erscheint er groß mit „Schlummern“ und „Stopp“ (gehört zu Timer & Stoppuhren).",
+        color = Glass.TextSecondary,
+        style = MaterialTheme.typography.bodySmall
+    )
+    CalendarSetting(settings)
+}
+
+/** Nächster Termin: Schalter plus Kalender-Erlaubnis. */
+@Composable
+private fun CalendarSetting(settings: NotchSettings) {
+    val context = LocalContext.current
+    fun granted() = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_CALENDAR) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+    var on by remember { mutableStateOf(settings.liveCalendar && granted()) }
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { ok ->
+        on = ok
+        settings.liveCalendar = ok
+    }
+    SwitchRow("📅 Nächster Termin", "Beginnt ein Termin in den nächsten 15 Minuten: „Meeting · in 10 Min.“ in der Notch", on) {
+        if (it && !granted()) {
+            launcher.launch(android.Manifest.permission.READ_CALENDAR)
+        } else {
+            on = it
+            settings.liveCalendar = it
+        }
     }
 }
 
@@ -442,6 +480,45 @@ private fun ActionTile(icon: String, title: String, subtitle: String, enabled: B
         Spacer(Modifier.size(10.dp))
         Text(title, color = Color.White, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         Text(subtitle, color = Glass.TextSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** Suchtext in den Einstellungen (leer = alles zeigen). */
+internal val LocalSettingsQuery = androidx.compose.runtime.compositionLocalOf { "" }
+
+/** Suchfeld oben in den Einstellungen. */
+@Composable
+internal fun SettingsSearchField(query: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.07f))
+            .border(1.dp, Color.White.copy(alpha = 0.10f), shape)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("⌕", color = Glass.TextSecondary, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.weight(1f)) {
+            if (query.isEmpty()) Text("Einstellungen durchsuchen", color = Glass.TextSecondary, style = MaterialTheme.typography.bodyMedium)
+            androidx.compose.foundation.text.BasicTextField(
+                value = query,
+                onValueChange = onChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(Brand.Cyan),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        if (query.isNotEmpty()) {
+            Text(
+                "✕",
+                color = Glass.TextSecondary,
+                modifier = Modifier.clip(CircleShape).clickable(role = Role.Button, onClickLabel = "Suche leeren") { onChange("") }.padding(4.dp)
+            )
+        }
     }
 }
 
@@ -577,6 +654,7 @@ internal fun SystemEventSettings(settings: NotchSettings) {
             settings.setSystemEvent(event, on)
             off = settings.systemEventsOff
         }
+        if (event == com.frezzybuilds.devnotch.system.SystemEvent.HEADPHONES && event.name !in off) HeadphoneBatteryPermission()
     }
 }
 
@@ -684,4 +762,167 @@ private fun DirectCallPermission() {
             onAction = { launcher.launch(android.Manifest.permission.CALL_PHONE) }
         )
     }
+}
+
+/**
+ * Diagnose: Leistungs-Modus (misst Ruckler je Zustand) und ein Bericht mit ANRs/Abstürzen,
+ * den der Nutzer selbst teilt – nichts verlässt das Gerät automatisch.
+ */
+@Composable
+internal fun DiagnosticsSettings(settings: NotchSettings) {
+    val context = LocalContext.current
+    var perf by remember { mutableStateOf(settings.perfMode) }
+    val janks by com.frezzybuilds.devnotch.diag.PerfMonitor.janks.collectAsStateWithLifecycle()
+    SwitchRow(
+        "Leistungs-Modus",
+        "Misst, wo die Notch ruckelt (Peek, Übersicht, Pille …). Nur zum Testen – kostet etwas Akku.",
+        perf
+    ) {
+        perf = it
+        settings.perfMode = it
+    }
+    Text(
+        if (perf) "Ruckelige Bilder bisher: ${janks.size}. Benutze die Notch ganz normal und teile dann den Bericht."
+        else "Tipp: Einschalten, die ruckelnde Stelle ein paar Mal auslösen, dann „Bericht teilen“.",
+        color = Glass.TextSecondary,
+        style = MaterialTheme.typography.bodySmall
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        ModeChip("Bericht teilen", selected = true, modifier = Modifier.weight(1f)) {
+            com.frezzybuilds.devnotch.diag.DiagnosticsReport.share(context)
+        }
+        ModeChip("Zurücksetzen", selected = false, modifier = Modifier.weight(1f)) {
+            com.frezzybuilds.devnotch.diag.PerfMonitor.reset()
+            com.frezzybuilds.devnotch.diag.CrashLog.clear(context)
+        }
+    }
+    Text(
+        "Der Bericht enthält Gerät, Android-Version, Ruckler je Ansicht sowie ANRs und Abstürze – keine Nachrichten oder Notizen.",
+        color = Glass.TextSecondary,
+        style = MaterialTheme.typography.bodySmall
+    )
+}
+
+/** Ab Android 12 braucht der Akkustand der Kopfhörer die Bluetooth-Erlaubnis. */
+@Composable
+private fun HeadphoneBatteryPermission() {
+    if (android.os.Build.VERSION.SDK_INT < 31) return
+    val context = LocalContext.current
+    fun granted() = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+    var allowed by remember { mutableStateOf(granted()) }
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { allowed = it }
+    if (!allowed) {
+        HintBox(
+            "Akkustand der Bluetooth-Kopfhörer beim Verbinden anzeigen (wie bei AirPods)?",
+            action = "Erlauben",
+            onAction = { launcher.launch(android.Manifest.permission.BLUETOOTH_CONNECT) }
+        )
+    }
+}
+
+/** Stil je App: Tippen wechselt Standard → Klassisch → iOS kompakt → Glas → Aperture. */
+@Composable
+private fun AppStyleList(settings: NotchSettings) {
+    val apps = remember { settings.seenApps.entries.toList() }
+    if (apps.isEmpty()) return
+    var overrides by remember { mutableStateOf(settings.notifyStyleApps) }
+    var showAll by remember { mutableStateOf(false) }
+    SettingLabel("Stil pro App")
+    (if (showAll) apps else apps.take(APPS_PREVIEW)).forEach { (pkg, label) ->
+        val current = overrides[pkg]
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(
+                current?.label ?: "Standard",
+                color = if (current != null) Color.Black else Color.White,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(if (current != null) Brand.Cyan else Color.White.copy(alpha = 0.10f))
+                    .clickable(role = Role.Button, onClickLabel = "Stil für $label wechseln") {
+                        val all = NotificationStyle.entries
+                        val next = if (current == null) all.first() else all.getOrNull(all.indexOf(current) + 1)
+                        overrides = if (next == null) overrides - pkg else overrides + (pkg to next)
+                        settings.notifyStyleApps = overrides
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
+    }
+    if (apps.size > APPS_PREVIEW) {
+        Text(
+            if (showAll) "Weniger anzeigen" else "Alle ${apps.size} Apps anzeigen",
+            color = Brand.Cyan,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button) { showAll = !showAll }.padding(vertical = 6.dp)
+        )
+    }
+}
+
+/** Übersicht beim Herunterziehen: Kacheln ein-/ausblenden und umsortieren. */
+@Composable
+internal fun OverviewCardSettings(settings: NotchSettings) {
+    var cards by remember { mutableStateOf(settings.homeCards) }
+    fun save(new: List<String>) {
+        cards = new
+        settings.homeCards = new
+    }
+    Text(
+        "Welche Kacheln die Übersicht zeigt und in welcher Reihenfolge. Pfeile verschieben, der Schalter blendet aus.",
+        color = Glass.TextSecondary,
+        style = MaterialTheme.typography.bodySmall
+    )
+    val all = cards + com.frezzybuilds.devnotch.ui.NotchTab.entries.map { it.name }.filter { it !in cards }
+    all.forEach { name ->
+        val tab = com.frezzybuilds.devnotch.ui.NotchTab.entries.firstOrNull { it.name == name } ?: return@forEach
+        val look = tab.look()
+        val visible = name in cards
+        val index = cards.indexOf(name)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(30.dp).clip(CircleShape).background(androidx.compose.ui.graphics.Brush.linearGradient(look.colors)), contentAlignment = Alignment.Center) {
+                Text(look.symbol, style = MaterialTheme.typography.labelMedium)
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(look.longTitle, color = if (visible) Color.White else Glass.TextSecondary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            if (visible) {
+                ArrowButton("▲", "Nach oben", enabled = index > 0) {
+                    save(cards.toMutableList().apply { add(index - 1, removeAt(index)) })
+                }
+                ArrowButton("▼", "Nach unten", enabled = index < cards.size - 1) {
+                    save(cards.toMutableList().apply { add(index + 1, removeAt(index)) })
+                }
+            }
+            Switch(
+                checked = visible,
+                onCheckedChange = { on ->
+                    // Mindestens eine Kachel bleibt.
+                    if (on) save(cards + name) else if (cards.size > 1) save(cards - name)
+                },
+                colors = SwitchDefaults.colors(checkedTrackColor = Brand.Violet)
+            )
+        }
+    }
+    Text(
+        "Standard wiederherstellen",
+        color = Brand.Cyan,
+        style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button) { save(NotchSettings.DEFAULT_HOME_CARDS) }.padding(vertical = 6.dp)
+    )
+}
+
+@Composable
+private fun ArrowButton(symbol: String, label: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .padding(end = 4.dp)
+            .size(30.dp)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = if (enabled) 0.10f else 0.03f))
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = label, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { Text(symbol, color = if (enabled) Color.White else Glass.TextSecondary, style = MaterialTheme.typography.labelSmall) }
 }

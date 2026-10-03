@@ -65,6 +65,12 @@ sealed interface Peek {
         override val extraHeightDp: Int get() = 96
     }
 
+    /** Wecker klingelt – groß mit „Schlummern“ und „Stopp“, solange er klingelt. */
+    data class LiveAlarm(val alarm: com.frezzybuilds.devnotch.notify.LiveActivity.Alarm) : Peek {
+        override val durationMs = Long.MAX_VALUE
+        override val extraHeightDp: Int get() = 92
+    }
+
     /** Neuer Titel läuft. */
     /**
      * Systemereignis wie auf dem iPhone: Lautlos, Nicht stören, Energiesparen, Akku schwach,
@@ -131,6 +137,24 @@ sealed interface Peek {
         override val durationMs = 3_000L
         override val extraHeightDp: Int get() = 0
     }
+}
+
+/** Fester Name für Diagnose-Berichte (Klassennamen sind im Release-Build verschleiert). */
+fun debugName(peek: Peek): String = when (peek) {
+    is Peek.Charging -> "Laden"
+    is Peek.Copied -> "Kopiert"
+    Peek.TimerDone -> "Timer fertig"
+    is Peek.Notification -> "Nachricht (${peek.style.label})"
+    is Peek.LiveCall -> "Anruf klingelt"
+    is Peek.LiveAlarm -> "Wecker klingelt"
+    is Peek.System -> "System"
+    is Peek.ShareRequest -> "LocalSend"
+    is Peek.NameDrop -> "NameDrop"
+    is Peek.Payment -> "Bezahlt"
+    is Peek.MusicPlayer -> "Musik-Player"
+    is Peek.LiveBanner -> "Live-Banner"
+    is Peek.Volume -> "Lautstärke"
+    is Peek.TrackChanged -> "Neuer Titel"
 }
 
 /** Prozessweite Ablage des aktuellen Peeks; der NotchContainer zeigt und beendet ihn. */

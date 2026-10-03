@@ -166,6 +166,12 @@ fun PeekContent(
             when (peek) {
                 is Peek.Notification -> NotificationActions(peek.notification, onSend, onDismiss, onExpand)
                 is Peek.LiveCall -> CallButtons(peek.call, onSend)
+                is Peek.LiveAlarm -> Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (peek.alarm.snooze != null) {
+                        CallButton("Schlummern", Color.White.copy(alpha = 0.16f), Modifier.weight(1f), textColor = Color.White) { onSend(peek.alarm.snooze) }
+                    }
+                    CallButton("Stopp", Color(0xFFFF9F0A), Modifier.weight(1f)) { onSend(peek.alarm.dismiss ?: peek.alarm.contentIntent) }
+                }
                 is Peek.LiveBanner -> (peek.live as? LiveActivity.Call)?.let { OngoingCallControls(it, peek.keypad, onSend) }
                 is Peek.ShareRequest -> Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CallButton("Ablehnen", Color.White.copy(alpha = 0.85f), Modifier.weight(1f)) {
@@ -232,6 +238,7 @@ private fun peekSpec(peek: Peek): PeekSpec = when (peek) {
         trailing = { Pulsing { Text("● ● ●", color = Brand.Charge, style = MaterialTheme.typography.labelSmall) } }
     )
     is Peek.LiveBanner -> liveBannerSpec(peek.live)
+    is Peek.LiveAlarm -> liveBannerSpec(peek.alarm)
     is Peek.ShareRequest -> {
         val r = peek.request
         val model = r.sender.deviceModel?.lowercase().orEmpty()
@@ -370,7 +377,7 @@ private val MARQUEE_VELOCITY = 60.dp
 /** Live-Banner: Navigation mit Pfeil und Entfernung, Anruf mit Dauer, Timer mit Restzeit. */
 @Composable
 private fun liveBannerSpec(live: LiveActivity): PeekSpec {
-    val now = rememberNow(ticking = live is LiveActivity.Call || live is LiveActivity.Timer)
+    val now = rememberNow(ticking = live is LiveActivity.Call || live is LiveActivity.Timer || live is LiveActivity.Event)
     @Composable
     fun icon(bitmap: android.graphics.Bitmap?, fallback: String, brush: Brush) {
         if (bitmap != null) {
@@ -427,6 +434,24 @@ private fun liveBannerSpec(live: LiveActivity): PeekSpec {
             subtitle = if (live.fileCount > 1) "${live.fileName} · ${live.fileCount} Dateien" else live.fileName,
             leading = { Badge(if (live.incoming) "⬇" else "⬆", Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))) },
             trailing = { value("${(live.fraction * 100).toInt()} %", Brand.Cyan) }
+        )
+        is LiveActivity.Alarm -> PeekSpec(
+            title = live.title,
+            subtitle = live.text,
+            leading = { Badge("⏰", Brush.linearGradient(listOf(Color(0xFFFF9F0A), Color(0xFFFF6B00)))) },
+            trailing = {}
+        )
+        is LiveActivity.Delivery -> PeekSpec(
+            title = live.title,
+            subtitle = listOfNotNull(live.app, live.detail).joinToString(" · "),
+            leading = { icon(live.icon, "🚚", Brush.linearGradient(listOf(Brand.Cyan, Brand.Violet))) },
+            trailing = { (live.eta ?: live.fraction?.let { "${(it * 100).toInt()} %" })?.let { value(it, Brand.Cyan) } }
+        )
+        is LiveActivity.Event -> PeekSpec(
+            title = live.title,
+            subtitle = live.location ?: "Kalender",
+            leading = { Badge("📅", Brush.linearGradient(listOf(Color(0xFFFF453A), Color(0xFFFF9F0A)))) },
+            trailing = { value(eventCountdown(live.start, now), Color(0xFFFF453A)) }
         )
         LiveActivity.Torch -> PeekSpec(
             title = "Taschenlampe",

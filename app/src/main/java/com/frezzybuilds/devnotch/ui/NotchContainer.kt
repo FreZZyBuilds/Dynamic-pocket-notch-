@@ -1,6 +1,7 @@
 package com.frezzybuilds.devnotch.ui
 
 import androidx.compose.ui.layout.layout
+import androidx.compose.runtime.SideEffect
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.verticalScroll
@@ -199,8 +200,13 @@ fun NotchContainer(
     // Gesperrt: Timer und (gekürzte) Mitteilungen; mit „Alles auf dem Sperrbildschirm“ die volle Übersicht.
     val lockFull = remember(isExpanded, locked) { startSettings.lockscreenFull }
     val lockContentNow = remember(isExpanded, locked) { startSettings.notifyLockContent }
-    val homeTabs = if (!locked || lockFull) HomeOrder
+    // Reihenfolge und Auswahl der Kacheln aus den Einstellungen (mindestens der Timer).
+    val chosenTabs = remember(isExpanded) {
+        startSettings.homeCards.mapNotNull { name -> NotchTab.entries.firstOrNull { it.name == name } }.ifEmpty { listOf(NotchTab.TIMER) }
+    }
+    val homeTabs = if (!locked || lockFull) chosenTabs
         else listOfNotNull(NotchTab.INBOX.takeIf { lockContentNow != com.frezzybuilds.devnotch.notify.LockContent.HIDDEN }, NotchTab.TIMER)
+            .filter { it in chosenTabs }.ifEmpty { listOf(NotchTab.TIMER) }
     // Geöffnete Kategorie im Dashboard; null = Übersicht mit Kacheln.
     var selectedTab by remember { mutableStateOf<NotchTab?>(null) }
 
@@ -270,6 +276,8 @@ fun NotchContainer(
     val hubLive by NotificationHub.primaryLive.collectAsStateWithLifecycle()
     // Taschenlampe als kleinste Live-Ansicht – nur, wenn keine Benachrichtigung eine zeigt.
     val torchOn by SystemStatus.torchOn.collectAsStateWithLifecycle()
+    // Nächster Termin aus dem Kalender (optional).
+    val upcomingEvent by com.frezzybuilds.devnotch.system.UpcomingEvent.next.collectAsStateWithLifecycle()
     // LocalSend-Übertragung (AirDrop-Ersatz) als Live-Ansicht mit Fortschritt.
     val transfer by LocalSend.transfer.collectAsStateWithLifecycle()
     // Laufender Anruf über die Anrufsteuerung (Begleit-App): genauer Name, Startzeit und Zustand;
@@ -295,12 +303,14 @@ fun NotchContainer(
         if (telecomCall != null && hubCall != null) telecomCall else hubLive,
         telecomCall,
         transfer?.let { LiveActivity.Transfer(it.incoming, it.peerAlias, it.fileCount, it.fraction, it.currentFile) },
-        LiveActivity.Torch.takeIf { torchOn }
+        LiveActivity.Torch.takeIf { torchOn },
+        upcomingEvent
     ).maxByOrNull { it.priority }
     val notifySettings = LocalContext.current.appContainer.notchSettings
     val notifyPrefs by remember { notifySettings.notifyPrefsFlow() }
         .collectAsStateWithLifecycle(initialValue = notifySettings.notifyPrefs)
     val ringingCall = (live as? LiveActivity.Call)?.takeIf { it.ringing }
+    val ringingAlarm = live as? LiveActivity.Alarm
     // Live-Banner unter der Kamera (wie Apples Live-Aktivitäten); nach oben gewischt bleibt
     // diese Ansicht klein, bis eine andere kommt.
     var minimizedLiveKey by remember { mutableStateOf<String?>(null) }
@@ -308,7 +318,8 @@ fun NotchContainer(
         notifyPrefs.live.banner && it.key != minimizedLiveKey && when (it) {
             is LiveActivity.Navigation, is LiveActivity.Timer, is LiveActivity.Transfer -> true
             is LiveActivity.Call -> !it.ringing
-            is LiveActivity.Progress, is LiveActivity.Recording, LiveActivity.Torch -> false
+            is LiveActivity.Delivery, is LiveActivity.Event -> true
+            is LiveActivity.Progress, is LiveActivity.Recording, LiveActivity.Torch, is LiveActivity.Alarm -> false
         }
     }
     // Anruf vorbei (auch ohne Anrufsteuerung): Steuerung beim nächsten Anruf wieder zugeklappt.
@@ -331,6 +342,8 @@ fun NotchContainer(
         layout.mode != NotchLayoutMode.NOTCH_TOP || isExpanded -> null
         // Klingelt das Telefon, bleibt die Notch groß mit Annehmen/Ablehnen.
         ringingCall != null -> Peek.LiveCall(ringingCall)
+        // Wecker klingelt: groß mit Schlummern/Stopp (auch gesperrt – wie auf dem iPhone).
+        ringingAlarm != null -> Peek.LiveAlarm(ringingAlarm)
         // Gesperrt keine Textauszüge aus der Zwischenablage.
         locked && peek is Peek.Copied -> null
         // Benachrichtigungen gesperrt nur so viel, wie eingestellt.
@@ -355,6 +368,14 @@ fun NotchContainer(
         delay(current.durationMs)
         PeekCenter.dismiss(current)
     }
+    // Leistungs-Modus: Ruckler dem sichtbaren Zustand zuordnen (Namen fest, R8 benennt Klassen um).
+    val perfState = when {
+        isExpanded -> "aufgeklappt · " + (openedNotification?.let { "Nachricht" } ?: selectedTab?.look()?.longTitle ?: "Übersicht")
+        activePeek != null -> "Peek · " + com.frezzybuilds.devnotch.peek.debugName(activePeek)
+        live != null -> "Pille · Live"
+        else -> "Pille"
+    }
+    SideEffect { com.frezzybuilds.devnotch.diag.PerfMonitor.state = perfState }
     LaunchedEffect(activePeek) {
         val shown = activePeek ?: return@LaunchedEffect
         peekHaptic.performHapticFeedback(
@@ -621,6 +642,8 @@ fun NotchContainer(
                                     isExpanded -> setExpanded(false)
                                     // Eingeklappt nach oben: Einblendung wegschieben.
                                     activePeek is Peek.LiveBanner -> minimizedLiveKey = activePeek.live.key
+                                    // Weggewischter Wecker: nur aus der Notch, er klingelt in der Uhr-App weiter.
+                                    activePeek is Peek.LiveAlarm -> NotificationHub.hide(activePeek.alarm.key)
                                     // Weggewischte LocalSend-Anfrage = abgelehnt.
                                     activePeek is Peek.ShareRequest -> {
                                         LocalSend.decide(activePeek.request.id, false)
@@ -647,6 +670,7 @@ fun NotchContainer(
                             when (val shown = activePeek) {
                                 is Peek.Notification -> sendIntent(shown.notification.contentIntent)
                                 is Peek.LiveCall -> sendIntent(shown.call.contentIntent)
+                                is Peek.LiveAlarm -> sendIntent(shown.alarm.contentIntent)
                                 is Peek.LiveBanner -> sendIntent(shown.live.contentIntent)
                                 is Peek.System, is Peek.MusicPlayer -> PeekCenter.current.value?.let(PeekCenter::dismiss)
                                 null -> when {

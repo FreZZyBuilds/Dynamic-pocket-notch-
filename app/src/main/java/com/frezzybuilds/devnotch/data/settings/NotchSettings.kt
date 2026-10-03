@@ -196,6 +196,25 @@ class NotchSettings(context: Context) {
     var notifyBlockedApps: Set<String>
         get() = prefs.getStringSet(KEY_NOTIFY_BLOCKED, emptySet()).orEmpty().toSet()
         set(value) = prefs.edit { putStringSet(KEY_NOTIFY_BLOCKED, value) }
+    /** Stil je App (Paket → Stil), überschreibt den allgemeinen Stil. */
+    var notifyStyleApps: Map<String, com.frezzybuilds.devnotch.notify.NotificationStyle>
+        get() = prefs.getStringSet(KEY_NOTIFY_STYLE_APPS, emptySet()).orEmpty().mapNotNull { entry ->
+            val pkg = entry.substringBeforeLast('=')
+            val style = com.frezzybuilds.devnotch.notify.NotificationStyle.entries.firstOrNull { it.name == entry.substringAfterLast('=') }
+            if (pkg.isNotBlank() && style != null) pkg to style else null
+        }.toMap()
+        set(value) = prefs.edit { putStringSet(KEY_NOTIFY_STYLE_APPS, value.map { (pkg, style) -> "$pkg=${style.name}" }.toSet()) }
+
+    /** Kacheln der Übersicht in Reihenfolge (nur sichtbare), als Namen der Kategorien. */
+    var homeCards: List<String>
+        get() = prefs.getString(KEY_HOME_CARDS, null)?.split(',')?.filter { it.isNotBlank() } ?: DEFAULT_HOME_CARDS
+        set(value) = prefs.edit { putString(KEY_HOME_CARDS, value.joinToString(",")) }
+
+    /** Nächster Kalendertermin als Live-Ansicht (braucht READ_CALENDAR). */
+    var liveCalendar: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_CALENDAR, false)
+        set(value) = prefs.edit { putBoolean(KEY_LIVE_CALENDAR, value) }
+
     var liveCalls: Boolean
         get() = prefs.getBoolean(KEY_LIVE_CALLS, true)
         set(value) = prefs.edit { putBoolean(KEY_LIVE_CALLS, value) }
@@ -261,6 +280,7 @@ class NotchSettings(context: Context) {
             blockedApps = notifyBlockedApps,
             payments = isSystemEventOn(SystemEvent.PAYMENT),
             style = notifyStyle,
+            styleOverrides = notifyStyleApps,
             live = LivePrefs(liveCalls, liveNavigation, liveTimers, liveProgress, liveBanner, isSystemEventOn(SystemEvent.RECORDING), callAutoHideSeconds)
         )
 
@@ -318,6 +338,11 @@ class NotchSettings(context: Context) {
             ?: LockscreenMode.SHOW
         set(value) = prefs.edit { putString(KEY_LOCKSCREEN_MODE, value.name) }
 
+    /** Leistungs-Modus: misst Ruckler der Notch für den Diagnose-Bericht. */
+    var perfMode: Boolean
+        get() = prefs.getBoolean(KEY_PERF_MODE, false)
+        set(value) = prefs.edit { putBoolean(KEY_PERF_MODE, value) }
+
     /** Gesperrt dieselbe Übersicht wie entsperrt (Notizen, Clip, Dev …) – bewusst einzuschalten. */
     var lockscreenFull: Boolean
         get() = prefs.getBoolean(KEY_LOCKSCREEN_FULL, false)
@@ -333,6 +358,7 @@ class NotchSettings(context: Context) {
     companion object {
         const val KEY_LOCKSCREEN_MODE = "lockscreen_mode"
         const val KEY_LOCKSCREEN_FULL = "lockscreen_full"
+        const val KEY_PERF_MODE = "perf_mode"
         const val KEY_COVER_STATUS_BAR = "cover_status_bar"
         const val KEY_DASH_WIDTH = "dashboard_width"
         const val KEY_DASH_HEIGHT = "dashboard_height"
@@ -341,11 +367,15 @@ class NotchSettings(context: Context) {
         const val KEY_NOTIFY_LOCK_CONTENT = "notify_lock_content"
         const val KEY_NOTIFY_SKIP_ONGOING = "notify_skip_ongoing"
         const val KEY_NOTIFY_STYLE = "notify_style"
+        const val KEY_NOTIFY_STYLE_APPS = "notify_style_apps"
+        const val KEY_HOME_CARDS = "home_cards"
+        val DEFAULT_HOME_CARDS = listOf("INBOX", "TIMER", "PHONE", "NOTES", "CLIP", "DEV", "AI")
         const val KEY_NOTIFY_SKIP_SILENT = "notify_skip_silent"
         const val KEY_NOTIFY_DND = "notify_dnd"
         const val KEY_NOTIFY_BLOCKED = "notify_blocked"
         const val KEY_NOTIFY_SEEN = "notify_seen_apps"
         const val KEY_LIVE_CALLS = "live_calls"
+        const val KEY_LIVE_CALENDAR = "live_calendar"
         const val KEY_LIVE_NAV = "live_navigation"
         const val KEY_LIVE_TIMERS = "live_timers"
         const val KEY_LIVE_PROGRESS = "live_progress"
@@ -359,7 +389,7 @@ class NotchSettings(context: Context) {
         const val KEY_LOCALSEND_ALIAS = "localsend_alias"
         val NOTIFY_PREF_KEYS = setOf(
             KEY_NOTIFY_ENABLED, KEY_NOTIFY_DURATION, KEY_NOTIFY_LOCK_CONTENT, KEY_NOTIFY_SKIP_ONGOING,
-            KEY_NOTIFY_SKIP_SILENT, KEY_NOTIFY_DND, KEY_NOTIFY_BLOCKED, KEY_NOTIFY_STYLE,
+            KEY_NOTIFY_SKIP_SILENT, KEY_NOTIFY_DND, KEY_NOTIFY_BLOCKED, KEY_NOTIFY_STYLE, KEY_NOTIFY_STYLE_APPS,
             KEY_LIVE_CALLS, KEY_LIVE_NAV, KEY_LIVE_TIMERS, KEY_LIVE_PROGRESS, KEY_LIVE_BANNER, KEY_CALL_AUTO_HIDE, KEY_SYSTEM_OFF
         )
         private const val KEY_DISPLAY_MODE = "display_mode"

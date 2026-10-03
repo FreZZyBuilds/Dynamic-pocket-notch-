@@ -173,6 +173,21 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     /** Bildschirm an/aus und Sperre – bestimmt Sichtbarkeit und was die Notch zeigen darf. */
     private var deviceLock by mutableStateOf(DeviceLock.UNLOCKED)
     private lateinit var lockSettingsListener: SharedPreferences.OnSharedPreferenceChangeListener
+    private lateinit var perfListener: SharedPreferences.OnSharedPreferenceChangeListener
+
+    /** Nächster Kalendertermin (optional, mit Erlaubnis). */
+    private lateinit var calendar: com.frezzybuilds.devnotch.system.CalendarMonitor
+    private lateinit var calendarListener: SharedPreferences.OnSharedPreferenceChangeListener
+
+    /** Leistungs-Modus an/aus: Messung an das Overlay hängen oder lösen. */
+    private fun syncPerfMonitor() {
+        val view = composeView
+        if (appContainer.notchSettings.perfMode && view != null) {
+            com.frezzybuilds.devnotch.diag.PerfMonitor.attach(view)
+        } else {
+            com.frezzybuilds.devnotch.diag.PerfMonitor.detach()
+        }
+    }
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -273,6 +288,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         }
 
         systemEvents = SystemEventMonitor(this, settings).also { it.start() }
+        calendar = com.frezzybuilds.devnotch.system.CalendarMonitor(this, settings).also { it.start() }
+        calendarListener = settings.addListener(setOf(NotchSettings.KEY_LIVE_CALENDAR)) { calendar.refresh() }
 
         clipboardListener = ClipboardListener(this, appContainer.clipboardRepository, lifecycleScope)
         clipboardListener.start()
@@ -297,6 +314,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         deviceLock = currentLock()
         scheduleLockRecheck()
         lockSettingsListener = settings.addListener(setOf(NotchSettings.KEY_LOCKSCREEN_MODE, NotchSettings.KEY_COVER_STATUS_BAR)) { applyLayout() }
+        perfListener = settings.addListener(setOf(NotchSettings.KEY_PERF_MODE)) { syncPerfMonitor() }
         // LocalSend-Empfang (AirDrop-Ersatz): läuft mit der Notch, solange er eingeschaltet ist.
         syncLocalSend()
         localSendListener = settings.addListener(setOf(NotchSettings.KEY_LOCALSEND_RECEIVE)) { syncLocalSend() }
@@ -340,6 +358,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         LocalSend.release(LOCALSEND_USER)
         NameDropSession.stop()
         systemEvents.stop()
+        appContainer.notchSettings.removeListener(calendarListener)
+        calendar.shutdown()
         overlayRecomposer.cancel()
         recomposeScope.cancel()
         snapAnimator?.cancel()
@@ -350,6 +370,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         unregisterReceiver(powerReceiver)
         unregisterReceiver(screenReceiver)
         appContainer.notchSettings.removeListener(lockSettingsListener)
+        appContainer.notchSettings.removeListener(perfListener)
+        com.frezzybuilds.devnotch.diag.PerfMonitor.detach()
         composeView?.let { view -> runCatching { (hostWindowManager ?: windowManager).removeViewImmediate(view) } }
         hostWindowManager = null
         composeView = null
@@ -487,6 +509,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
         }
         composeView = view
         attach(view, targetHost())
+        syncPerfMonitor()
 
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)

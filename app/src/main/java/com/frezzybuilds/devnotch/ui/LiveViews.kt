@@ -97,7 +97,10 @@ fun navDistance(nav: LiveActivity.Navigation): String? =
 /** Eingeklappte Pille mit Live-Ansicht: links Symbol, rechts der wichtigste Wert. */
 @Composable
 fun LivePill(live: LiveActivity, lensGap: Dp) {
-    val now = rememberNow(ticking = live is LiveActivity.Call || live is LiveActivity.Timer || live is LiveActivity.Recording)
+    val now = rememberNow(
+        ticking = live is LiveActivity.Call || live is LiveActivity.Timer || live is LiveActivity.Recording || live is LiveActivity.Event,
+        stepMs = if (live is LiveActivity.Event) 30_000L else 1_000L
+    )
     Row(
         Modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -111,6 +114,9 @@ fun LivePill(live: LiveActivity, lensGap: Dp) {
                 is LiveActivity.Recording -> RecordingDot()
                 is LiveActivity.Transfer -> LiveIcon(null, if (live.incoming) "⬇" else "⬆", Brand.Cyan)
                 LiveActivity.Torch -> LiveIcon(null, "🔦", TorchYellow)
+                is LiveActivity.Alarm -> LiveIcon(null, "⏰", AlarmOrange)
+                is LiveActivity.Delivery -> LiveIcon(live.icon, "🚚", Brand.Cyan)
+                is LiveActivity.Event -> LiveIcon(null, "📅", EventRed)
             }
         }
         Spacer(Modifier.width(lensGap))
@@ -124,6 +130,9 @@ fun LivePill(live: LiveActivity, lensGap: Dp) {
                 is LiveActivity.Recording -> (if (plausibleDuration(live.since, now)) formatDuration(now - live.since) else "REC") to RecordingRed
                 is LiveActivity.Transfer -> "${(live.fraction * 100).toInt()} %" to Brand.Cyan
                 LiveActivity.Torch -> "An" to TorchYellow
+                is LiveActivity.Alarm -> "Wecker" to AlarmOrange
+                is LiveActivity.Delivery -> (live.eta ?: live.fraction?.let { "${(it * 100).toInt()} %" } ?: "unterwegs") to Brand.Cyan
+                is LiveActivity.Event -> eventCountdown(live.start, now) to EventRed
             }
             Text(text, color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
@@ -146,7 +155,7 @@ private fun LiveIcon(bitmap: Bitmap?, fallback: String, tint: Color, size: Dp = 
 /** Aufgeklappt: Live-Karte über den Tabs, mit den passenden Aktionen. */
 @Composable
 fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Modifier = Modifier) {
-    val now = rememberNow(ticking = live is LiveActivity.Call || live is LiveActivity.Timer || live is LiveActivity.Recording)
+    val now = rememberNow(ticking = live is LiveActivity.Call || live is LiveActivity.Timer || live is LiveActivity.Recording || live is LiveActivity.Event)
     val shape = RoundedCornerShape(16.dp)
     Column(
         modifier
@@ -166,6 +175,9 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
                 is LiveActivity.Recording -> LiveIcon(null, "●", RecordingRed, 32.dp)
                 is LiveActivity.Transfer -> LiveIcon(null, if (live.incoming) "⬇" else "⬆", Brand.Cyan, 32.dp)
                 LiveActivity.Torch -> LiveIcon(null, "🔦", TorchYellow, 32.dp)
+                is LiveActivity.Alarm -> LiveIcon(null, "⏰", AlarmOrange, 32.dp)
+                is LiveActivity.Delivery -> LiveIcon(live.icon, "🚚", Brand.Cyan, 32.dp)
+                is LiveActivity.Event -> LiveIcon(null, "📅", EventRed, 32.dp)
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
@@ -178,14 +190,18 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
                     LiveActivity.Torch -> "Taschenlampe" to "Leuchtet"
                     is LiveActivity.Transfer -> (if (live.incoming) "Empfange von ${live.peer}" else "Sende an ${live.peer}") to
                         "${live.fileName} · ${(live.fraction * 100).toInt()} %"
+                    is LiveActivity.Alarm -> live.title to (live.text ?: "Wecker klingelt")
+                    is LiveActivity.Delivery -> live.title to listOfNotNull(live.app, live.eta?.let { "Ankunft $it" }, live.detail).joinToString(" · ")
+                    is LiveActivity.Event -> live.title to listOfNotNull(eventCountdown(live.start, now), live.location).joinToString(" · ")
                 }
                 Text(title, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.smoothMarquee())
                 Text(detail, color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        if (live is LiveActivity.Progress) {
+        val fraction = (live as? LiveActivity.Progress)?.fraction ?: (live as? LiveActivity.Delivery)?.fraction
+        if (fraction != null) {
             Box(Modifier.padding(vertical = 2.dp).fillMaxWidth().height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.1f))) {
-                Box(Modifier.fillMaxWidth(live.fraction).fillMaxHeight().clip(CircleShape).background(Brand.Horizontal))
+                Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().clip(CircleShape).background(Brand.Horizontal))
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -200,6 +216,10 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
                     }
                 }
                 is LiveActivity.Navigation -> ActionChip("${live.app} öffnen", highlighted = true) { onSend(live.contentIntent) }
+                is LiveActivity.Alarm -> {
+                    live.snooze?.let { ActionChip("Schlummern", highlighted = false) { onSend(it) } }
+                    ActionChip("Stopp", highlighted = true) { onSend(live.dismiss ?: live.contentIntent) }
+                }
                 LiveActivity.Torch -> {
                     val context = LocalContext.current
                     ActionChip("Ausschalten", highlighted = true) { SystemStatus.turnOffTorch(context) }
@@ -207,7 +227,7 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
                 else -> ActionChip("Öffnen", highlighted = true) { onSend(live.contentIntent) }
             }
             // Bleibt eine Ansicht hängen (z. B. App lässt die Benachrichtigung stehen): wegnehmen.
-            if (live !is LiveActivity.Call && live !is LiveActivity.Torch && live !is LiveActivity.Transfer) {
+            if (live !is LiveActivity.Call && live !is LiveActivity.Torch && live !is LiveActivity.Transfer && live !is LiveActivity.Alarm && live !is LiveActivity.Event) {
                 ActionChip("Ausblenden", highlighted = false) { NotificationHub.hide(live.key) }
             }
         }
@@ -215,6 +235,18 @@ fun LiveCard(live: LiveActivity, onSend: (PendingIntent?) -> Unit, modifier: Mod
 }
 
 private val RecordingRed = Color(0xFFFF3B30)
+private val AlarmOrange = Color(0xFFFF9F0A)
+private val EventRed = Color(0xFFFF453A)
+
+/** „in 12 Min.“, „jetzt“, „seit 3 Min.“ bis zum Terminbeginn. */
+fun eventCountdown(start: Long, now: Long): String {
+    val minutes = ((start - now) / 60_000.0).let { if (it >= 0) kotlin.math.ceil(it) else kotlin.math.floor(it) }.toLong()
+    return when {
+        minutes > 0 -> "in $minutes Min."
+        minutes == 0L -> "jetzt"
+        else -> "seit ${-minutes} Min."
+    }
+}
 private val TorchYellow = Color(0xFFFFD60A)
 
 /** Roter, sanft pulsierender Aufnahme-Punkt (Alpha in der Zeichenphase). */

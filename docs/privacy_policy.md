@@ -40,6 +40,7 @@ du die zugehörige Funktion selbst eingerichtet hast.
 | **Zugangsdaten** (GitHub-Token, API-Schlüssel der KI-Anbieter, Ollama-Adresse) | Abruf der jeweiligen Statistiken (siehe 4) | App-privater Speicher, vom Backup ausgeschlossen |
 | **Zwischengespeicherte Statistiken** (KI-Kosten des Monats, GitHub-Profilbild) | Schnelle Anzeige ohne erneuten Abruf | App-privater Speicher bzw. App-Cache |
 | **Pro-Status** | Freischaltung der Pro-Funktionen | App-privater Speicher |
+| **Diagnose** (Ruckler je Ansicht, Absturz-Protokoll, von Android gemeldete ANRs) | Fehlersuche; nur wenn du „Bericht teilen“ antippst, geht der Text an die App deiner Wahl | App-privater Speicher, „Zurücksetzen“ löscht ihn |
 | **Benachrichtigungen** (App, Titel, Text, Symbol, Aktionen) | Kurze Anzeige in der Notch („Peek“) mit Öffnen, Schließen und direkten Aktionen; Stapel der zuletzt gezeigten (höchstens 30) im Tab „Neu“ | Nur im Arbeitsspeicher, solange die Benachrichtigung in Android aktiv ist |
 | **Live-Ansichten** (Anrufer und Gesprächsdauer, nächste Abbiegung der Navigation, Timer, Fortschritt von Downloads) | Dauerhafte Anzeige laufender Vorgänge in der Pille, Annehmen/Ablehnen/Auflegen von Anrufen über die Knöpfe der Telefon-App | Nur im Arbeitsspeicher, solange die Benachrichtigung besteht |
 | **Liste der Apps, die Benachrichtigungen geschickt haben** (Paketname und App-Name, höchstens 60) | Auswahl in den Einstellungen, welche Apps in der Notch erscheinen | App-privater Speicher, vom Backup ausgeschlossen |
@@ -133,6 +134,8 @@ ebenfalls von RevenueCat geladen.
 | Über anderen Apps einblenden (`SYSTEM_ALERT_WINDOW`) | Die Notch, das Floating-Dashboard und den Edge-Player über dem aktuellen Bildschirm zeichnen |
 | Benachrichtigungszugriff (`BIND_NOTIFICATION_LISTENER_SERVICE`) | Mediensitzungen steuern, Benachrichtigungen und Live-Ansichten (Anrufe, Navigation, Timer, Fortschritt) in der Notch anzeigen (siehe 3) |
 | Bedienungshilfe (`BIND_ACCESSIBILITY_SERVICE`, optional) | Nur für das eigene Fenster: damit die Notch über dem Sperrbildschirm erscheinen und auf Wunsch die Statusleisten-Symbole hinter der Pille verdecken darf. Der Dienst liest keine Bildschirminhalte, empfängt keine Ereignisse anderer Apps, beobachtet keine Eingaben und sendet nichts |
+| Kalender lesen (`READ_CALENDAR`, optional) | „Nächster Termin“: Titel, Ort und Beginn von Terminen der nächsten 15 Minuten in der Notch anzeigen. Wird nur gelesen, nicht gespeichert oder übertragen |
+| Bluetooth (`BLUETOOTH_CONNECT`, optional) | Akkustand verbundener Kopfhörer beim Verbinden anzeigen |
 | Anrufen (`CALL_PHONE`, optional) | Telefon-Tab: die eingetippte Nummer direkt wählen. Ohne Erlaubnis öffnet die Telefon-App mit der Nummer |
 | Anruf-Begleit-App (`CALL_COMPANION_APP`) | Im laufenden Gespräch Stumm, Lautsprecher, Halten, Wahltasten und Auflegen aus der Notch. DevNotch erhält dabei Name/Nummer des Gesprächspartners nur zur Anzeige; nichts wird gespeichert oder übertragen, Gespräche werden nicht mitgehört |
 | Audioeinstellungen (`MODIFY_AUDIO_SETTINGS`) | Anruf in der Notch: Mikrofon auf Wunsch stummschalten |

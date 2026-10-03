@@ -34,6 +34,7 @@ class SystemEventMonitor(private val context: Context, private val settings: Not
 
     /** Bereits gewarnte Akkustufen – zurückgesetzt, sobald geladen wird. */
     private val warnedLevels = mutableSetOf<Int>()
+    private var bluetoothRegistered = false
     private var batteryInitialised = false
 
     private fun on(event: SystemEvent) = settings.isSystemEventOn(event)
@@ -122,6 +123,7 @@ class SystemEventMonitor(private val context: Context, private val settings: Not
     }
 
     private fun announce(device: AudioDeviceInfo, connected: Boolean) {
+        registerBluetooth()
         val name = device.productName?.toString()?.takeIf { it.isNotBlank() && it != android.os.Build.MODEL } ?: "Kopfhörer"
         // Bluetooth meldet sich oft doppelt (A2DP + Headset) – innerhalb von 2 s nur einmal.
         val key = "$name|$connected"
@@ -129,8 +131,52 @@ class SystemEventMonitor(private val context: Context, private val settings: Not
         if (key == lastHeadphone && now - lastHeadphoneAt < 2_000) return
         lastHeadphone = key
         lastHeadphoneAt = now
-        show(SystemEvent.HEADPHONES, "🎧", name, if (connected) "Verbunden" else "Getrennt", CYAN)
+        // Adresse (für den Akkustand) gibt Android erst ab Version 9 heraus.
+        val address = if (android.os.Build.VERSION.SDK_INT >= 28) device.address else null
+        val battery = if (connected) address?.let { batteryLevels[it] } else null
+        show(SystemEvent.HEADPHONES, "🎧", name, if (connected) battery?.let { "$it %" } ?: "Verbunden" else "Getrennt", CYAN)
+        if (connected) {
+            lastConnectedAddress = address
+            lastConnectedName = name
+            lastConnectedAt = now
+        }
     }
+
+    /** Akkustand je Bluetooth-Gerät (Adresse → %), wie AirPods beim Verbinden. Braucht BLUETOOTH_CONNECT. */
+    private val batteryLevels = mutableMapOf<String, Int>()
+    private var lastConnectedAddress: String? = null
+    private var lastConnectedName = ""
+    private var lastConnectedAt = 0L
+
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val level = intent.getIntExtra(EXTRA_BATTERY_LEVEL, -1).takeIf { it in 0..100 } ?: return
+            @Suppress("DEPRECATION")
+            val device = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                intent.getParcelableExtra(android.bluetooth.BluetoothDevice.EXTRA_DEVICE, android.bluetooth.BluetoothDevice::class.java)
+            } else {
+                intent.getParcelableExtra<android.bluetooth.BluetoothDevice>(android.bluetooth.BluetoothDevice.EXTRA_DEVICE)
+            } ?: return
+            val address = runCatching { device.address }.getOrNull() ?: return
+            val first = address !in batteryLevels
+            batteryLevels[address] = level
+            // Der Akkustand kommt oft erst kurz nach dem Verbinden: dann die Anzeige mit Prozent erneuern.
+            val justConnected = address == lastConnectedAddress && SystemClock.elapsedRealtime() - lastConnectedAt < 15_000
+            if (justConnected && first) show(SystemEvent.HEADPHONES, "🎧", lastConnectedName, "$level %", CYAN)
+        }
+    }
+
+    /** Erst mit Erlaubnis – wird sie später erteilt, beim nächsten Verbinden nachgeholt. */
+    private fun registerBluetooth() {
+        if (bluetoothRegistered || !bluetoothAllowed()) return
+        runCatching {
+            ContextCompat.registerReceiver(context, bluetoothReceiver, IntentFilter(ACTION_BATTERY_LEVEL_CHANGED), ContextCompat.RECEIVER_EXPORTED)
+            bluetoothRegistered = true
+        }
+    }
+
+    private fun bluetoothAllowed(): Boolean = android.os.Build.VERSION.SDK_INT < 31 ||
+        ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
     private val torchCallback = object : CameraManager.TorchCallback() {
         override fun onTorchModeChanged(cameraId: String, enabled: Boolean) {
@@ -153,12 +199,15 @@ class SystemEventMonitor(private val context: Context, private val settings: Not
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
         audio?.registerAudioDeviceCallback(audioCallback, handler)
+        registerBluetooth()
         runCatching { camera?.registerTorchCallback(torchCallback, handler) }
     }
 
     fun stop() {
         runCatching { context.unregisterReceiver(receiver) }
         audio?.unregisterAudioDeviceCallback(audioCallback)
+        if (bluetoothRegistered) runCatching { context.unregisterReceiver(bluetoothReceiver) }
+        bluetoothRegistered = false
         runCatching { camera?.unregisterTorchCallback(torchCallback) }
         SystemStatus.setTorch(false)
     }
@@ -176,6 +225,10 @@ class SystemEventMonitor(private val context: Context, private val settings: Not
 
         /** Nicht offiziell dokumentiert, aber seit Android 4 vom System gesendet. */
         const val VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION"
+
+        /** Vom System gesendet (geschützt), Extras wie BluetoothDevice.ACTION_BATTERY_LEVEL_CHANGED. */
+        const val ACTION_BATTERY_LEVEL_CHANGED = "android.bluetooth.device.action.BATTERY_LEVEL_CHANGED"
+        const val EXTRA_BATTERY_LEVEL = "android.bluetooth.device.extra.BATTERY_LEVEL"
         val VOLUME_STREAMS = setOf(AudioManager.STREAM_MUSIC, AudioManager.STREAM_RING, AudioManager.STREAM_VOICE_CALL)
 
         val HEADPHONE_TYPES = setOf(

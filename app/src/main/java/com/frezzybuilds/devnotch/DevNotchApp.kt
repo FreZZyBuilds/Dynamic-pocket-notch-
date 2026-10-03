@@ -29,6 +29,8 @@ class DevNotchApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Abstürze lokal mitschreiben (nur für den Diagnose-Bericht, den der Nutzer selbst teilt).
+        com.frezzybuilds.devnotch.diag.CrashLog.install(this)
         // RevenueCat früh starten: Kaufstatus (Entitlement „pro“) steht dann bereit, wenn
         // Notch oder Einstellungen ihn brauchen. Mit dem Platzhalter-Key läuft die App im Free-Modus.
         billing.configure(this, BuildConfig.REVENUECAT_API_KEY, BuildConfig.DEBUG)

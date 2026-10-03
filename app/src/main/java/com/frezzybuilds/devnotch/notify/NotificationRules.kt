@@ -43,6 +43,8 @@ data class NotifyPrefs(
     /** Zahlungsbestätigung (Google/Samsung Wallet) wie Apple Pay. */
     val payments: Boolean = true,
     val style: NotificationStyle = NotificationStyle.CLASSIC,
+    /** Stil je App (z. B. WhatsApp im Glas-Stil), sonst [style]. */
+    val styleOverrides: Map<String, NotificationStyle> = emptyMap(),
     val live: LivePrefs = LivePrefs()
 ) {
     companion object {

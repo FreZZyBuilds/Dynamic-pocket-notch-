@@ -287,4 +287,35 @@ class NotificationStylesTest {
             settings.lockscreenFull = false
         }
     }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w380dp-h560dp-mdpi")
+    fun renderNewLiveViews() {
+        val now = System.currentTimeMillis()
+        val alarm = LiveActivity.Alarm("a", "com.sec.android.app.clockpackage", null, "Wecker", "07:00 · Aufstehen", null, null)
+        val peeks = listOf(
+            Peek.LiveAlarm(alarm),
+            Peek.LiveBanner(LiveActivity.Delivery("d", "ee.mtakso.client", null, "Bolt", "Dein Fahrer ist unterwegs", "VW Golf · B-XY 123", "6 Min.", null, null)),
+            Peek.LiveBanner(LiveActivity.Event("e", null, "Sprint-Planung", "Raum 3.14", now + 10 * 60_000L))
+        )
+        lateinit var view: View
+        compose.setContent {
+            view = LocalView.current
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme(colorScheme = Brand.NotchScheme) {
+                    Column(Modifier.fillMaxSize().background(Color(0xFF2B2E6E)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        peeks.forEach { p ->
+                            Box(Modifier.size(340.dp, (27 + p.extraHeightDp).dp).clip(RoundedCornerShape(30.dp)).background(Color.Black)) {
+                                PeekContent(p, pillHeight = 36.dp, lensGap = 42.dp, contentTop = 27.dp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("Stopp").assertExists()
+        compose.onNodeWithText("in 10 Min.").assertExists()
+        save(view, "new_live_views")
+    }
 }

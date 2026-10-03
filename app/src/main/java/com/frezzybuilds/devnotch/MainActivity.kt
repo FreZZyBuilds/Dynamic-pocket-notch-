@@ -78,6 +78,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -227,6 +229,8 @@ fun SetupScreen(
         }
     }
 
+    var settingsQuery by rememberSaveable { mutableStateOf("") }
+    CompositionLocalProvider(LocalSettingsQuery provides settingsQuery) {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -235,6 +239,7 @@ fun SetupScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         HeroHeader(Modifier.staggerIn(0))
+        SettingsSearchField(settingsQuery, { settingsQuery = it }, Modifier.staggerIn(1))
 
         // Ein/Aus: großer Neon-Knopf, sobald die Overlay-Berechtigung da ist.
         GlassCard(Modifier.fillMaxWidth().staggerIn(1), neon = isServiceRunning) {
@@ -299,6 +304,7 @@ fun SetupScreen(
 
         SettingsSection(
             id = "actions",
+            keywords = "test peek laden kopiert größe zurücksetzen",
             icon = "⚡",
             title = "Schnellaktionen",
             subtitle = "Peeks testen, Größe zurücksetzen",
@@ -308,6 +314,7 @@ fun SetupScreen(
 
         SettingsSection(
             id = "look",
+            keywords = "notch oben rand statusleiste überdecken live banner größe breite höhe edge",
             icon = "◐",
             title = "Darstellung",
             subtitle = if (isTablet) "${NotchLayoutMode.EDGE_SIDE.label} – auf Tablets automatisch" else displayMode.label,
@@ -342,7 +349,17 @@ fun SetupScreen(
         }
 
         SettingsSection(
+            id = "overview",
+            keywords = "übersicht kacheln reihenfolge ausblenden dashboard herunterziehen",
+            icon = "▦",
+            title = "Übersicht",
+            subtitle = "Kacheln beim Herunterziehen anordnen",
+            modifier = Modifier.staggerIn(3)
+        ) { OverviewCardSettings(settings) }
+
+        SettingsSection(
             id = "beam",
+            keywords = "lichtlauf beam farbe palette geschwindigkeit helligkeit",
             icon = "✧",
             title = "Lichtlauf",
             subtitle = "Licht, das um die Notch kreist",
@@ -351,6 +368,7 @@ fun SetupScreen(
 
         SettingsSection(
             id = "notify",
+            keywords = "benachrichtigung stil kompakt glas aperture klassisch dauer apps filter discord doppelt pop-up stil pro app",
             icon = "🔔",
             title = "Benachrichtigungen",
             subtitle = if (hasListenerAccess) "Peeks aus der Notch, Filter pro App" else "Zugriff fehlt",
@@ -359,6 +377,7 @@ fun SetupScreen(
 
         SettingsSection(
             id = "live",
+            keywords = "anruf navigation timer wecker termin kalender lieferung fahrt uber bolt lieferando fortschritt download",
             icon = "◉",
             title = "Live-Ansichten",
             subtitle = "Anrufe, Navigation, Timer, Fortschritt",
@@ -367,6 +386,7 @@ fun SetupScreen(
 
         SettingsSection(
             id = "share",
+            keywords = "namedrop localsend airdrop kontakt pay google wallet senden",
             icon = "⇪",
             title = "Teilen",
             subtitle = "NameDrop, AirDrop (LocalSend), Bezahlen",
@@ -375,6 +395,7 @@ fun SetupScreen(
 
         SettingsSection(
             id = "system",
+            keywords = "lautlos vibration nicht stören akku kopfhörer taschenlampe aufnahme lautstärke flugmodus entsperren bluetooth",
             icon = "◎",
             title = "Systemereignisse",
             subtitle = "Lautlos, Akku, Kopfhörer, Taschenlampe …",
@@ -383,11 +404,21 @@ fun SetupScreen(
 
         SettingsSection(
             id = "lock",
+            keywords = "sperrbildschirm gesperrt bedienungshilfe alles",
             icon = "🔒",
             title = "Sperrbildschirm",
             subtitle = "Was gesperrt sichtbar ist",
             modifier = Modifier.staggerIn(5)
         ) { LockscreenSettings(settings) }
+
+        SettingsSection(
+            id = "diag",
+            keywords = "diagnose leistung ruckeln lag fehler absturz anr bericht",
+            icon = "🩺",
+            title = "Diagnose",
+            subtitle = "Ruckeln messen, Fehlerbericht teilen",
+            modifier = Modifier.staggerIn(5)
+        ) { DiagnosticsSettings(settings) }
 
         Box(Modifier.staggerIn(5)) { OemHintCard(settings) }
 
@@ -415,6 +446,7 @@ fun SetupScreen(
         )
 
         Spacer(Modifier.height(24.dp))
+    }
     }
 
     if (showBatteryDialog) {

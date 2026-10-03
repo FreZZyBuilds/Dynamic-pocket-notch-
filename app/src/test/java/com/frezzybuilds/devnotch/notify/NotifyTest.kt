@@ -158,7 +158,8 @@ class NotifyTest {
         val prefs = NotifyPrefs()
         val ride = msg(pkg = "ee.mtakso.client", title = "Abholung in 4 Min.").copy(ongoing = true, progress = 20, progressMax = 100)
         NotificationHub.onPosted(ride, prefs, false, own)
-        assertTrue(NotificationHub.primaryLive.value is LiveActivity.Progress)
+        // Fahrten (Bolt, Uber …) sind eigene Live-Ansichten mit Ankunftszeit.
+        assertTrue(NotificationHub.primaryLive.value is LiveActivity.Delivery)
 
         // Fahrt beendet, aber das „entfernt“ kam nie an: der Abgleich räumt auf.
         NotificationHub.retain(emptySet())
@@ -172,13 +173,14 @@ class NotifyTest {
         // … bis die Benachrichtigung entfernt wurde und neu kommt.
         NotificationHub.onRemoved(ride.key)
         NotificationHub.onPosted(ride, prefs, false, own)
-        assertTrue(NotificationHub.primaryLive.value is LiveActivity.Progress)
+        // Fahrten (Bolt, Uber …) sind eigene Live-Ansichten mit Ankunftszeit.
+        assertTrue(NotificationHub.primaryLive.value is LiveActivity.Delivery)
     }
 
     @Test
     fun `newest live view wins on equal priority`() {
         val prefs = NotifyPrefs()
-        val old = msg(pkg = "ee.mtakso.client", title = "Fahrt").copy(ongoing = true, progress = 1, progressMax = 100)
+        val old = msg(pkg = "com.dropbox.android", title = "Fahrt").copy(ongoing = true, progress = 1, progressMax = 100)
         val new = msg(pkg = "com.android.chrome", title = "video.mp4").copy(ongoing = true, progress = 50, progressMax = 100)
         NotificationHub.onPosted(old, prefs, false, own)
         NotificationHub.onPosted(new, prefs, false, own)
@@ -257,5 +259,66 @@ class NotifyTest {
         } finally {
             NotificationHub.clock = System::currentTimeMillis
         }
+    }
+
+    @Test
+    fun `ringing alarm is recognised, running timers and upcoming alarms are not`() {
+        val prefs = LivePrefs()
+        val clock = "com.sec.android.app.clockpackage"
+        val ringing = msg(pkg = clock, title = "Wecker", text = "07:00").copy(
+            category = Notification.CATEGORY_ALARM, ongoing = true,
+            actions = listOf(NotchAction("Schlummern", null), NotchAction("Beenden", null))
+        )
+        val alarm = LiveParsers.parse(ringing, prefs) as LiveActivity.Alarm
+        assertEquals("Wecker", alarm.title)
+        // Laufender Timer hat „Pause“ – bleibt ein Timer.
+        val running = msg(pkg = clock, title = "Timer").copy(
+            ongoing = true, usesChronometer = true, chronometerCountDown = true, whenTime = 10_000L,
+            actions = listOf(NotchAction("Pause", null), NotchAction("Abbrechen", null))
+        )
+        assertTrue(LiveParsers.parse(running, prefs) is LiveActivity.Timer)
+        // Vorschau „Bevorstehender Wecker“ klingelt nicht.
+        val upcoming = msg(pkg = clock, title = "Bevorstehender Wecker", text = "Mo. 07:00").copy(
+            category = Notification.CATEGORY_ALARM, actions = listOf(NotchAction("Jetzt ausschalten", null))
+        )
+        assertNull(LiveParsers.parse(upcoming, prefs))
+    }
+
+    @Test
+    fun `deliveries and rides become live views with an eta`() {
+        val prefs = LivePrefs()
+        val bolt = msg(pkg = "ee.mtakso.client", title = "Dein Fahrer ist unterwegs", text = "Ankunft in 6 Min · VW Golf").copy(ongoing = true)
+        val ride = LiveParsers.parse(bolt, prefs) as LiveActivity.Delivery
+        assertEquals("6 Min.", ride.eta)
+        val food = msg(pkg = "com.takeaway.android", title = "Bestellung kommt", text = "Lieferung ca. 19:45").copy(ongoing = true, progress = 60, progressMax = 100)
+        val delivery = LiveParsers.parse(food, prefs) as LiveActivity.Delivery
+        assertEquals("19:45", delivery.eta)
+        assertEquals(0.6f, delivery.fraction!!, 0.001f)
+        // Nicht laufend (einmalige Info) → keine Live-Ansicht.
+        assertNull(LiveParsers.parse(bolt.copy(ongoing = false), prefs))
+    }
+
+    @Test
+    fun `next calendar event is the earliest timed one starting soon`() {
+        val now = 1_000_000_000L
+        fun c(id: Long, minutes: Long, allDay: Boolean = false, declined: Boolean = false) =
+            com.frezzybuilds.devnotch.system.UpcomingEvent.Candidate(id, "T$id", now + minutes * 60_000, null, allDay, declined)
+        val pick = com.frezzybuilds.devnotch.system.UpcomingEvent.pick(
+            listOf(c(1, 30), c(2, 12), c(3, 5, allDay = true), c(4, 3, declined = true), c(5, -2)),
+            now
+        )
+        assertEquals(5L, pick?.id) // begann vor 2 Min. – noch sichtbar
+        assertEquals(2L, com.frezzybuilds.devnotch.system.UpcomingEvent.pick(listOf(c(1, 30), c(2, 12), c(6, -20)), now)?.id)
+        assertEquals("in 10 Min.", com.frezzybuilds.devnotch.ui.eventCountdown(now + 9 * 60_000 + 30_000, now))
+        assertEquals("seit 2 Min.", com.frezzybuilds.devnotch.ui.eventCountdown(now - 2 * 60_000, now))
+    }
+
+    @Test
+    fun `per-app style overrides the general style`() {
+        val prefs = NotifyPrefs(style = NotificationStyle.COMPACT, styleOverrides = mapOf("com.whatsapp" to NotificationStyle.GLASS))
+        NotificationHub.onPosted(msg(pkg = "com.whatsapp", title = "Mama"), prefs, false, own)
+        assertEquals(NotificationStyle.GLASS, (PeekCenter.current.value as Peek.Notification).style)
+        NotificationHub.onPosted(msg(pkg = "org.telegram.messenger", title = "Lena", text = "Hi"), prefs, false, own)
+        assertEquals(NotificationStyle.COMPACT, (PeekCenter.current.value as Peek.Notification).style)
     }
 }

@@ -95,6 +95,48 @@ sealed interface LiveActivity {
         override val priority = 20
     }
 
+    /** Wecker oder abgelaufener Timer klingelt – groß mit „Schlummern“ und „Stopp“. */
+    data class Alarm(
+        override val key: String,
+        override val packageName: String,
+        override val contentIntent: PendingIntent?,
+        val title: String,
+        val text: String?,
+        val dismiss: PendingIntent?,
+        val snooze: PendingIntent?
+    ) : LiveActivity {
+        override val priority = 95
+    }
+
+    /** Lieferung oder Fahrt (Lieferando, Uber, Bolt, DHL …) mit Ankunft und ggf. Fortschritt. */
+    data class Delivery(
+        override val key: String,
+        override val packageName: String,
+        override val contentIntent: PendingIntent?,
+        val app: String,
+        val title: String,
+        val detail: String?,
+        /** „14:32“ oder „8 Min.“, wenn im Text erkennbar. */
+        val eta: String?,
+        val fraction: Float?,
+        val icon: Bitmap?
+    ) : LiveActivity {
+        override val priority = 65
+    }
+
+    /** Nächster Kalendertermin, der bald beginnt (aus dem Kalender, nicht aus Benachrichtigungen). */
+    data class Event(
+        override val key: String,
+        override val contentIntent: PendingIntent?,
+        val title: String,
+        val location: String?,
+        /** Beginn (ms). */
+        val start: Long
+    ) : LiveActivity {
+        override val packageName = "com.android.calendar"
+        override val priority = 50
+    }
+
     data class Progress(
         override val key: String,
         override val packageName: String,
@@ -132,6 +174,19 @@ object LiveParsers {
     private val ANSWER = Regex("(?i)annehmen|antworten|answer|accept|abheben")
     private val DECLINE = Regex("(?i)ablehnen|decline|reject|abweisen")
     private val HANG_UP = Regex("(?i)auflegen|beenden|hang ?up|end call")
+    private val SNOOZE = Regex("(?i)schlummer|snooze|später|spaeter")
+    private val DISMISS = Regex("(?i)^\\s*(stopp|stop|beenden|ausschalten|schließen|schliessen|dismiss|turn off|aus)\\b")
+    private val RUNNING = Regex("(?i)pause|anhalten|runde|lap|fortsetzen|resume")
+    private val UPCOMING = Regex("(?i)bevorstehend|upcoming|jetzt ausschalten|dismiss now|überspringen|skip")
+    private val DELIVERY_APPS = setOf(
+        "com.takeaway.android", "com.yopeso.lieferando", "com.ubercab", "com.ubercab.eats", "ee.mtakso.client",
+        "com.wolt.android", "com.getflink.android", "com.gorillas.android", "com.amazon.mShop.android.shopping",
+        "de.dhl.paket", "de.hermesworld.app", "com.dpd.de", "com.gls.app", "com.freenow.android", "taxi.android.client",
+        "com.deliveryhero.foodora", "com.lieferheld.android", "com.doordash.driverapp", "com.dd.doordash"
+    )
+    private val DELIVERY_WORDS = Regex("(?i)unterwegs|lieferung|zugestellt|kurier|fahrer|abholung|ankunft|on the way|driver|arriving|courier")
+    private val ETA_CLOCK = Regex("\\b([01]?\\d|2[0-3]):[0-5]\\d\\b")
+    private val ETA_MIN = Regex("(?i)\\b(\\d{1,3})\\s?(min|minuten|minutes|mins)\\b")
 
     private fun NotchNotification.hasAction(pattern: Regex) = actions.any { pattern.containsMatchIn(it.title) && !it.needsInput }
 
@@ -173,6 +228,31 @@ object LiveParsers {
         LiveActivity.Navigation(n.key, n.packageName, n.contentIntent, n.appLabel, n.title, n.text, n.icon)
     }
 
+    val alarm = LiveParser { n, prefs ->
+        if (!prefs.timers) return@LiveParser null
+        val clockLike = n.category == Notification.CATEGORY_ALARM || n.packageName in CLOCK_APPS
+        if (!clockLike) return@LiveParser null
+        // Klingelt: „Schlummern“ oder „Stopp“ – aber kein laufender Timer/Stoppuhr (die haben „Pause“)
+        // und keine Vorschau „Bevorstehender Wecker · Jetzt ausschalten“.
+        val text = "${n.title} ${n.text.orEmpty()} ${n.actions.joinToString(" ") { it.title }}"
+        val snooze = n.action(SNOOZE)
+        val dismiss = n.action(DISMISS)
+        // Am Vorhandensein der Knöpfe erkennen – nicht daran, ob sie einen Intent tragen.
+        val ringing = (n.hasAction(SNOOZE) || n.hasAction(DISMISS)) && !n.hasAction(RUNNING) && !UPCOMING.containsMatchIn(text)
+        if (!ringing) return@LiveParser null
+        LiveActivity.Alarm(n.key, n.packageName, n.contentIntent, n.title, n.text, dismiss, snooze)
+    }
+
+    val delivery = LiveParser { n, prefs ->
+        if (!prefs.progress || !n.ongoing || n.isMedia) return@LiveParser null
+        val text = "${n.title} ${n.text.orEmpty()}"
+        val known = n.packageName in DELIVERY_APPS
+        if (!known && !(n.category == Notification.CATEGORY_TRANSPORT && DELIVERY_WORDS.containsMatchIn(text))) return@LiveParser null
+        if (!known && n.progressFraction == null) return@LiveParser null
+        val eta = ETA_MIN.find(text)?.let { "${it.groupValues[1]} Min." } ?: ETA_CLOCK.find(text)?.value
+        LiveActivity.Delivery(n.key, n.packageName, n.contentIntent, n.appLabel, n.title, n.text, eta, n.progressFraction, n.icon)
+    }
+
     val timer = LiveParser { n, prefs ->
         if (!prefs.timers || !n.ongoing || !n.usesChronometer || n.whenTime <= 0L) return@LiveParser null
         // Nur echte Timer/Stoppuhren: Countdown, Uhr-App oder passende Kategorie. Eine laufende
@@ -196,7 +276,7 @@ object LiveParsers {
     }
 
     /** Reihenfolge = Vorrang bei mehrdeutigen Benachrichtigungen. */
-    val all: List<LiveParser> = listOf(call, recording, navigation, timer, progress)
+    val all: List<LiveParser> = listOf(call, alarm, recording, navigation, delivery, timer, progress)
 
     fun parse(n: NotchNotification, prefs: LivePrefs): LiveActivity? =
         all.firstNotNullOfOrNull { it.parse(n, prefs) }

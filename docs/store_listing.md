@@ -35,6 +35,7 @@ Datenschutzerklärung: [URL zu docs/privacy_policy.md, z. B. GitHub Pages]*
 > • Vier Benachrichtigungs-Stile: Klassisch, iOS kompakt, Glas und Aperture (flach um die Kamera) mit „+N weitere“ – plus Stapel „Benachrichtigungen“ mit „Alle löschen“
 > • Wie die Dynamic Island: Lautlos, Laden, Lautstärke, Flugmodus und neue Titel erscheinen neben der Kamera
 > • Übersicht mit Kacheln: Mitteilungen, Timer, Telefon, Notizen, Clip, Dev und AI – ein Tipp öffnet die Ansicht
+> • Wecker mit Schlummern/Stopp, nächster Termin, Lieferungen und Fahrten mit Ankunftszeit, Kopfhörer-Akku
 > • Anrufsteuerung hinter einem Knopf: Stumm, Lautsprecher, Halten und Wahltasten ploppen auf
 > • Navigation (Google Maps, Waze u. a.), Timer und Downloads als Live-Ansicht
 > • Filter pro App, „Nicht stören“, Anzeigedauer, Datenschutz auf dem Sperrbildschirm

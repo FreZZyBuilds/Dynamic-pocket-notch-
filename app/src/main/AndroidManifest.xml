@@ -30,6 +30,11 @@
     <!-- Paketsichtbarkeit (Android 11+) für die Dev-Shortcuts: Termux und GitHub Mobile starten. -->
     <!-- Telefon-Tab: direkt wählen (optional, sonst öffnet die Telefon-App mit der Nummer) -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- Optional: nächster Termin als Live-Ansicht („Meeting in 10 Min.“). Nur lesen, bleibt auf dem Gerät. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- Optional: Akkustand verbundener Bluetooth-Kopfhörer (wie AirPods). -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
     <!-- Anruf in der Notch: als Begleit-App an laufende Gespräche angebunden (wie eine Smartwatch-App):

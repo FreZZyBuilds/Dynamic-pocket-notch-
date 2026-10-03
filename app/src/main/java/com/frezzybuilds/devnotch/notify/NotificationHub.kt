@@ -119,7 +119,7 @@ object NotificationHub {
             recentContent[n.appSignature()] = now
             if (seenAt != null && now - seenAt in 0..DUPLICATE_WINDOW_MS) return
             addRecent(n)
-            PeekCenter.show(Peek.Notification(n, peekDurationMs(n, prefs), prefs.style, moreFrom(n)))
+            PeekCenter.show(Peek.Notification(n, peekDurationMs(n, prefs), prefs.styleOverrides[n.packageName] ?: prefs.style, moreFrom(n)))
         } else if (!n.isMedia && n.packageName != ownPackage) {
             onAppSeen(n.packageName, n.appLabel)
         }
