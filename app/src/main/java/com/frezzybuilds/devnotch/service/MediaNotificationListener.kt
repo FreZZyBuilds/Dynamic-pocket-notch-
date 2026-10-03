@@ -337,6 +337,11 @@ class MediaNotificationListener : NotificationListenerService() {
             activeController?.transportControls?.skipToNext()
         }
 
+        /** Zu einer Stelle im Titel springen (ms). */
+        fun seekTo(positionMs: Long) {
+            activeController?.transportControls?.seekTo(positionMs)
+        }
+
         fun skipToPrevious() {
             activeController?.transportControls?.skipToPrevious()
         }

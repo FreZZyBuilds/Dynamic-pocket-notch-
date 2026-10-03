@@ -38,6 +38,16 @@ object SystemStatus {
         torch.value = on
     }
 
+    /** Taschenlampe ein- oder ausschalten (Schnelleinstellungen in der Notch). */
+    fun setTorchMode(context: Context, on: Boolean) {
+        val manager = context.getSystemService(CameraManager::class.java) ?: return
+        runCatching {
+            manager.cameraIdList
+                .firstOrNull { id -> manager.getCameraCharacteristics(id).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true }
+                ?.let { manager.setTorchMode(it, on) }
+        }
+    }
+
     /** Schaltet die Taschenlampe aus – wie das Antippen der Insel auf dem iPhone. */
     fun turnOffTorch(context: Context) {
         val manager = context.getSystemService(CameraManager::class.java) ?: return

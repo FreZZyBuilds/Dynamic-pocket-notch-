@@ -350,10 +350,10 @@ fun SetupScreen(
 
         SettingsSection(
             id = "overview",
-            keywords = "übersicht kacheln reihenfolge ausblenden dashboard herunterziehen",
+            keywords = "übersicht kacheln seiten wischen reihenfolge ausblenden dashboard herunterziehen wetter suche apps steuerung",
             icon = "▦",
             title = "Übersicht",
-            subtitle = "Kacheln beim Herunterziehen anordnen",
+            subtitle = "Kacheln oder Seiten beim Herunterziehen",
             modifier = Modifier.staggerIn(3)
         ) { OverviewCardSettings(settings) }
 

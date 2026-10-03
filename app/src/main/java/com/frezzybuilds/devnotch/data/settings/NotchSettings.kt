@@ -36,6 +36,12 @@ data class DashboardSize(val widthDp: Int, val heightDp: Int)
 data class BeamPrefs(val mode: BeamMode, val look: BeamLook)
 
 /** Persistente Einstellungen der Notch. Der Overlay-Service beobachtet Änderungen live. */
+/** Aufbau der Übersicht beim Herunterziehen. */
+enum class DashboardLayout(val label: String, val description: String) {
+    CARDS("Kacheln", "Alle Bereiche als Kacheln – ein Tipp öffnet die Ansicht"),
+    PAGES("Seiten", "Wischbare Karten: Suche, Mitteilungen, Steuerung, Musik, Apps, Timer, Wetter")
+}
+
 class NotchSettings(context: Context) {
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
     private val isTablet = context.isTablet()
@@ -205,6 +211,17 @@ class NotchSettings(context: Context) {
         }.toMap()
         set(value) = prefs.edit { putStringSet(KEY_NOTIFY_STYLE_APPS, value.map { (pkg, style) -> "$pkg=${style.name}" }.toSet()) }
 
+    /** Übersicht beim Herunterziehen: Kacheln oder wischbare Seiten (immer genau eins aktiv). */
+    var dashboardLayout: DashboardLayout
+        get() = prefs.getString(KEY_DASH_LAYOUT, null)?.let { name -> DashboardLayout.entries.firstOrNull { it.name == name } }
+            ?: DashboardLayout.CARDS
+        set(value) = prefs.edit { putString(KEY_DASH_LAYOUT, value.name) }
+
+    /** Seiten der Seiten-Ansicht in Reihenfolge (nur sichtbare). */
+    var homePages: List<String>
+        get() = prefs.getString(KEY_HOME_PAGES, null)?.split(',')?.filter { it.isNotBlank() } ?: DEFAULT_HOME_PAGES
+        set(value) = prefs.edit { putString(KEY_HOME_PAGES, value.joinToString(",")) }
+
     /** Kacheln der Übersicht in Reihenfolge (nur sichtbare), als Namen der Kategorien. */
     var homeCards: List<String>
         get() = prefs.getString(KEY_HOME_CARDS, null)?.split(',')?.filter { it.isNotBlank() } ?: DEFAULT_HOME_CARDS
@@ -369,6 +386,9 @@ class NotchSettings(context: Context) {
         const val KEY_NOTIFY_STYLE = "notify_style"
         const val KEY_NOTIFY_STYLE_APPS = "notify_style_apps"
         const val KEY_HOME_CARDS = "home_cards"
+        const val KEY_DASH_LAYOUT = "dashboard_layout"
+        const val KEY_HOME_PAGES = "home_pages"
+        val DEFAULT_HOME_PAGES = listOf("SEARCH", "INBOX", "CONTROLS", "MUSIC", "APPS", "TIMER", "WEATHER")
         val DEFAULT_HOME_CARDS = listOf("INBOX", "TIMER", "PHONE", "NOTES", "CLIP", "DEV", "AI")
         const val KEY_NOTIFY_SKIP_SILENT = "notify_skip_silent"
         const val KEY_NOTIFY_DND = "notify_dnd"

@@ -84,6 +84,13 @@ nur der Fall, solange DevNotch im Vordergrund ist.
 Alle Verbindungen sind verschlüsselt (HTTPS). Die einzige Ausnahme ist eine von dir selbst
 eingetragene lokale Ollama-Adresse (`http://` im Heimnetz).
 
+### 4.0 Wetter (Seiten-Ansicht, optional)
+Ist die Wetter-Seite aktiv und der grobe Standort erlaubt, sendet DevNotch höchstens alle
+30 Minuten die auf zwei Nachkommastellen (≈ 1 km) gerundete Position an Open-Meteo
+(`api.open-meteo.com`, Open-Meteo.com, Schweiz) und erhält Temperatur und Wetterlage. Es gibt
+kein Konto und keine Kennung; Open-Meteo sieht technisch bedingt die IP-Adresse. Den Ortsnamen
+ermittelt Androids Geocoder. Gespeichert wird nichts außer dem letzten Ergebnis im Arbeitsspeicher.
+
 ### 4.1 GitHub (Pro-Funktion „GitHub-Heatmap“)
 Wenn du ein GitHub-Token hinterlegst, ruft DevNotch über die GitHub-GraphQL-API
 (`api.github.com`) dein Profil (Name, Profilbild) und deinen Beitragskalender ab. Dabei werden
@@ -134,6 +141,8 @@ ebenfalls von RevenueCat geladen.
 | Über anderen Apps einblenden (`SYSTEM_ALERT_WINDOW`) | Die Notch, das Floating-Dashboard und den Edge-Player über dem aktuellen Bildschirm zeichnen |
 | Benachrichtigungszugriff (`BIND_NOTIFICATION_LISTENER_SERVICE`) | Mediensitzungen steuern, Benachrichtigungen und Live-Ansichten (Anrufe, Navigation, Timer, Fortschritt) in der Notch anzeigen (siehe 3) |
 | Bedienungshilfe (`BIND_ACCESSIBILITY_SERVICE`, optional) | Nur für das eigene Fenster: damit die Notch über dem Sperrbildschirm erscheinen und auf Wunsch die Statusleisten-Symbole hinter der Pille verdecken darf. Der Dienst liest keine Bildschirminhalte, empfängt keine Ereignisse anderer Apps, beobachtet keine Eingaben und sendet nichts |
+| Grober Standort (`ACCESS_COARSE_LOCATION`, optional) | Wetter-Seite (siehe 4.0) |
+| Systemeinstellungen ändern (`WRITE_SETTINGS`, optional) | Helligkeitsregler in der Seiten-Ansicht |
 | Kalender lesen (`READ_CALENDAR`, optional) | „Nächster Termin“: Titel, Ort und Beginn von Terminen der nächsten 15 Minuten in der Notch anzeigen. Wird nur gelesen, nicht gespeichert oder übertragen |
 | Bluetooth (`BLUETOOTH_CONNECT`, optional) | Akkustand verbundener Kopfhörer beim Verbinden anzeigen |
 | Anrufen (`CALL_PHONE`, optional) | Telefon-Tab: die eingetippte Nummer direkt wählen. Ohne Erlaubnis öffnet die Telefon-App mit der Nummer |
@@ -148,7 +157,7 @@ ebenfalls von RevenueCat geladen.
 | Internet, Netzwerkstatus (`INTERNET`, `ACCESS_NETWORK_STATE`) | Nur für die Funktionen in Abschnitt 4. Der Netzwerkstatus wird von Google Play Billing und RevenueCat genutzt |
 | Zahlungen (`com.android.vending.BILLING`) | Kauf von DevNotch Pro über Google Play |
 
-DevNotch fordert **keine** Werbe-ID (`AD_ID`), keinen Standort, keine Kontakte, kein Mikrofon
+DevNotch fordert **keine** Werbe-ID (`AD_ID`), keinen genauen Standort, keine Kontakte, kein Mikrofon
 und keine Kamera an.
 
 Jede dieser Berechtigungen kannst du in den Android-Einstellungen jederzeit widerrufen.

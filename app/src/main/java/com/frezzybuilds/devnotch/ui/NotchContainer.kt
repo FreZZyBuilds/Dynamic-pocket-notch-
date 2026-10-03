@@ -207,6 +207,11 @@ fun NotchContainer(
     val homeTabs = if (!locked || lockFull) chosenTabs
         else listOfNotNull(NotchTab.INBOX.takeIf { lockContentNow != com.frezzybuilds.devnotch.notify.LockContent.HIDDEN }, NotchTab.TIMER)
             .filter { it in chosenTabs }.ifEmpty { listOf(NotchTab.TIMER) }
+    // Seiten-Ansicht (wie im Video) statt Kacheln – genau eins von beiden ist aktiv.
+    val dashLayout = remember(isExpanded) { startSettings.dashboardLayout }
+    val chosenPages = remember(isExpanded) { NotchPage.from(startSettings.homePages).ifEmpty { listOf(NotchPage.TIMER) } }
+    val homePages = if (!locked || lockFull) chosenPages
+        else chosenPages.filter { it in NotchPage.LOCK_SAFE }.ifEmpty { listOf(NotchPage.TIMER) }
     // Geöffnete Kategorie im Dashboard; null = Übersicht mit Kacheln.
     var selectedTab by remember { mutableStateOf<NotchTab?>(null) }
 
@@ -718,6 +723,8 @@ fun NotchContainer(
                             onResizeEnd = onResizeEnd,
                             // Gesperrt nur, was nichts Privates zeigt – außer der Nutzer erlaubt alles.
                             tabs = homeTabs,
+                            layout = dashLayout,
+                            pages = homePages,
                             section = selectedTab?.takeIf { it in homeTabs },
                             redact = { NotificationRules.redact(it, locked, notifyPrefs.lockContent) },
                             onOpenSection = { selectedTab = it },
@@ -869,6 +876,8 @@ private fun Dashboard(
     onResizeDrag: ((Float) -> Unit)?,
     onResizeEnd: () -> Unit,
     tabs: List<NotchTab>,
+    layout: com.frezzybuilds.devnotch.data.settings.DashboardLayout,
+    pages: List<NotchPage>,
     section: NotchTab?,
     onOpenSection: (NotchTab?) -> Unit,
     redact: (NotchNotification) -> NotchNotification?,
@@ -900,6 +909,25 @@ private fun Dashboard(
         if (cameraRow == null) Box(Modifier.staggerIn(0)) { DashboardHeader(nowPlaying, onClose) }
         if (live != null) {
             LiveCard(live, onSend, Modifier.padding(top = 6.dp).staggerIn(0))
+        }
+        if (layout == com.frezzybuilds.devnotch.data.settings.DashboardLayout.PAGES) {
+            // Seiten-Ansicht: wischbare Karten (Suche, Mitteilungen, Steuerung, Musik, Apps, Timer, Wetter).
+            PagesDashboard(
+                pages = pages,
+                initialPage = when (section) {
+                    NotchTab.INBOX -> NotchPage.INBOX
+                    NotchTab.TIMER -> NotchPage.TIMER
+                    else -> null
+                },
+                focusTimer = focusTimer,
+                nowPlaying = nowPlaying,
+                onOpenNotification = onOpenNotification,
+                redact = redact,
+                onClose = onClose,
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp).staggerIn(1)
+            )
+            if (onResizeDrag != null) ResizeGrip(onResizeDrag, onResizeEnd)
+            return@Column
         }
         // Übersicht ↔ Kategorie: Die Ansicht federt aus der Kachel auf („Blob“), zurück schrumpft sie.
         AnimatedContent(

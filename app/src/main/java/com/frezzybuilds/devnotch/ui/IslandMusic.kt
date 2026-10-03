@@ -184,7 +184,7 @@ private fun PlayerButton(symbol: String, label: String, big: Boolean = false, on
 
 /** Play/Pause als gezeichnete Form – Textzeichen wie „⏸“ erscheinen auf Android als buntes Emoji. */
 @Composable
-private fun PlayPauseButton(playing: Boolean, onClick: () -> Unit) {
+internal fun PlayPauseButton(playing: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .size(40.dp)

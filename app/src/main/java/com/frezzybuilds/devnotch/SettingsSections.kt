@@ -866,6 +866,18 @@ private fun AppStyleList(settings: NotchSettings) {
 /** Übersicht beim Herunterziehen: Kacheln ein-/ausblenden und umsortieren. */
 @Composable
 internal fun OverviewCardSettings(settings: NotchSettings) {
+    var layout by remember { mutableStateOf(settings.dashboardLayout) }
+    SettingLabel("Stil der Übersicht")
+    // Auswahl statt zwei Schaltern: Es ist immer genau eins aktiv.
+    ChoiceRow(com.frezzybuilds.devnotch.data.settings.DashboardLayout.entries, layout, { it.label }) {
+        layout = it
+        settings.dashboardLayout = it
+    }
+    Text(layout.description, color = Glass.TextSecondary, style = MaterialTheme.typography.bodySmall)
+    if (layout == com.frezzybuilds.devnotch.data.settings.DashboardLayout.PAGES) {
+        PageSettings(settings)
+        return
+    }
     var cards by remember { mutableStateOf(settings.homeCards) }
     fun save(new: List<String>) {
         cards = new
@@ -925,4 +937,59 @@ private fun ArrowButton(symbol: String, label: String, enabled: Boolean, onClick
             .clickable(enabled = enabled, role = Role.Button, onClickLabel = label, onClick = onClick),
         contentAlignment = Alignment.Center
     ) { Text(symbol, color = if (enabled) Color.White else Glass.TextSecondary, style = MaterialTheme.typography.labelSmall) }
+}
+
+/** Seiten der Seiten-Ansicht: ein-/ausblenden, umsortieren; Wetter braucht den groben Standort. */
+@Composable
+private fun PageSettings(settings: NotchSettings) {
+    var pages by remember { mutableStateOf(settings.homePages) }
+    fun save(new: List<String>) {
+        pages = new
+        settings.homePages = new
+    }
+    val all = pages + com.frezzybuilds.devnotch.ui.NotchPage.entries.map { it.name }.filter { it !in pages }
+    all.forEach { name ->
+        val page = com.frezzybuilds.devnotch.ui.NotchPage.entries.firstOrNull { it.name == name } ?: return@forEach
+        val visible = name in pages
+        val index = pages.indexOf(name)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(page.title, color = if (visible) Color.White else Glass.TextSecondary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            if (visible) {
+                ArrowButton("▲", "Nach oben", enabled = index > 0) { save(pages.toMutableList().apply { add(index - 1, removeAt(index)) }) }
+                ArrowButton("▼", "Nach unten", enabled = index < pages.size - 1) { save(pages.toMutableList().apply { add(index + 1, removeAt(index)) }) }
+            }
+            Switch(
+                checked = visible,
+                onCheckedChange = { on -> if (on) save(pages + name) else if (pages.size > 1) save(pages - name) },
+                colors = SwitchDefaults.colors(checkedTrackColor = Brand.Violet)
+            )
+        }
+    }
+    if ("WEATHER" in pages) WeatherPermission()
+    Text(
+        "Wischen wechselt die Seite. WLAN, Bluetooth und Mobile Daten öffnen das Android-Panel (Apps dürfen sie nicht selbst schalten); " +
+            "der Helligkeitsregler braucht einmal „Systemeinstellungen ändern“.",
+        color = Glass.TextSecondary,
+        style = MaterialTheme.typography.bodySmall
+    )
+}
+
+/** Wetter: grober Standort – nur gerundet an Open-Meteo, höchstens alle 30 Minuten. */
+@Composable
+private fun WeatherPermission() {
+    val context = LocalContext.current
+    var allowed by remember { mutableStateOf(com.frezzybuilds.devnotch.system.WeatherRepo.hasPermission(context)) }
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { ok ->
+        allowed = ok
+        if (ok) com.frezzybuilds.devnotch.system.WeatherRepo.refresh(context, force = true)
+    }
+    if (!allowed) {
+        HintBox(
+            "Wetter-Seite: grober Standort (≈ 1 km) für das Wetter von Open-Meteo. Ohne Konto, nichts wird gespeichert.",
+            action = "Erlauben",
+            onAction = { launcher.launch(android.Manifest.permission.ACCESS_COARSE_LOCATION) }
+        )
+    }
 }
