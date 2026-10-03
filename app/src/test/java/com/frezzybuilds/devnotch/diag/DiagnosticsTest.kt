@@ -27,10 +27,10 @@ class DiagnosticsTest {
         PerfMonitor.state = "aufgeklappt · Übersicht"
         PerfMonitor.record(16_000_000L)
         val stats = PerfMonitor.stats()
-        assertEquals(PerfMonitor.Stat(2, 1, 50f), stats["Peek · System"])
-        assertEquals(PerfMonitor.Stat(1, 0, 0f), stats["aufgeklappt · Übersicht"])
+        assertEquals(PerfMonitor.Stat(2, 1, 50f, 66f), stats["Peek · System"])
+        assertEquals(PerfMonitor.Stat(1, 0, 0f, 16f), stats["aufgeklappt · Übersicht"])
         assertEquals(1, PerfMonitor.janks.value.size)
-        assertTrue(PerfMonitor.summary().startsWith("Peek · System: 2 Bilder, 1 ruckelig (50 %)"))
+        assertTrue(PerfMonitor.summary().startsWith("Peek · System: 2 Bilder, Ø 30 Bilder/s, 1 ruckelig (50 %)"))
     }
 
     @Test

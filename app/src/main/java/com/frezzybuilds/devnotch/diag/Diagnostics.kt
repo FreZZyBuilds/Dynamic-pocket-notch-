@@ -30,8 +30,10 @@ object PerfMonitor {
     /** Ein zu langsames Bild. */
     data class Jank(val atMs: Long, val frameMs: Float, val state: String)
 
-    /** Bilder und Ruckler je Zustand. */
-    data class Stat(val frames: Int, val janky: Int, val worstMs: Float)
+    /** Bilder und Ruckler je Zustand; [totalMs] ergibt die tatsächliche Bildrate. */
+    data class Stat(val frames: Int, val janky: Int, val worstMs: Float, val totalMs: Float = 0f) {
+        val fps: Float get() = if (totalMs > 0f) frames * 1000f / totalMs else 0f
+    }
 
     private val main = Handler(Looper.getMainLooper())
 
@@ -99,10 +101,12 @@ object PerfMonitor {
         // Lücken über 500 ms sind Pausen, keine Ruckler.
         if (deltaNs <= 0 || deltaNs > 500_000_000L) return
         val key = state
-        val janky = deltaNs > periodNs * 3 / 2
+        // Ruckelig: deutlich länger als ein Takt UND unter ~40 Bildern/s (bei 120 Hz sind 16-ms-Bilder
+        // noch flüssig – sonst zählte jedes 60-Hz-Bild als Ruckler).
+        val janky = deltaNs > periodNs * 3 / 2 && deltaNs > JANK_NS
         val ms = deltaNs / 1_000_000f
         val old = stats[key] ?: Stat(0, 0, 0f)
-        stats[key] = Stat(old.frames + 1, old.janky + if (janky) 1 else 0, if (janky) maxOf(old.worstMs, ms) else old.worstMs)
+        stats[key] = Stat(old.frames + 1, old.janky + if (janky) 1 else 0, if (janky) maxOf(old.worstMs, ms) else old.worstMs, old.totalMs + ms)
         if (janky) _janks.value = (_janks.value + Jank(System.currentTimeMillis(), ms, key)).takeLast(MAX_JANKS)
     }
 
@@ -118,11 +122,15 @@ object PerfMonitor {
         if (s.isEmpty()) return "Noch keine Messung – Leistungs-Modus an und die Notch benutzen."
         return s.entries.sortedByDescending { it.value.janky }.joinToString("\n") { (k, v) ->
             val pct = if (v.frames > 0) 100f * v.janky / v.frames else 0f
-            "%s: %d Bilder, %d ruckelig (%.0f %%), schlimmstes %.0f ms".format(Locale.GERMANY, k, v.frames, v.janky, pct, v.worstMs)
+            "%s: %d Bilder, Ø %.0f Bilder/s, %d ruckelig (%.0f %%), schlimmstes %.0f ms".format(Locale.GERMANY, k, v.frames, v.fps, v.janky, pct, v.worstMs)
         }
     }
 
     private const val MAX_JANKS = 200
+    private const val JANK_NS = 25_000_000L
+
+    /** Bildschirm-Takt in ms (für den Bericht). */
+    val periodMs: Float get() = periodNs / 1_000_000f
     private const val IDLE_AFTER_MS = 600L
 }
 
@@ -195,7 +203,7 @@ object DiagnosticsReport {
         return buildString {
             appendLine("DevNotch $version · ${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             appendLine()
-            appendLine("— Ruckeln je Zustand —")
+            appendLine("— Ruckeln je Zustand (Display-Takt %.1f ms) —".format(Locale.GERMANY, PerfMonitor.periodMs))
             appendLine(PerfMonitor.summary())
             if (janks.isNotEmpty()) {
                 appendLine()

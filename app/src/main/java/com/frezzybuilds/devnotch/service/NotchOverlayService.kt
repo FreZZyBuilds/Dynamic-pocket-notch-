@@ -179,6 +179,23 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private lateinit var calendar: com.frezzybuilds.devnotch.system.CalendarMonitor
     private lateinit var calendarListener: SharedPreferences.OnSharedPreferenceChangeListener
 
+    /** Höchste Bildwiederholrate des Displays bei aktueller Auflösung (z. B. 120 Hz). */
+    private fun maxRefreshRate(): Float {
+        @Suppress("DEPRECATION")
+        val display = (getSystemService(WINDOW_SERVICE) as WindowManager).defaultDisplay ?: return 0f
+        val mode = display.mode
+        return display.supportedModes
+            .filter { it.physicalWidth == mode.physicalWidth && it.physicalHeight == mode.physicalHeight }
+            .maxOfOrNull { it.refreshRate } ?: 0f
+    }
+
+    /** Ansicht samt Kindern (Compose zeichnet im inneren AndroidComposeView) auf „hohe Bildrate“. */
+    private fun requestHighFrameRate(view: View) {
+        if (Build.VERSION.SDK_INT < 35) return
+        runCatching { view.requestedFrameRate = View.REQUESTED_FRAME_RATE_CATEGORY_HIGH }
+        if (view is android.view.ViewGroup) for (i in 0 until view.childCount) requestHighFrameRate(view.getChildAt(i))
+    }
+
     /** Leistungs-Modus an/aus: Messung an das Overlay hängen oder lösen. */
     private fun syncPerfMonitor() {
         val view = composeView
@@ -508,6 +525,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             insets
         }
         composeView = view
+        // Ab Android 15 drosselt das System kleine animierte Ansichten (z. B. auf 30 Hz) – die Notch
+        // wirkte dadurch „laggy“. Hohe Bildrate anfordern; gilt nur, solange sich etwas bewegt.
         attach(view, targetHost())
         syncPerfMonitor()
 
@@ -542,6 +561,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
 
     /** Hängt das Fenster in [target] ein; scheitert die Bedienungshilfe, im normalen Overlay. */
     private fun attach(view: View, target: OverlayHost) {
+        // Nach jedem Umhängen (anderes Fenster) die Bildraten-Bitte erneuern.
+        view.post { requestHighFrameRate(view) }
         val a11yManager = NotchAccessibilityService.instance.value?.overlayWindowManager()
         if (target == OverlayHost.ACCESSIBILITY && a11yManager != null) {
             layoutParams.type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
@@ -595,6 +616,9 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
                     flags = flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS.inv()
                 }
             }
+            // Beim Aufklappen und bei Einblendungen die höchste Bildrate des Displays (LTPO-Displays
+            // fahren sonst gern herunter); eingeklappt entscheidet wieder das System (Akku).
+            preferredRefreshRate = if (windowExpanded || windowPeek) maxRefreshRate() else 0f
             // Aufgeklappt/Peek feste Größe (Animation läuft im Fenster), sonst passend zum Inhalt.
             if (windowExpanded) {
                 val (w, h) = expandedSizePx()

@@ -120,6 +120,9 @@ fun Modifier.borderBeam(
     val length = measure.length
     val slice = Path()
     val track = Stroke(width = 1.dp.toPx())
+    // Einmal je Größe statt zweimal pro Teilstück und Bild (früher ~56 Objekte pro Bild).
+    val glowStroke = Stroke(glow, cap = StrokeCap.Butt)
+    val coreStroke = Stroke(core, cap = StrokeCap.Butt)
     val headRadius = 9.dp.toPx()
     val colors = look.palette.colors
     val brightness = look.brightness
@@ -147,8 +150,8 @@ fun Modifier.borderBeam(
             measure.getSegment(0f, to - length, slice, true)
         }
         // Butt-Enden: runde Kappen überlappen sich sonst als sichtbare „Perlen“.
-        drawPath(slice, lerp(Color.Black, color, (0.32f * alpha).coerceIn(0f, 1f)), style = Stroke(glow, cap = StrokeCap.Butt), blendMode = BlendMode.Lighten)
-        drawPath(slice, lerp(Color.Black, color, alpha.coerceIn(0f, 1f)), style = Stroke(core, cap = StrokeCap.Butt), blendMode = BlendMode.Lighten)
+        drawPath(slice, lerp(Color.Black, color, (0.32f * alpha).coerceIn(0f, 1f)), style = glowStroke, blendMode = BlendMode.Lighten)
+        drawPath(slice, lerp(Color.Black, color, alpha.coerceIn(0f, 1f)), style = coreStroke, blendMode = BlendMode.Lighten)
     }
 
     fun DrawScope.beam(head: Float, s: Float) {
