@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ollama läuft meist ohne TLS: lokal in Termux (http://localhost:11434) oder auf einem PC im
+  WLAN (http://192.168.x.x:11434). LAN-Adressen lassen sich hier nicht einzeln freigeben, daher
+  ist Klartext erlaubt. Alle eingebauten Dienste (GitHub, OpenAI, Anthropic, OpenRouter, Gemini)
+  sind fest auf https:// verdrahtet und davon nicht betroffen.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

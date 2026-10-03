@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Autostart nach Neustart (BootReceiver) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Direkter Dialog „Akku-Optimierung ignorieren“ (statt Umweg über die Einstellungsliste) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- GitHub GraphQL API -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Berechtigung, über anderen Apps zu zeichnen (Notch-Overlay) -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
@@ -18,8 +28,60 @@
         Einstellungen > Benachrichtigungszugriff.
     -->
 
+    <!-- Paketsichtbarkeit (Android 11+) für die Dev-Shortcuts: Termux und GitHub Mobile starten. -->
+    <!-- Telefon-Tab: direkt wählen (optional, sonst öffnet die Telefon-App mit der Nummer) -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- Optional: nächster Termin als Live-Ansicht („Meeting in 10 Min.“). Nur lesen, bleibt auf dem Gerät. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- Optional: Wetter-Seite – nur grober Standort (≈ 1 km), gerundet an Open-Meteo. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Optional: Helligkeitsregler in der Seiten-Ansicht (Nutzer erlaubt es in den Systemeinstellungen). -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
+    <!-- Optional: Akkustand verbundener Bluetooth-Kopfhörer (wie AirPods). -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
+    <!-- Anruf in der Notch: als Begleit-App an laufende Gespräche angebunden (wie eine Smartwatch-App):
+         Wahltasten, Stumm, Lautsprecher, Halten, Annehmen/Ablehnen/Auflegen -->
+    <uses-permission android:name="android.permission.CALL_COMPANION_APP" />
+
+    <!-- Anruf in der Notch: Mikrofon stummschalten (normale Berechtigung, keine Abfrage) -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- NameDrop: Kontaktkarte per NFC-Kartenemulation (HCE). NFC ist optional. -->
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
+    <uses-feature android:name="android.hardware.nfc.hce" android:required="false" />
+
+    <!-- LocalSend (AirDrop-Alternative): Geräte im WLAN finden (Multicast) und Dateien austauschen -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
+    <queries>
+        <package android:name="com.termux" />
+        <package android:name="com.github.android" />
+        <!-- Projekt-Shortcuts: installierte Apps mit Launcher-Icon zur Auswahl anbieten -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- Seiten-Ansicht „Apps“: Standard-Apps über ihre Rolle finden. -->
+        <intent><action android:name="android.intent.action.DIAL" /></intent>
+        <intent><action android:name="android.media.action.STILL_IMAGE_CAMERA" /></intent>
+        <intent><action android:name="android.intent.action.WEB_SEARCH" /></intent>
+        <intent><action android:name="android.intent.action.VOICE_COMMAND" /></intent>
+        <package android:name="com.spotify.music" />
+    </queries>
+
     <application
-        android:allowBackup="true"
+        android:name=".DevNotchApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.DevNotch">
@@ -37,15 +99,118 @@
         <service
             android:name=".service.MediaNotificationListener"
             android:exported="true"
-            android:label="@string/app_name"
+            android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
 
+        <!-- Anrufsteuerung in der Notch (InCallService als Begleit-App, keine eigene Anruf-Oberfläche) -->
+        <service
+            android:name=".service.CallCompanionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_INCALL_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.InCallService" />
+            </intent-filter>
+        </service>
+
+        <!-- NameDrop: gibt die Kontaktkarte als NFC-Tag aus – nur während einer Sitzung. -->
+        <service
+            android:name=".share.NameDropApduService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/namedrop_apdu" />
+        </service>
+
+        <!-- NameDrop empfangen: vCard-Tag eines anderen Handys → Kontaktformular -->
+        <activity
+            android:name=".share.NameDropReceiveActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/vcard" />
+            </intent-filter>
+        </activity>
+
+        <!-- LocalSend: „Teilen“ → Gerät im WLAN wählen (iPhone, Mac, Windows, Android …) -->
+        <activity
+            android:name=".share.LocalSendShareActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/localsend_share_label"
+            android:taskAffinity=""
+            android:theme="@style/Theme.DevNotch">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <!-- Optional: nur damit die Notch über dem Sperrbildschirm erscheinen darf. -->
+        <service
+            android:name=".service.NotchAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/notch_accessibility" />
+        </service>
+
+        <!-- Nur geschützte System-Broadcasts, daher nicht exportiert -->
+        <receiver
+            android:name=".service.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Notiz-Export: .md-Dateien für ACTION_SEND freigeben -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.exports"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/export_paths" />
+        </provider>
+
+        <!-- Unsichtbar: öffnet „Speichern unter…“ (Drive/lokal) für den Overlay-Service -->
+        <activity
+            android:name=".feature.notes.ExportNoteActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <activity
             android:name=".MainActivity"
+            android:launchMode="singleTop"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

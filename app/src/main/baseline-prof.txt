@@ -1,0 +1,5 @@
+# Baseline-Profil für DevNotch: Code der Notch und der Einstellungen wird bei der Installation
+# vorab übersetzt (über androidx.profileinstaller, auch bei Installation per APK). So laufen die
+# ersten Animationen nach dem Start ohne JIT-Ruckler. Compose bringt eigene Profile mit.
+HSPLcom/frezzybuilds/devnotch/**->**(**)**
+Lcom/frezzybuilds/devnotch/**;

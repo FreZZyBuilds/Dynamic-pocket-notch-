@@ -1,0 +1,437 @@
+package com.frezzybuilds.devnotch.data.settings
+
+import com.frezzybuilds.devnotch.share.ContactCard
+import com.frezzybuilds.devnotch.system.SystemEvent
+import android.content.Context
+import android.content.SharedPreferences
+import com.frezzybuilds.devnotch.ui.BeamLook
+import com.frezzybuilds.devnotch.ui.BeamMode
+import com.frezzybuilds.devnotch.ui.BeamStyle
+import com.frezzybuilds.devnotch.ui.BeamPalette
+import androidx.core.content.edit
+import com.frezzybuilds.devnotch.notify.LivePrefs
+import com.frezzybuilds.devnotch.notify.LockContent
+import com.frezzybuilds.devnotch.notify.NotifyPrefs
+import com.frezzybuilds.devnotch.service.EdgeSide
+import com.frezzybuilds.devnotch.ui.ExpandedSize
+import com.frezzybuilds.devnotch.service.LockscreenMode
+import com.frezzybuilds.devnotch.service.NotchLayoutMode
+import com.frezzybuilds.devnotch.service.isTablet
+import com.frezzybuilds.devnotch.ui.media.EdgeTheme
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+
+/** Darstellungsoptionen des Edge-Players. */
+data class EdgePrefs(
+    val autoMinimize: Boolean,
+    val minimizeDelaySeconds: Int,
+    val showOnTrackChange: Boolean,
+    val theme: EdgeTheme
+)
+
+/** Breite und Höhe des aufgeklappten Dashboards in dp. */
+data class DashboardSize(val widthDp: Int, val heightDp: Int)
+
+data class BeamPrefs(val mode: BeamMode, val look: BeamLook)
+
+/** Persistente Einstellungen der Notch. Der Overlay-Service beobachtet Änderungen live. */
+/** Aufbau der Übersicht beim Herunterziehen. */
+enum class DashboardLayout(val label: String, val description: String) {
+    CARDS("Kacheln", "Alle Bereiche als Kacheln – ein Tipp öffnet die Ansicht"),
+    PAGES("Seiten", "Wischbare Karten: Suche, Mitteilungen, Steuerung, Musik, Apps, Timer, Wetter")
+}
+
+class NotchSettings(context: Context) {
+    private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    private val isTablet = context.isTablet()
+
+    /** Ohne gespeicherte Wahl: Tablets als Edge Bar, Smartphones am Punch-Hole. */
+    var displayMode: NotchLayoutMode
+        get() = prefs.getString(KEY_DISPLAY_MODE, null)
+            ?.let { runCatching { NotchLayoutMode.valueOf(it) }.getOrNull() }
+            ?: if (isTablet) NotchLayoutMode.EDGE_SIDE else NotchLayoutMode.NOTCH_TOP
+        set(value) = prefs.edit { putString(KEY_DISPLAY_MODE, value.name) }
+
+    /**
+     * Hat der Nutzer die Notch eingeschaltet? Steuert den Autostart nach dem Booten
+     * (BootReceiver). Wird nur durch den Schalter in der App bzw. „Beenden“ in der
+     * Benachrichtigung geändert – nicht, wenn Android den Prozess beendet.
+     */
+    var notchEnabled: Boolean
+        get() = prefs.getBoolean(KEY_NOTCH_ENABLED, false)
+        set(value) = prefs.edit { putBoolean(KEY_NOTCH_ENABLED, value) }
+
+    /** Hersteller-Hinweis (Xiaomi/Samsung) wurde als erledigt markiert. */
+    var oemHintDone: Boolean
+        get() = prefs.getBoolean(KEY_OEM_HINT_DONE, false)
+        set(value) = prefs.edit { putBoolean(KEY_OEM_HINT_DONE, value) }
+
+    /** Edge-Player klappt nach einigen Sekunden ohne Interaktion zur runden Cover-Bubble ein. */
+    var edgeAutoMinimize: Boolean
+        get() = prefs.getBoolean(KEY_EDGE_AUTO_MINIMIZE, true)
+        set(value) = prefs.edit { putBoolean(KEY_EDGE_AUTO_MINIMIZE, value) }
+
+    /** Wartezeit bis zum Einklappen in Sekunden (3, 5 oder 10). */
+    var edgeMinimizeDelaySeconds: Int
+        get() = prefs.getInt(KEY_EDGE_MINIMIZE_DELAY, 5)
+        set(value) = prefs.edit { putInt(KEY_EDGE_MINIMIZE_DELAY, value) }
+
+    /** Bei neuem Titel kurz die volle Leiste zeigen. */
+    var edgeShowOnTrackChange: Boolean
+        get() = prefs.getBoolean(KEY_EDGE_SHOW_ON_TRACK, true)
+        set(value) = prefs.edit { putBoolean(KEY_EDGE_SHOW_ON_TRACK, value) }
+
+    var edgeTheme: EdgeTheme
+        get() = prefs.getString(KEY_EDGE_THEME, null)
+            ?.let { runCatching { EdgeTheme.valueOf(it) }.getOrNull() }
+            ?: EdgeTheme.ALBUM
+        set(value) = prefs.edit { putString(KEY_EDGE_THEME, value.name) }
+
+    /** Andock-Rand der verschiebbaren Bubble/Leiste. */
+    var edgeSide: EdgeSide
+        get() = prefs.getString(KEY_EDGE_SIDE, null)
+            ?.let { runCatching { EdgeSide.valueOf(it) }.getOrNull() }
+            ?: EdgeSide.RIGHT
+        set(value) = prefs.edit { putString(KEY_EDGE_SIDE, value.name) }
+
+    /** Vertikale Position als Anteil der Bildschirmhöhe (0 = Mitte), übersteht Rotation. */
+    var edgeOffsetFraction: Float
+        get() = prefs.getFloat(KEY_EDGE_OFFSET, 0f)
+        set(value) = prefs.edit { putFloat(KEY_EDGE_OFFSET, value) }
+
+    /** Lichtlauf um die Notch: wann er kreist und in welchen Farben. */
+    var beamMode: BeamMode
+        get() = prefs.getString(KEY_BEAM_MODE, null)
+            ?.let { name -> BeamMode.entries.firstOrNull { it.name == name } }
+            ?: BeamMode.ALWAYS
+        set(value) = prefs.edit { putString(KEY_BEAM_MODE, value.name) }
+
+    var beamPalette: BeamPalette
+        get() = prefs.getString(KEY_BEAM_PALETTE, null)
+            ?.let { name -> BeamPalette.entries.firstOrNull { it.name == name } }
+            ?: BeamPalette.GEMINI
+        set(value) = prefs.edit { putString(KEY_BEAM_PALETTE, value.name) }
+
+    var beamStyle: BeamStyle
+        get() = prefs.getString(KEY_BEAM_STYLE, null)
+            ?.let { name -> BeamStyle.entries.firstOrNull { it.name == name } }
+            ?: BeamStyle.BEAM
+        set(value) = prefs.edit { putString(KEY_BEAM_STYLE, value.name) }
+
+    /** Sekunden pro Runde. */
+    var beamLapSeconds: Float
+        get() = prefs.getFloat(KEY_BEAM_LAP, BeamLook.DEFAULT_LAP_SECONDS)
+        set(value) = prefs.edit { putFloat(KEY_BEAM_LAP, value.coerceIn(BeamLook.LAP_RANGE)) }
+
+    var beamBrightness: Float
+        get() = prefs.getFloat(KEY_BEAM_BRIGHTNESS, BeamLook.DEFAULT_BRIGHTNESS)
+        set(value) = prefs.edit { putFloat(KEY_BEAM_BRIGHTNESS, value.coerceIn(BeamLook.BRIGHTNESS_RANGE)) }
+
+    var beamLength: Float
+        get() = prefs.getFloat(KEY_BEAM_LENGTH, BeamLook.DEFAULT_LENGTH)
+        set(value) = prefs.edit { putFloat(KEY_BEAM_LENGTH, value.coerceIn(BeamLook.LENGTH_RANGE)) }
+
+    val beamPrefs: BeamPrefs
+        get() = BeamPrefs(beamMode, BeamLook(beamStyle, beamPalette, beamLapSeconds, beamBrightness, beamLength))
+
+    /** Änderungen wirken sofort in der laufenden Notch. */
+    fun beamPrefsFlow(): Flow<BeamPrefs> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key in BEAM_PREF_KEYS) trySend(beamPrefs)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(beamPrefs)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    val edgePrefs: EdgePrefs
+        get() = EdgePrefs(edgeAutoMinimize, edgeMinimizeDelaySeconds, edgeShowOnTrackChange, edgeTheme)
+
+    /** Alle Edge-Darstellungsoptionen als Flow: Änderungen wirken sofort in der laufenden Notch. */
+    fun edgePrefsFlow(): Flow<EdgePrefs> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key in EDGE_PREF_KEYS) trySend(edgePrefs)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(edgePrefs)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    /**
+     * Ruft [onChange] bei jeder Änderung des Display-Modus auf. Der zurückgegebene Listener muss
+     * gehalten und an [removeListener] übergeben werden (SharedPreferences hält ihn nur schwach).
+     */
+    fun addDisplayModeListener(onChange: (NotchLayoutMode) -> Unit): SharedPreferences.OnSharedPreferenceChangeListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_DISPLAY_MODE) onChange(displayMode)
+        }.also(prefs::registerOnSharedPreferenceChangeListener)
+
+    /** Allgemeiner Listener für mehrere Schlüssel (Referenz halten, mit [removeListener] lösen). */
+    fun addListener(keys: Set<String>, onChange: () -> Unit): SharedPreferences.OnSharedPreferenceChangeListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key in keys) onChange()
+        }.also(prefs::registerOnSharedPreferenceChangeListener)
+
+    // --- Benachrichtigungen & Live-Ansichten ---------------------------------------------------
+    var notifyEnabled: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFY_ENABLED, true)
+        set(value) = prefs.edit { putBoolean(KEY_NOTIFY_ENABLED, value) }
+    var notifyDuration: Float
+        get() = prefs.getFloat(KEY_NOTIFY_DURATION, NotifyPrefs.DEFAULT_DURATION_SECONDS)
+        set(value) = prefs.edit { putFloat(KEY_NOTIFY_DURATION, value.coerceIn(NotifyPrefs.DURATION_RANGE)) }
+    var notifyLockContent: LockContent
+        get() = prefs.getString(KEY_NOTIFY_LOCK_CONTENT, null)
+            ?.let { name -> LockContent.entries.firstOrNull { it.name == name } }
+            ?: LockContent.APP_ONLY
+        set(value) = prefs.edit { putString(KEY_NOTIFY_LOCK_CONTENT, value.name) }
+    var notifyStyle: com.frezzybuilds.devnotch.notify.NotificationStyle
+        get() = prefs.getString(KEY_NOTIFY_STYLE, null)
+            ?.let { name -> com.frezzybuilds.devnotch.notify.NotificationStyle.entries.firstOrNull { it.name == name } }
+            ?: com.frezzybuilds.devnotch.notify.NotificationStyle.CLASSIC
+        set(value) = prefs.edit { putString(KEY_NOTIFY_STYLE, value.name) }
+    var notifySkipOngoing: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFY_SKIP_ONGOING, true)
+        set(value) = prefs.edit { putBoolean(KEY_NOTIFY_SKIP_ONGOING, value) }
+    var notifySkipSilent: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFY_SKIP_SILENT, true)
+        set(value) = prefs.edit { putBoolean(KEY_NOTIFY_SKIP_SILENT, value) }
+    var notifyRespectDnd: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFY_DND, true)
+        set(value) = prefs.edit { putBoolean(KEY_NOTIFY_DND, value) }
+    var notifyBlockedApps: Set<String>
+        get() = prefs.getStringSet(KEY_NOTIFY_BLOCKED, emptySet()).orEmpty().toSet()
+        set(value) = prefs.edit { putStringSet(KEY_NOTIFY_BLOCKED, value) }
+    /** Stil je App (Paket → Stil), überschreibt den allgemeinen Stil. */
+    var notifyStyleApps: Map<String, com.frezzybuilds.devnotch.notify.NotificationStyle>
+        get() = prefs.getStringSet(KEY_NOTIFY_STYLE_APPS, emptySet()).orEmpty().mapNotNull { entry ->
+            val pkg = entry.substringBeforeLast('=')
+            val style = com.frezzybuilds.devnotch.notify.NotificationStyle.entries.firstOrNull { it.name == entry.substringAfterLast('=') }
+            if (pkg.isNotBlank() && style != null) pkg to style else null
+        }.toMap()
+        set(value) = prefs.edit { putStringSet(KEY_NOTIFY_STYLE_APPS, value.map { (pkg, style) -> "$pkg=${style.name}" }.toSet()) }
+
+    /** Übersicht beim Herunterziehen: Kacheln oder wischbare Seiten (immer genau eins aktiv). */
+    var dashboardLayout: DashboardLayout
+        get() = prefs.getString(KEY_DASH_LAYOUT, null)?.let { name -> DashboardLayout.entries.firstOrNull { it.name == name } }
+            ?: DashboardLayout.CARDS
+        set(value) = prefs.edit { putString(KEY_DASH_LAYOUT, value.name) }
+
+    /** Seiten der Seiten-Ansicht in Reihenfolge (nur sichtbare). */
+    var homePages: List<String>
+        get() = prefs.getString(KEY_HOME_PAGES, null)?.split(',')?.filter { it.isNotBlank() } ?: DEFAULT_HOME_PAGES
+        set(value) = prefs.edit { putString(KEY_HOME_PAGES, value.joinToString(",")) }
+
+    /** Kacheln der Übersicht in Reihenfolge (nur sichtbare), als Namen der Kategorien. */
+    var homeCards: List<String>
+        get() = prefs.getString(KEY_HOME_CARDS, null)?.split(',')?.filter { it.isNotBlank() } ?: DEFAULT_HOME_CARDS
+        set(value) = prefs.edit { putString(KEY_HOME_CARDS, value.joinToString(",")) }
+
+    /** Nächster Kalendertermin als Live-Ansicht (braucht READ_CALENDAR). */
+    var liveCalendar: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_CALENDAR, false)
+        set(value) = prefs.edit { putBoolean(KEY_LIVE_CALENDAR, value) }
+
+    var liveCalls: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_CALLS, true)
+        set(value) = prefs.edit { putBoolean(KEY_LIVE_CALLS, value) }
+    var liveNavigation: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_NAV, true)
+        set(value) = prefs.edit { putBoolean(KEY_LIVE_NAV, value) }
+    var liveTimers: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_TIMERS, true)
+        set(value) = prefs.edit { putBoolean(KEY_LIVE_TIMERS, value) }
+    var liveProgress: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_PROGRESS, true)
+        set(value) = prefs.edit { putBoolean(KEY_LIVE_PROGRESS, value) }
+
+    // --- Systemereignisse (Apple-Insel): einzeln abschaltbar ----------------------------------
+    var systemEventsOff: Set<String>
+        get() = prefs.getStringSet(KEY_SYSTEM_OFF, emptySet()).orEmpty().toSet()
+        set(value) = prefs.edit { putStringSet(KEY_SYSTEM_OFF, value) }
+
+    fun isSystemEventOn(event: SystemEvent): Boolean = event.name !in systemEventsOff
+
+    fun setSystemEvent(event: SystemEvent, on: Boolean) {
+        systemEventsOff = if (on) systemEventsOff - event.name else systemEventsOff + event.name
+    }
+
+    // --- Teilen: NameDrop-Kontaktkarte, LocalSend -------------------------------------------
+    var contactCard: ContactCard
+        get() = ContactCard(
+            prefs.getString(KEY_CARD_NAME, null).orEmpty(),
+            prefs.getString(KEY_CARD_PHONE, null).orEmpty(),
+            prefs.getString(KEY_CARD_EMAIL, null).orEmpty()
+        )
+        set(value) = prefs.edit {
+            putString(KEY_CARD_NAME, value.name.trim())
+            putString(KEY_CARD_PHONE, value.phone.trim())
+            putString(KEY_CARD_EMAIL, value.email.trim())
+        }
+
+    /** Für LocalSend-Geräte im WLAN sichtbar und empfangsbereit. */
+    var localSendReceive: Boolean
+        get() = prefs.getBoolean(KEY_LOCALSEND_RECEIVE, false)
+        set(value) = prefs.edit { putBoolean(KEY_LOCALSEND_RECEIVE, value) }
+
+    /** Gerätename bei LocalSend; leer = „DevNotch (Modell)“. */
+    var localSendAlias: String
+        get() = prefs.getString(KEY_LOCALSEND_ALIAS, null).orEmpty()
+        set(value) = prefs.edit { putString(KEY_LOCALSEND_ALIAS, value.trim()) }
+
+    var callAutoHideSeconds: Int
+        get() = prefs.getInt(KEY_CALL_AUTO_HIDE, 10)
+        set(value) = prefs.edit { putInt(KEY_CALL_AUTO_HIDE, value.coerceAtLeast(0)) }
+    var liveBanner: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_BANNER, true)
+        set(value) = prefs.edit { putBoolean(KEY_LIVE_BANNER, value) }
+
+    val notifyPrefs: NotifyPrefs
+        get() = NotifyPrefs(
+            enabled = notifyEnabled,
+            durationSeconds = notifyDuration,
+            lockContent = notifyLockContent,
+            skipOngoing = notifySkipOngoing,
+            skipSilent = notifySkipSilent,
+            respectDnd = notifyRespectDnd,
+            blockedApps = notifyBlockedApps,
+            payments = isSystemEventOn(SystemEvent.PAYMENT),
+            style = notifyStyle,
+            styleOverrides = notifyStyleApps,
+            live = LivePrefs(liveCalls, liveNavigation, liveTimers, liveProgress, liveBanner, isSystemEventOn(SystemEvent.RECORDING), callAutoHideSeconds)
+        )
+
+    fun notifyPrefsFlow(): Flow<NotifyPrefs> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key in NOTIFY_PREF_KEYS) trySend(notifyPrefs)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(notifyPrefs)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    /** Apps, die Benachrichtigungen geschickt haben (Paket → Name), höchstens 60, neueste zuerst. */
+    val seenApps: Map<String, String>
+        get() = prefs.getString(KEY_NOTIFY_SEEN, null).orEmpty().lineSequence()
+            .mapNotNull { line -> line.split('\t').takeIf { it.size == 2 }?.let { it[0] to it[1] } }
+            .toMap(LinkedHashMap())
+
+    fun rememberSeenApp(packageName: String, label: String) {
+        val current = seenApps
+        if (current.keys.firstOrNull() == packageName) return
+        val updated = LinkedHashMap<String, String>().apply {
+            put(packageName, label)
+            current.forEach { (pkg, name) -> if (pkg != packageName && size < 60) put(pkg, name) }
+        }
+        prefs.edit { putString(KEY_NOTIFY_SEEN, updated.entries.joinToString("\n") { "${it.key}\t${it.value}" }) }
+    }
+
+    // --- Größe des aufgeklappten Dashboards (Notch oben) ---------------------------------------
+    var dashboardWidthDp: Int
+        get() = prefs.getInt(KEY_DASH_WIDTH, ExpandedSize.DASHBOARD_MAX_WIDTH_DP)
+        set(value) = prefs.edit { putInt(KEY_DASH_WIDTH, value.coerceIn(ExpandedSize.DASHBOARD_WIDTH_RANGE)) }
+    var dashboardHeightDp: Int
+        get() = prefs.getInt(KEY_DASH_HEIGHT, ExpandedSize.DASHBOARD_HEIGHT_DP)
+        set(value) = prefs.edit { putInt(KEY_DASH_HEIGHT, value.coerceIn(ExpandedSize.DASHBOARD_HEIGHT_RANGE)) }
+    val dashboardSize: DashboardSize get() = DashboardSize(dashboardWidthDp, dashboardHeightDp)
+
+    fun dashboardSizeFlow(): Flow<DashboardSize> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_DASH_WIDTH || key == KEY_DASH_HEIGHT) trySend(dashboardSize)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(dashboardSize)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    /** Notch über der Statusleiste (Accessibility-Fenster) – verdeckt Symbole hinter der Pille. */
+    var coverStatusBar: Boolean
+        get() = prefs.getBoolean(KEY_COVER_STATUS_BAR, false)
+        set(value) = prefs.edit { putBoolean(KEY_COVER_STATUS_BAR, value) }
+
+    var lockscreenMode: LockscreenMode
+        get() = prefs.getString(KEY_LOCKSCREEN_MODE, null)
+            ?.let { name -> LockscreenMode.entries.firstOrNull { it.name == name } }
+            ?: LockscreenMode.SHOW
+        set(value) = prefs.edit { putString(KEY_LOCKSCREEN_MODE, value.name) }
+
+    /** Leistungs-Modus: misst Ruckler der Notch für den Diagnose-Bericht. */
+    var perfMode: Boolean
+        get() = prefs.getBoolean(KEY_PERF_MODE, false)
+        set(value) = prefs.edit { putBoolean(KEY_PERF_MODE, value) }
+
+    /** Gesperrt dieselbe Übersicht wie entsperrt (Notizen, Clip, Dev …) – bewusst einzuschalten. */
+    var lockscreenFull: Boolean
+        get() = prefs.getBoolean(KEY_LOCKSCREEN_FULL, false)
+        set(value) = prefs.edit { putBoolean(KEY_LOCKSCREEN_FULL, value) }
+
+    // --- Einstellungen: welche Karten aufgeklappt sind ------------------------------------------
+    fun isSectionOpen(id: String, default: Boolean): Boolean = prefs.getBoolean("section_open_$id", default)
+    fun setSectionOpen(id: String, open: Boolean) = prefs.edit { putBoolean("section_open_$id", open) }
+
+    fun removeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
+        prefs.unregisterOnSharedPreferenceChangeListener(listener)
+
+    companion object {
+        const val KEY_LOCKSCREEN_MODE = "lockscreen_mode"
+        const val KEY_LOCKSCREEN_FULL = "lockscreen_full"
+        const val KEY_PERF_MODE = "perf_mode"
+        const val KEY_COVER_STATUS_BAR = "cover_status_bar"
+        const val KEY_DASH_WIDTH = "dashboard_width"
+        const val KEY_DASH_HEIGHT = "dashboard_height"
+        const val KEY_NOTIFY_ENABLED = "notify_enabled"
+        const val KEY_NOTIFY_DURATION = "notify_duration"
+        const val KEY_NOTIFY_LOCK_CONTENT = "notify_lock_content"
+        const val KEY_NOTIFY_SKIP_ONGOING = "notify_skip_ongoing"
+        const val KEY_NOTIFY_STYLE = "notify_style"
+        const val KEY_NOTIFY_STYLE_APPS = "notify_style_apps"
+        const val KEY_HOME_CARDS = "home_cards"
+        const val KEY_DASH_LAYOUT = "dashboard_layout"
+        const val KEY_HOME_PAGES = "home_pages"
+        val DEFAULT_HOME_PAGES = listOf("SEARCH", "INBOX", "CONTROLS", "MUSIC", "APPS", "TIMER", "WEATHER")
+        val DEFAULT_HOME_CARDS = listOf("INBOX", "TIMER", "PHONE", "NOTES", "CLIP", "DEV", "AI")
+        const val KEY_NOTIFY_SKIP_SILENT = "notify_skip_silent"
+        const val KEY_NOTIFY_DND = "notify_dnd"
+        const val KEY_NOTIFY_BLOCKED = "notify_blocked"
+        const val KEY_NOTIFY_SEEN = "notify_seen_apps"
+        const val KEY_LIVE_CALLS = "live_calls"
+        const val KEY_LIVE_CALENDAR = "live_calendar"
+        const val KEY_LIVE_NAV = "live_navigation"
+        const val KEY_LIVE_TIMERS = "live_timers"
+        const val KEY_LIVE_PROGRESS = "live_progress"
+        const val KEY_LIVE_BANNER = "live_banner"
+        const val KEY_CALL_AUTO_HIDE = "call_auto_hide"
+        const val KEY_SYSTEM_OFF = "system_events_off"
+        const val KEY_CARD_NAME = "card_name"
+        const val KEY_CARD_PHONE = "card_phone"
+        const val KEY_CARD_EMAIL = "card_email"
+        const val KEY_LOCALSEND_RECEIVE = "localsend_receive"
+        const val KEY_LOCALSEND_ALIAS = "localsend_alias"
+        val NOTIFY_PREF_KEYS = setOf(
+            KEY_NOTIFY_ENABLED, KEY_NOTIFY_DURATION, KEY_NOTIFY_LOCK_CONTENT, KEY_NOTIFY_SKIP_ONGOING,
+            KEY_NOTIFY_SKIP_SILENT, KEY_NOTIFY_DND, KEY_NOTIFY_BLOCKED, KEY_NOTIFY_STYLE, KEY_NOTIFY_STYLE_APPS,
+            KEY_LIVE_CALLS, KEY_LIVE_NAV, KEY_LIVE_TIMERS, KEY_LIVE_PROGRESS, KEY_LIVE_BANNER, KEY_CALL_AUTO_HIDE, KEY_SYSTEM_OFF
+        )
+        private const val KEY_DISPLAY_MODE = "display_mode"
+        const val KEY_NOTCH_ENABLED = "notch_enabled"
+        const val KEY_OEM_HINT_DONE = "oem_hint_done"
+        const val KEY_EDGE_AUTO_MINIMIZE = "edge_auto_minimize"
+        const val KEY_EDGE_MINIMIZE_DELAY = "edge_minimize_delay"
+        const val KEY_EDGE_SHOW_ON_TRACK = "edge_show_on_track"
+        const val KEY_EDGE_THEME = "edge_theme"
+        const val KEY_EDGE_SIDE = "edge_side"
+        const val KEY_EDGE_OFFSET = "edge_offset"
+        const val KEY_BEAM_MODE = "beam_mode"
+        const val KEY_BEAM_PALETTE = "beam_palette"
+        const val KEY_BEAM_STYLE = "beam_style"
+        const val KEY_BEAM_LAP = "beam_lap_seconds"
+        const val KEY_BEAM_BRIGHTNESS = "beam_brightness"
+        const val KEY_BEAM_LENGTH = "beam_length"
+        val BEAM_PREF_KEYS = setOf(
+            KEY_BEAM_MODE, KEY_BEAM_PALETTE, KEY_BEAM_STYLE, KEY_BEAM_LAP, KEY_BEAM_BRIGHTNESS, KEY_BEAM_LENGTH
+        )
+        val EDGE_PREF_KEYS = setOf(
+            KEY_EDGE_AUTO_MINIMIZE, KEY_EDGE_MINIMIZE_DELAY, KEY_EDGE_SHOW_ON_TRACK, KEY_EDGE_THEME
+        )
+    }
+}

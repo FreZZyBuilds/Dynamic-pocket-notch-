@@ -9,3 +9,7 @@
 .externalNativeBuild/
 .cxx/
 .kotlin/
+# Release-Signatur: niemals einchecken
+/keystore.properties
+*.jks
+*.keystore
