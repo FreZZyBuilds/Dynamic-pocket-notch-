@@ -84,7 +84,7 @@ class PeekTest {
         show()
         PeekCenter.show(Peek.Charging(80))
         compose.waitForIdle()
-        compose.onNodeWithText("Wird geladen").assertExists()
+        compose.onNodeWithText("80 %").assertExists()
 
         compose.onRoot().performTouchInput { swipe(center, center + Offset(0f, 150f), 300) }
         compose.waitForIdle()

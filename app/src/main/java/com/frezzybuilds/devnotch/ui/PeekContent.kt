@@ -85,8 +85,8 @@ fun PeekContent(
     /** Alle Benachrichtigungen als Stapel zeigen („+N weitere“). */
     onShowAll: () -> Unit = onExpand
 ) {
-    if (peek is Peek.System) {
-        Box(modifier.fillMaxSize()) { SystemEventPill(peek, lensGap) }
+    if (peek.isSidePill) {
+        Box(modifier.fillMaxSize()) { SidePillContent(peek, lensGap) }
         return
     }
     if (peek is Peek.Notification && peek.style == com.frezzybuilds.devnotch.notify.NotificationStyle.COMPACT) {
@@ -121,7 +121,6 @@ fun PeekContent(
         modifier
             .fillMaxSize()
             .then(if (tint != null) Modifier.background(Brush.verticalGradient(listOf(tint.copy(alpha = 0.55f), tint.copy(alpha = 0.22f)))) else Modifier)
-            .then(if (peek is Peek.Charging) Modifier.chargeSweep() else Modifier)
     ) {
         Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
             // Die Zeile mit der Kameralinse liegt in der Statusleiste: Dort zeichnet Android Uhr
@@ -178,25 +177,6 @@ fun PeekContent(
                 }
                 else -> Unit
             }
-            if (peek is Peek.Charging && peek.percent != null) {
-                // Akkustand als Leiste im Grün-Verlauf.
-                Box(
-                    Modifier
-                        .padding(top = 6.dp)
-                        .fillMaxWidth()
-                        .height(5.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(Color.White.copy(alpha = 0.12f))
-                ) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth(peek.percent / 100f)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(Brush.horizontalGradient(listOf(Color(0xFF00C853), Brand.Charge)))
-                    )
-                }
-            }
         }
     }
 }
@@ -210,19 +190,6 @@ private class PeekSpec(
 
 @Composable
 private fun peekSpec(peek: Peek): PeekSpec = when (peek) {
-    is Peek.Charging -> PeekSpec(
-        title = "Wird geladen",
-        subtitle = null,
-        leading = { Badge("⚡", Brush.linearGradient(listOf(Brand.Charge, Color(0xFF00C853)))) },
-        trailing = {
-            Text(
-                peek.percent?.let { "$it %" } ?: "",
-                color = Brand.Charge,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    )
     is Peek.Copied -> PeekSpec(
         title = peek.preview,
         subtitle = "Im Verlauf gespeichert",
@@ -278,36 +245,8 @@ private fun peekSpec(peek: Peek): PeekSpec = when (peek) {
         )
     }
     // Wird oben in PeekContent direkt gezeichnet.
-    is Peek.MusicPlayer, is Peek.NameDrop, is Peek.Payment -> PeekSpec("", null, {}, {})
-    is Peek.System -> {
-        val tint = Color(peek.tint)
-        PeekSpec(
-            title = peek.title,
-            subtitle = null,
-            leading = {
-                Box(Modifier.size(26.dp).clip(CircleShape).background(tint.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
-                    Text(peek.symbol, color = tint, style = MaterialTheme.typography.labelLarge)
-                }
-            },
-            trailing = {
-                peek.value?.let { Text(it, color = tint, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1) }
-            }
-        )
-    }
-    is Peek.TrackChanged -> PeekSpec(
-        title = peek.title,
-        subtitle = peek.artist,
-        leading = {
-            val art = peek.artwork
-            if (art != null) {
-                val image = remember(art) { art.asImageBitmap() }
-                Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)))
-            } else {
-                Badge("♪", Brand.Horizontal)
-            }
-        },
-        trailing = { MiniEqualizer() }
-    )
+    is Peek.MusicPlayer, is Peek.NameDrop, is Peek.Payment, is Peek.Volume,
+    is Peek.Charging, is Peek.System, is Peek.TrackChanged -> PeekSpec("", null, {}, {})
 }
 
 @Composable
@@ -358,28 +297,6 @@ private fun MiniEqualizer() {
     }
 }
 
-/** Ein grüner Lichtstreifen läuft einmal von links nach rechts durch die Pille. */
-@Composable
-private fun Modifier.chargeSweep(): Modifier {
-    if (LocalInspectionMode.current) return this
-    val sweep = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { sweep.animateTo(1f, tween(1_400, delayMillis = 150, easing = FastOutSlowInEasing)) }
-    return drawWithContent {
-        drawContent()
-        val p = sweep.value
-        if (p in 0.001f..0.999f) {
-            val center = -size.width * 0.3f + p * size.width * 1.6f
-            drawRect(
-                Brush.horizontalGradient(
-                    listOf(Color.Transparent, Brand.Charge.copy(alpha = 0.35f), Color.Transparent),
-                    startX = center - size.width * 0.25f,
-                    endX = center + size.width * 0.25f
-                ),
-                topLeft = Offset.Zero
-            )
-        }
-    }
-}
 
 /** Aktionen einer Benachrichtigung: bis zu zwei App-Aktionen, „Öffnen“ und Schließen. */
 @Composable
@@ -653,24 +570,45 @@ private fun String.shortLabel(): String = when {
     else -> this
 }
 
-/** Platz je Seite der Linse für ein Systemereignis: genug für den Text rechts, symmetrisch links. */
-fun systemPillSideDp(peek: Peek.System): Int {
-    val text = peek.title + (peek.value?.let { " $it" } ?: "")
-    return (text.length * 7.6f + 30f).toInt().coerceIn(84, 150)
+/** Einblendungen, die nur die Pille verbreitern: Symbol links, Inhalt rechts der Kamera. */
+val Peek.isSidePill: Boolean
+    get() = this is Peek.System || this is Peek.Charging || this is Peek.Volume || this is Peek.TrackChanged
+
+/** Platz je Seite der Linse: genug für den Inhalt rechts, symmetrisch links (dp). */
+fun sidePillSideDp(peek: Peek): Int = when (peek) {
+    is Peek.System -> {
+        val text = peek.title + (peek.value?.let { " $it" } ?: "")
+        (text.length * 7.6f + 30f).toInt().coerceIn(84, 150)
+    }
+    is Peek.Charging -> 92
+    is Peek.Volume -> 104
+    is Peek.TrackChanged -> 138
+    else -> 120
 }
 
 /**
- * Systemereignis wie auf dem iPhone: nur die Pille wird breiter – links neben der Kamera das Symbol,
- * rechts „Lautlos“, „Vibration“, „Akku schwach 20 %“ … Keine zusätzliche Höhe.
+ * Wie beim iPhone: nur die Pille wird breiter – links neben der Kamera das Symbol, rechts
+ * „Lautlos“, der Akkustand, die Lautstärke oder der neue Titel. Keine zusätzliche Höhe.
  */
 @Composable
-private fun SystemEventPill(peek: Peek.System, lensGap: Dp) {
-    val tint = Color(peek.tint)
+private fun SidePillContent(peek: Peek, lensGap: Dp) {
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
         val half = (maxWidth - lensGap) / 2
         Box(Modifier.width(half).fillMaxHeight().padding(start = 12.dp), contentAlignment = Alignment.CenterStart) {
-            Box(Modifier.size(26.dp).clip(CircleShape).background(tint.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
-                Text(peek.symbol, color = tint, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+            when (peek) {
+                is Peek.System -> SymbolDot(peek.symbol, Color(peek.tint))
+                is Peek.Charging -> SymbolDot("⚡", Brand.Charge)
+                is Peek.Volume -> SpeakerIcon(peek.level)
+                is Peek.TrackChanged -> {
+                    val art = peek.artwork
+                    if (art != null) {
+                        val image = remember(art) { art.asImageBitmap() }
+                        Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp)))
+                    } else {
+                        SymbolDot("♪", Brand.Magenta)
+                    }
+                }
+                else -> Unit
             }
         }
         Row(
@@ -678,18 +616,116 @@ private fun SystemEventPill(peek: Peek.System, lensGap: Dp) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.End
         ) {
-            Text(
-                peek.title,
-                color = if (peek.value == null) tint else Color.White,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                modifier = Modifier.weight(1f, fill = false).smoothMarquee()
-            )
-            peek.value?.let {
-                Spacer(Modifier.width(5.dp))
-                Text(it, color = tint, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
+            when (peek) {
+                is Peek.System -> {
+                    val tint = Color(peek.tint)
+                    Text(
+                        peek.title,
+                        color = if (peek.value == null) tint else Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f, fill = false).smoothMarquee()
+                    )
+                    peek.value?.let {
+                        Spacer(Modifier.width(5.dp))
+                        Text(it, color = tint, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                }
+                is Peek.Charging -> {
+                    peek.percent?.let {
+                        Text("$it %", color = Brand.Charge, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    BatteryGlyph(peek.percent ?: 100)
+                }
+                is Peek.Volume -> LevelBar(peek.level, Modifier.width(72.dp))
+                is Peek.TrackChanged -> {
+                    Text(
+                        peek.title,
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f, fill = false).smoothMarquee()
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    MiniEqualizer()
+                }
+                else -> Unit
             }
         }
+    }
+}
+
+@Composable
+private fun SymbolDot(symbol: String, tint: Color) {
+    Box(Modifier.size(26.dp).clip(CircleShape).background(tint.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
+        Text(symbol, color = tint, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+    }
+}
+
+/** Akku als Umriss mit grüner Füllung – gezeichnet, damit er auf jedem Gerät gleich aussieht. */
+@Composable
+private fun BatteryGlyph(percent: Int) {
+    androidx.compose.foundation.Canvas(Modifier.size(26.dp, 13.dp)) {
+        val stroke = 1.5.dp.toPx()
+        val cap = 2.dp.toPx()
+        val body = androidx.compose.ui.geometry.Size(size.width - cap - 1.dp.toPx(), size.height)
+        val radius = androidx.compose.ui.geometry.CornerRadius(3.5.dp.toPx())
+        drawRoundRect(Color.White.copy(alpha = 0.55f), size = body, cornerRadius = radius, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+        val inset = stroke + 1.dp.toPx()
+        drawRoundRect(
+            Brand.Charge,
+            topLeft = Offset(inset, inset),
+            size = androidx.compose.ui.geometry.Size((body.width - 2 * inset) * percent.coerceIn(0, 100) / 100f, body.height - 2 * inset),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
+        )
+        drawRoundRect(
+            Color.White.copy(alpha = 0.55f),
+            topLeft = Offset(size.width - cap, size.height * 0.32f),
+            size = androidx.compose.ui.geometry.Size(cap, size.height * 0.36f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.dp.toPx())
+        )
+    }
+}
+
+/** Lautsprecher mit 0–2 Wellen je nach Pegel (gezeichnet statt Emoji). */
+@Composable
+private fun SpeakerIcon(level: Float) {
+    androidx.compose.foundation.Canvas(Modifier.size(22.dp)) {
+        val w = size.width
+        val h = size.height
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.10f, h * 0.38f); lineTo(w * 0.28f, h * 0.38f); lineTo(w * 0.50f, h * 0.18f)
+            lineTo(w * 0.50f, h * 0.82f); lineTo(w * 0.28f, h * 0.62f); lineTo(w * 0.10f, h * 0.62f); close()
+        }
+        drawPath(path, Color.White)
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(1.6.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        if (level <= 0f) {
+            drawLine(Color.White, Offset(w * 0.62f, h * 0.36f), Offset(w * 0.88f, h * 0.64f), 1.6.dp.toPx(), androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(Color.White, Offset(w * 0.88f, h * 0.36f), Offset(w * 0.62f, h * 0.64f), 1.6.dp.toPx(), androidx.compose.ui.graphics.StrokeCap.Round)
+        } else {
+            drawArc(Color.White, -45f, 90f, false, Offset(w * 0.38f, h * 0.30f), androidx.compose.ui.geometry.Size(w * 0.30f, h * 0.40f), style = stroke)
+            if (level > 0.5f) drawArc(Color.White, -45f, 90f, false, Offset(w * 0.30f, h * 0.16f), androidx.compose.ui.geometry.Size(w * 0.52f, h * 0.68f), style = stroke)
+        }
+    }
+}
+
+/** Pegel als Balken; die Breite gleitet in der Zeichenphase (keine Recomposition je Bild). */
+@Composable
+private fun LevelBar(level: Float, modifier: Modifier) {
+    val animated by androidx.compose.animation.core.animateFloatAsState(level, tween(180), label = "level")
+    Box(modifier.height(6.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f))) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = animated
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                }
+                .clip(CircleShape)
+                .background(Color.White)
+        )
     }
 }

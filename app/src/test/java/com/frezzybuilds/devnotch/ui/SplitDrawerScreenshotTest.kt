@@ -138,6 +138,8 @@ class SplitDrawerScreenshotTest {
         out.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
 
         // Tab „AI“ ist Pro: ohne Abo nur die Sperr-Karte.
+        compose.onNodeWithText("Übersicht").performClick()
+        compose.waitForIdle()
         compose.onNodeWithText("AI").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("✦ KI-Token-Tracker · Pro").assertExists()

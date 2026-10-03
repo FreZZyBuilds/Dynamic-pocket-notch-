@@ -99,7 +99,8 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
     private val recomposeScope = CoroutineScope(AndroidUiDispatcher.Main + SupervisorJob())
 
     /** Fenstertyp, in dem die Notch gerade hängt, und der zugehörige WindowManager. */
-    private var host = OverlayHost.APP
+    // Als Compose-State: Liegt die Notch über der Statusleiste, nutzt das Dashboard die Kamerazeile.
+    private var host by mutableStateOf(OverlayHost.APP)
     private var hostWindowManager: WindowManager? = null
     private lateinit var layoutParams: WindowManager.LayoutParams
     /** Wurzel des Overlay-Fensters (enthält die ComposeView, fängt die Zurück-Taste ab). */
@@ -379,6 +380,7 @@ class NotchOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, Save
             setContent {
                 NotchContainer(
                     layout = notchLayout,
+                    aboveStatusBar = host == OverlayHost.ACCESSIBILITY,
                     onExpandRequest = { isExpanded ->
                         expanded = isExpanded
                         if (isExpanded) {

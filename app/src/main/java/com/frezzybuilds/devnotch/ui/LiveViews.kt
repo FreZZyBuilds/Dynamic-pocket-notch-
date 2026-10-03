@@ -55,15 +55,18 @@ import com.frezzybuilds.devnotch.ui.theme.Brand
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
-/** Aktuelle Uhrzeit, sekündlich – nur solange [ticking] (laufende Dauer/Countdown). */
+/**
+ * Aktuelle Uhrzeit – nur solange [ticking] (laufende Dauer/Countdown), im Takt von [stepMs].
+ * Für „vor 5 Min.“ reicht ein grober Takt: weniger Neuaufbau, flüssigeres Scrollen.
+ */
 @Composable
-fun rememberNow(ticking: Boolean): Long {
+fun rememberNow(ticking: Boolean, stepMs: Long = 1_000L): Long {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     if (ticking && !LocalInspectionMode.current) {
-        LaunchedEffect(Unit) {
+        LaunchedEffect(stepMs) {
             while (true) {
                 now = System.currentTimeMillis()
-                delay(1_000 - now % 1_000)
+                delay(stepMs - now % stepMs)
             }
         }
     }

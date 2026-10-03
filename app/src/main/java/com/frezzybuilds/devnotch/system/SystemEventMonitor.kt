@@ -49,8 +49,23 @@ class SystemEventMonitor(private val context: Context, private val settings: Not
                 NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED -> onDnd()
                 PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> onPowerSave()
                 Intent.ACTION_BATTERY_CHANGED -> onBattery(intent)
+                Intent.ACTION_AIRPLANE_MODE_CHANGED ->
+                    show(SystemEvent.AIRPLANE, "✈", "Flugmodus", if (intent.getBooleanExtra("state", false)) "An" else "Aus", ORANGE)
+                VOLUME_CHANGED -> onVolume(intent)
             }
         }
+    }
+
+    /** Lautstärke von Medien, Klingelton oder Gespräch – nur echte Änderungen, nicht beim Start. */
+    private fun onVolume(intent: Intent) {
+        if (!on(SystemEvent.VOLUME)) return
+        val stream = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1)
+        if (stream !in VOLUME_STREAMS) return
+        val value = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_VALUE", -1)
+        val previous = intent.getIntExtra("android.media.EXTRA_PREV_VOLUME_STREAM_VALUE", -1)
+        if (value < 0 || value == previous) return
+        val max = audio?.getStreamMaxVolume(stream)?.takeIf { it > 0 } ?: return
+        PeekCenter.show(Peek.Volume((value.toFloat() / max).coerceIn(0f, 1f), stream))
     }
 
     private fun onRinger() = when (audio?.ringerMode) {
@@ -132,6 +147,8 @@ class SystemEventMonitor(private val context: Context, private val settings: Not
                 addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
                 addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
                 addAction(Intent.ACTION_BATTERY_CHANGED)
+                addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
+                addAction(VOLUME_CHANGED)
             },
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
@@ -156,6 +173,10 @@ class SystemEventMonitor(private val context: Context, private val settings: Not
         const val PURPLE = 0xFFBF5AF2L
         const val YELLOW = 0xFFFFD60AL
         const val CYAN = 0xFF64D2FFL
+
+        /** Nicht offiziell dokumentiert, aber seit Android 4 vom System gesendet. */
+        const val VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION"
+        val VOLUME_STREAMS = setOf(AudioManager.STREAM_MUSIC, AudioManager.STREAM_RING, AudioManager.STREAM_VOICE_CALL)
 
         val HEADPHONE_TYPES = setOf(
             AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,

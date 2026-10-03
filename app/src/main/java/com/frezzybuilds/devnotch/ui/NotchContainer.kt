@@ -1,5 +1,9 @@
 package com.frezzybuilds.devnotch.ui
 
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import com.frezzybuilds.devnotch.service.CallControl
 import com.frezzybuilds.devnotch.share.Wallet
 import com.frezzybuilds.devnotch.share.ShareActions
@@ -143,14 +147,13 @@ private val EdgeBubbleSize = 56.dp
 private val EdgeBubbleGap = 8.dp
 
 /** Auf dem Sperrbildschirm erlaubt: nichts Privates. */
-private val LockedTabs = listOf(NotchTab.TIMER)
 
 private const val AI_REFRESH_INTERVAL_MS = 15 * 60_000L
 
 /** Mindest-Wischstrecke, ab der eine Geste die Notch öffnet oder schließt. */
 private val GestureThreshold = 40.dp
 
-private enum class NotchTab(val title: String) {
+internal enum class NotchTab(val title: String) {
     DEV("Dev"),
     TIMER("Timer"),
     NOTES("Notizen"),
@@ -179,6 +182,8 @@ fun NotchContainer(
     backPresses: Int = 0,
     /** Sperrbildschirm: nur Musik und Timer, keine privaten Inhalte (Notizen, Clip, Dev, AI). */
     locked: Boolean = false,
+    /** Fenster liegt über der Statusleiste (Bedienungshilfe): Kopf des Dashboards in der Kamerazeile. */
+    aboveStatusBar: Boolean = false,
     /** Einklapp-Animation ist fertig – erst jetzt darf der Service das Fenster verkleinern. */
     onCollapseSettled: () -> Unit = {},
     /** Peek beginnt/endet – der Service passt die Fenstergröße einmalig an. */
@@ -189,11 +194,8 @@ fun NotchContainer(
     onPillWidthChange: (widthDp: Int?) -> Unit = {}
 ) {
     var isExpanded by remember { mutableStateOf(false) }
-    // Erster Eindruck mit sofortigem Nutzen: ohne GitHub-Token startet die Notch im Timer.
-    val startContext = LocalContext.current
-    var selectedTab by remember {
-        mutableStateOf(if (startContext.appContainer.gitHubSettings.token.isNullOrBlank()) NotchTab.TIMER else NotchTab.DEV)
-    }
+    // Geöffnete Kategorie im Dashboard; null = Übersicht mit Kacheln.
+    var selectedTab by remember { mutableStateOf<NotchTab?>(null) }
 
     // ViewModel hängt am ViewModelStore des Service: Der Timer läuft auch eingeklappt weiter.
     val focusTimer: FocusTimerViewModel = viewModel { FocusTimerViewModel() }
@@ -239,6 +241,8 @@ fun NotchContainer(
             PeekCenter.current.value?.let(PeekCenter::dismiss)
         } else {
             openedNotification = null
+            // Beim nächsten Öffnen wieder die Übersicht.
+            selectedTab = null
         }
         expandJob?.cancel()
         onExpandRequest(expanded)
@@ -432,8 +436,8 @@ fun NotchContainer(
     LaunchedEffect(peekExtraDp) { onPeekChange(peekExtraDp) }
     val (collapsedWidth, collapsedHeight) = if (activePeek != null) {
         val (w, h) = ExpandedSize.peek(peekConfig.screenWidthDp, pillHeight.value, peekExtraDp ?: 0)
-        // Systemereignis: nur so breit wie Symbol links + Text rechts der Kamera.
-        val width = if (activePeek is Peek.System) minOf(w, gapDp.value + 2 * systemPillSideDp(activePeek)) else w
+        // Seitenpille (System, Laden, Lautstärke, Titel): nur so breit wie Symbol links + Inhalt rechts.
+        val width = if (activePeek.isSidePill) minOf(w, gapDp.value + 2 * sidePillSideDp(activePeek)) else w
         width.dp to h.dp
     } else if (pillHasText) {
         widePillDp.dp to pillHeight
@@ -660,17 +664,21 @@ fun NotchContainer(
                             onSend = ::sendIntent,
                             onResizeDrag = onResizeDrag,
                             onResizeEnd = onResizeEnd,
-                            tabs = if (locked) LockedTabs else NotchTab.entries,
-                            selectedTab = if (locked) NotchTab.TIMER else selectedTab,
-                            onSelectTab = { selectedTab = it },
+                            // Gesperrt nur der Timer – nichts Privates.
+                            section = if (locked) NotchTab.TIMER else selectedTab,
+                            onOpenSection = { selectedTab = it },
                             focusTimer = focusTimer,
                             nowPlaying = nowPlaying,
                             onClose = { setExpanded(false) },
+                            // Über der Statusleiste ist die Kamerazeile frei: Titel links, ✕ rechts der Linse
+                            // statt eines leeren schwarzen Streifens.
+                            cameraRow = if (aboveStatusBar && layout.mode == NotchLayoutMode.NOTCH_TOP && topInset > 0.dp) topInset else null,
+                            lensGap = lensGap(layout),
                             modifier = Modifier
                                 .wrapContentSize(Alignment.TopCenter, unbounded = true)
                                 .size(expandedWidth, expandedHeight)
                                 // Inhalt unter Statusleiste und Kamera; darüber bleibt die Fläche schwarz.
-                                .padding(top = topInset)
+                                .padding(top = if (aboveStatusBar && layout.mode == NotchLayoutMode.NOTCH_TOP) 0.dp else topInset)
                         )
                     } else if (activePeek != null) {
                         PeekContent(
@@ -806,88 +814,87 @@ private fun Dashboard(
     onSend: (PendingIntent?) -> Unit,
     onResizeDrag: ((Float) -> Unit)?,
     onResizeEnd: () -> Unit,
-    tabs: List<NotchTab>,
-    selectedTab: NotchTab,
-    onSelectTab: (NotchTab) -> Unit,
+    section: NotchTab?,
+    onOpenSection: (NotchTab?) -> Unit,
     focusTimer: FocusTimerViewModel,
     nowPlaying: NowPlaying?,
     onClose: () -> Unit,
+    cameraRow: Dp? = null,
+    lensGap: Dp = 0.dp,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.padding(12.dp)) {
+    Column(modifier = modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp, top = if (cameraRow != null) 0.dp else 12.dp)) {
+        if (cameraRow != null) {
+            // Kopf in der Kamerazeile: links Titel/Musik, rechts Schließen – die Linse bleibt frei.
+            Row(Modifier.fillMaxWidth().height(cameraRow).staggerIn(0), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    if (nowPlaying != null) MediaHeader(nowPlaying, Modifier.fillMaxWidth())
+                    else Text("DevNotch", color = Color.White, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.width(lensGap))
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                    TextButton(onClick = onClose) { Text("✕", color = Color.Gray) }
+                }
+            }
+        }
         if (opened != null) {
             NotificationDetail(opened, locked, onSend, onReplied, onBack = onCloseDetail)
             return@Column
         }
-        Box(Modifier.staggerIn(0)) { DashboardHeader(nowPlaying, onClose, shortcuts = !locked) }
+        if (cameraRow == null) Box(Modifier.staggerIn(0)) { DashboardHeader(nowPlaying, onClose) }
         if (live != null) {
             LiveCard(live, onSend, Modifier.padding(top = 6.dp).staggerIn(0))
         }
-
-        TabRow(
-            selectedTabIndex = tabs.indexOf(selectedTab).coerceAtLeast(0),
-            containerColor = Color.Transparent,
-            contentColor = Color.White,
-            // Indikator im Markenverlauf statt Standard-Lila, Trennlinie kaum sichtbar.
-            indicator = { positions ->
-                val index = tabs.indexOf(selectedTab)
-                if (index in positions.indices) {
-                    Box(
-                        with(TabRowDefaults) { Modifier.tabIndicatorOffset(positions[index]) }
-                            .padding(horizontal = 14.dp)
-                            .height(2.5.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(Brand.Horizontal)
-                    )
-                }
-            },
-            divider = { HorizontalDivider(color = Color.White.copy(alpha = 0.08f)) },
-            modifier = Modifier.staggerIn(1)
-        ) {
-            tabs.forEach { tab ->
-                // Content-Variante ohne die 16-dp-Textränder: fünf Tabs passen so in 336 dp.
-                Tab(
-                    selected = tab == selectedTab,
-                    onClick = { onSelectTab(tab) },
-                    unselectedContentColor = Color.White.copy(alpha = 0.45f)
-                ) {
-                    Text(
-                        tab.title,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = if (tab == selectedTab) FontWeight.SemiBold else FontWeight.Normal,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 2.dp, vertical = 14.dp)
-                    )
-                }
-            }
-        }
-
-        // Tab-Wechsel gleitet in Richtung des neuen Tabs statt hart umzuschalten.
+        // Übersicht ↔ Kategorie: Die Ansicht federt aus der Kachel auf („Blob“), zurück schrumpft sie.
         AnimatedContent(
-            targetState = selectedTab,
+            targetState = section,
             transitionSpec = {
-                val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
-                (slideInHorizontally(tween(260)) { width -> direction * width / 6 } + fadeIn(tween(220, delayMillis = 40))) togetherWith
-                    (slideOutHorizontally(tween(200)) { width -> -direction * width / 6 } + fadeOut(tween(140))) using
+                val opening = targetState != null
+                (scaleIn(spring(dampingRatio = 0.75f, stiffness = 600f), initialScale = if (opening) 0.88f else 1.06f) + fadeIn(tween(160))) togetherWith
+                    (scaleOut(tween(140), targetScale = if (opening) 1.04f else 0.92f) + fadeOut(tween(110))) using
                     SizeTransform(clip = false)
             },
-            label = "tabContent",
+            label = "dashboardSection",
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(top = 8.dp)
-                .staggerIn(2)
+                .padding(top = 10.dp)
         ) { tab ->
-            Box(Modifier.fillMaxSize()) {
-                when (tab) {
-                    NotchTab.AI -> ProGate(ProFeature.AI_TRACKER, onLeave = onClose) { AiStatsTabContent(onLeave = onClose) }
-                    NotchTab.TIMER -> FocusTimerTab(focusTimer)
-                    NotchTab.CLIP -> ClipboardContent(onLeave = onClose)
-                    NotchTab.DEV -> DevTabContent(onLaunched = onClose)
-                    NotchTab.NOTES -> NotesContent(onLeaveForExternalApp = onClose)
-                    NotchTab.PHONE -> PhoneTabContent(onLeave = onClose)
-                    NotchTab.INBOX -> NotificationStackContent(onOpen = onOpenNotification)
+            if (tab == null) {
+                val timerLeft by focusTimer.remainingTime.collectAsStateWithLifecycle()
+                val timerRunning by focusTimer.isRunning.collectAsStateWithLifecycle()
+                val inbox by NotificationHub.recent.collectAsStateWithLifecycle()
+                DashboardHome(
+                    subtitle = { t ->
+                        when (t) {
+                            NotchTab.INBOX -> if (inbox.isEmpty()) "Alles gelesen" else "${inbox.size} neu"
+                            NotchTab.TIMER -> if (timerRunning) "${formatMmSs(timerLeft)} läuft" else formatMmSs(timerLeft)
+                            NotchTab.PHONE -> "Wählen"
+                            NotchTab.NOTES -> "Schnell notieren"
+                            NotchTab.CLIP -> "Verlauf"
+                            NotchTab.DEV -> "Repos & Builds"
+                            NotchTab.AI -> "Kosten & Limits"
+                        }
+                    },
+                    badge = { t -> if (t == NotchTab.INBOX) inbox.size else 0 },
+                    onOpen = { onOpenSection(it) },
+                    onClose = onClose,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    SectionTopBar(tab, onBack = if (locked) null else ({ onOpenSection(null) }))
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        when (tab) {
+                            NotchTab.AI -> ProGate(ProFeature.AI_TRACKER, onLeave = onClose) { AiStatsTabContent(onLeave = onClose) }
+                            NotchTab.TIMER -> FocusTimerTab(focusTimer)
+                            NotchTab.CLIP -> ClipboardContent(onLeave = onClose)
+                            NotchTab.DEV -> DevTabContent(onLaunched = onClose)
+                            NotchTab.NOTES -> NotesContent(onLeaveForExternalApp = onClose)
+                            NotchTab.PHONE -> PhoneTabContent(onLeave = onClose)
+                            NotchTab.INBOX -> NotificationStackContent(onOpen = onOpenNotification)
+                        }
+                    }
                 }
             }
         }
@@ -925,7 +932,7 @@ private fun Modifier.neonFrame(shape: Shape, rim: State<Float>): Modifier = draw
 
 /** Kopfzeile: Mediensteuerung, wenn Musik läuft (keine Extra-Höhe), sonst Titel; dazu ✕. */
 @Composable
-internal fun DashboardHeader(nowPlaying: NowPlaying?, onClose: () -> Unit, shortcuts: Boolean = false) {
+internal fun DashboardHeader(nowPlaying: NowPlaying?, onClose: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -940,36 +947,10 @@ internal fun DashboardHeader(nowPlaying: NowPlaying?, onClose: () -> Unit, short
                 modifier = Modifier.weight(1f)
             )
         }
-        if (shortcuts) ShareShortcuts(onClose)
         TextButton(onClick = onClose) {
             Text("✕", color = Color.Gray)
         }
     }
-}
-
-/** NameDrop, Senden (LocalSend) und Wallet – je ein Tipp, danach klappt die Notch ein. */
-@Composable
-private fun ShareShortcuts(onClose: () -> Unit) {
-    val context = LocalContext.current
-    val wallet = remember { Wallet.installedApp(context) != null }
-    @Composable
-    fun shortcut(symbol: String, label: String, action: () -> Unit) {
-        Box(
-            Modifier
-                .padding(start = 4.dp)
-                .size(30.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.10f))
-                .clickable(role = Role.Button, onClickLabel = label) {
-                    onClose()
-                    action()
-                },
-            contentAlignment = Alignment.Center
-        ) { Text(symbol, style = MaterialTheme.typography.labelMedium) }
-    }
-    shortcut("👤", "NameDrop") { ShareActions.startNameDrop(context) }
-    shortcut("⇪", "Dateien senden") { ShareActions.pickAndSend(context) }
-    if (wallet) shortcut("💳", "Google Pay öffnen") { Wallet.open(context) }
 }
 
 /**

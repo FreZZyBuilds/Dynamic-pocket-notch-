@@ -281,7 +281,7 @@ fun GlassNotificationPeek(
 @Composable
 fun NotificationStackContent(onOpen: (NotchNotification) -> Unit) {
     val items by NotificationHub.recent.collectAsStateWithLifecycle()
-    val now = rememberNow(ticking = true)
+    val now = rememberNow(ticking = true, stepMs = 30_000L)
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Benachrichtigungen", color = Color.White, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)

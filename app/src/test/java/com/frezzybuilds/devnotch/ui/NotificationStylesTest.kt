@@ -117,9 +117,12 @@ class NotificationStylesTest {
                         }
                         listOf(
                             Peek.System(com.frezzybuilds.devnotch.system.SystemEvent.RINGER, "🔕", "Lautlos", null, 0xFFFF453AL),
-                            Peek.System(com.frezzybuilds.devnotch.system.SystemEvent.LOW_BATTERY, "⚠", "Akku schwach", "20 %", 0xFFFF453AL)
+                            Peek.System(com.frezzybuilds.devnotch.system.SystemEvent.LOW_BATTERY, "⚠", "Akku schwach", "20 %", 0xFFFF453AL),
+                            Peek.Charging(80),
+                            Peek.Volume(0.6f, android.media.AudioManager.STREAM_MUSIC),
+                            Peek.TrackChanged("Blinding Lights", "The Weeknd", null)
                         ).forEach { sys ->
-                            Box(Modifier.size((42 + 2 * systemPillSideDp(sys)).dp, 36.dp).clip(RoundedCornerShape(18.dp)).background(Color.Black)) {
+                            Box(Modifier.size((42 + 2 * sidePillSideDp(sys)).dp, 36.dp).clip(RoundedCornerShape(18.dp)).background(Color.Black)) {
                                 PeekContent(sys, pillHeight = 36.dp, lensGap = 42.dp)
                                 Box(Modifier.align(androidx.compose.ui.Alignment.Center).size(12.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF1C1C2A)))
                             }

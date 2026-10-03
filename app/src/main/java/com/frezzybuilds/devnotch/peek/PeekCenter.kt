@@ -19,6 +19,14 @@ sealed interface Peek {
     /** Ladekabel angesteckt. [percent] null, wenn der Akkustand unbekannt ist. */
     data class Charging(val percent: Int?) : Peek {
         override val durationMs = 3_500L
+        // Wie beim iPhone: Blitz links, Akku mit Prozent rechts der Kamera – keine Zusatzhöhe.
+        override val extraHeightDp: Int get() = 0
+    }
+
+    /** Lautstärke geändert (wie die Lautstärke-Anzeige in der Insel ab iOS 17). [level] 0…1. */
+    data class Volume(val level: Float, val stream: Int) : Peek {
+        override val durationMs = 1_600L
+        override val extraHeightDp: Int get() = 0
     }
 
     /** Text wurde kopiert (nur wo Android das Mitlesen erlaubt, siehe ClipboardListener). */
@@ -118,8 +126,10 @@ sealed interface Peek {
         }
     }
 
+    /** Neuer Titel: Cover links, Titel mit Wellenform rechts der Kamera – keine Zusatzhöhe. */
     data class TrackChanged(val title: String, val artist: String?, val artwork: Bitmap?) : Peek {
         override val durationMs = 3_000L
+        override val extraHeightDp: Int get() = 0
     }
 }
 

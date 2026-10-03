@@ -120,10 +120,14 @@ class PeekScreenshotTest {
         }
         compose.onRoot().performTouchInput { click(androidx.compose.ui.geometry.Offset(centerX, 50f)) }
         compose.mainClock.advanceTimeBy(1_500)
+        compose.waitForIdle()
+        save(view, "dashboard_home")
         compose.onNodeWithText("Timer").performClick()
         compose.mainClock.advanceTimeBy(1_000)
         compose.waitForIdle()
         save(view, "dashboard_timer_branded")
+        compose.onNodeWithText("Übersicht").performClick()
+        compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithText("Clip").performClick()
         compose.mainClock.advanceTimeBy(1_000)
         compose.waitForIdle()

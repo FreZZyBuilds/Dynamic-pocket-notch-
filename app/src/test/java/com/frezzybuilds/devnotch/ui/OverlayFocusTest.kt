@@ -67,7 +67,12 @@ class OverlayFocusTest {
         compose.waitForIdle()
     }
 
+    /** Kategorie über die Übersicht öffnen (erst zurück, falls schon eine offen ist). */
     private fun tab(title: String) {
+        if (compose.onAllNodesWithText("Übersicht").fetchSemanticsNodes().isNotEmpty()) {
+            compose.onNodeWithText("Übersicht").performClick()
+            compose.waitForIdle()
+        }
         compose.onNodeWithText(title).performClick()
         compose.waitForIdle()
     }
@@ -79,7 +84,7 @@ class OverlayFocusTest {
         assertFalse("eingeklappt nie fokussierbar", lastFocus)
 
         expand()
-        assertFalse("Dev-Tab: Tastatur bleibt bei der App dahinter", lastFocus)
+        assertFalse("Übersicht: Tastatur bleibt bei der App dahinter", lastFocus)
 
         tab("Notizen")
         assertTrue("Notizen: Bildschirmtastatur muss erscheinen können", lastFocus)
