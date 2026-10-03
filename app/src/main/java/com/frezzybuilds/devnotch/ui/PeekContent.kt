@@ -574,7 +574,10 @@ private fun String.shortLabel(): String = when {
 val Peek.isSidePill: Boolean
     get() = this is Peek.System || this is Peek.Charging || this is Peek.Volume || this is Peek.TrackChanged
 
-/** Platz je Seite der Linse: genug für den Inhalt rechts, symmetrisch links (dp). */
+/** Linke Seite einer Seitenpille: nur das Symbol, dicht an der Kameralinse (dp). */
+const val SIDE_PILL_LEFT_DP = 44
+
+/** Rechte Seite der Linse: genug für den Inhalt (dp). */
 fun sidePillSideDp(peek: Peek): Int = when (peek) {
     is Peek.System -> {
         val text = peek.title + (peek.value?.let { " $it" } ?: "")
@@ -593,8 +596,9 @@ fun sidePillSideDp(peek: Peek): Int = when (peek) {
 @Composable
 private fun SidePillContent(peek: Peek, lensGap: Dp) {
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
-        val half = (maxWidth - lensGap) / 2
-        Box(Modifier.width(half).fillMaxHeight().padding(start = 12.dp), contentAlignment = Alignment.CenterStart) {
+        // Links schmal (nur Symbol), rechts der Rest – passend zur Verschiebung im Container.
+        val half = SIDE_PILL_LEFT_DP.dp.coerceAtMost((maxWidth - lensGap) / 2)
+        Box(Modifier.width(half).fillMaxHeight().padding(start = 10.dp), contentAlignment = Alignment.CenterStart) {
             when (peek) {
                 is Peek.System -> SymbolDot(peek.symbol, Color(peek.tint))
                 is Peek.Charging -> SymbolDot("⚡", Brand.Charge)

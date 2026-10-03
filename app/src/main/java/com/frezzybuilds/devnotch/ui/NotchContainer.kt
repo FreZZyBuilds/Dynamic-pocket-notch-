@@ -1,5 +1,7 @@
 package com.frezzybuilds.devnotch.ui
 
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.layout.offset
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.verticalScroll
@@ -434,16 +436,28 @@ fun NotchContainer(
     val peekTrimDp = (pillHeight - peekContentTop).value.roundToInt()
     val peekExtraDp = activePeek?.let { (it.extraHeightDp - peekTrimDp).coerceAtLeast(0) }
     LaunchedEffect(peekExtraDp) { onPeekChange(peekExtraDp) }
+    // Seitenpille: links nur das Symbol dicht an der Linse, rechts so viel Platz wie der Text braucht.
+    // Die Pille ist dann unsymmetrisch und wird so verschoben, dass die Linse an ihrer Stelle bleibt.
+    var sidePillShiftDp = 0f
     val (collapsedWidth, collapsedHeight) = if (activePeek != null) {
         val (w, h) = ExpandedSize.peek(peekConfig.screenWidthDp, pillHeight.value, peekExtraDp ?: 0)
-        // Seitenpille (System, Laden, Lautstärke, Titel): nur so breit wie Symbol links + Inhalt rechts.
-        val width = if (activePeek.isSidePill) minOf(w, gapDp.value + 2 * sidePillSideDp(activePeek)) else w
+        val width = if (activePeek.isSidePill) {
+            val left = SIDE_PILL_LEFT_DP.toFloat()
+            // Rechts nie über das (um die Linse zentrierte) Fenster hinaus.
+            val right = minOf(sidePillSideDp(activePeek).toFloat(), w / 2 - gapDp.value / 2)
+            sidePillShiftDp = (right - left) / 2
+            gapDp.value + left + right
+        } else {
+            w
+        }
         width.dp to h.dp
     } else if (pillHasText) {
         widePillDp.dp to pillHeight
     } else {
         pillWidth to pillHeight
     }
+    // Verschiebung federt mit der Größe mit; gelesen erst im Layout (keine Recomposition je Bild).
+    val sidePillShift = animateFloatAsState(sidePillShiftDp, notchSpring(), label = "sidePillShift")
     // Als State, gelesen erst in Layer/Zeichnen: Ein animierter Radius darf nicht bei jedem
     // Bild den ganzen Container neu komponieren (das ruckelte beim Einklappen).
     val cornerRadius = animateDpAsState(
@@ -545,6 +559,7 @@ fun NotchContainer(
                 if (minimalItem != null) Spacer(Modifier.width(pillHeight + MinimalGap))
                 Box(
                     modifier = Modifier
+                        .offset { IntOffset(sidePillShift.value.dp.roundToPx(), 0) }
                         // Antippen: Die Pille „gibt nach“ und federt zurück.
                         .graphicsLayer {
                             scaleX = squish.value

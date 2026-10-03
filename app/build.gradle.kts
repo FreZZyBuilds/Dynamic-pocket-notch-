@@ -47,8 +47,8 @@ android {
         applicationId = "com.frezzybuilds.devnotch"
         minSdk = 26 // TYPE_APPLICATION_OVERLAY, Notification Channels, adaptive Icons
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.9.9"
+        versionCode = 22
+        versionName = "0.9.10"
 
         // RevenueCat Public SDK Key (Google Play, beginnt mit "goog_").
         // local.properties: revenuecat.apiKey=goog_xxx  ·  CI: -Prevenuecat.apiKey=…
