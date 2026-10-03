@@ -108,10 +108,20 @@ class NotificationStylesTest {
                     ) {
                         NotificationStyle.entries.forEach { style ->
                             val peek = Peek.Notification(n, 0, style, more = 1)
-                            Box(Modifier.size(340.dp, (36 + peek.extraHeightDp).dp).clip(RoundedCornerShape(30.dp)).background(Color.Black)) {
-                                PeekContent(peek, pillHeight = 36.dp, lensGap = 42.dp)
+                            // Wie im Container: Inhalt knapp unter der 12-dp-Linse (36/2 + 6 + 3 = 27 dp).
+                            Box(Modifier.size(340.dp, (27 + peek.extraHeightDp).dp).clip(RoundedCornerShape(30.dp)).background(Color.Black)) {
+                                PeekContent(peek, pillHeight = 36.dp, lensGap = 42.dp, contentTop = 27.dp)
                                 // Kameralinse zur Orientierung.
                                 Box(Modifier.align(androidx.compose.ui.Alignment.TopCenter).padding(top = 12.dp).size(12.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF1C1C2A)))
+                            }
+                        }
+                        listOf(
+                            Peek.System(com.frezzybuilds.devnotch.system.SystemEvent.RINGER, "🔕", "Lautlos", null, 0xFFFF453AL),
+                            Peek.System(com.frezzybuilds.devnotch.system.SystemEvent.LOW_BATTERY, "⚠", "Akku schwach", "20 %", 0xFFFF453AL)
+                        ).forEach { sys ->
+                            Box(Modifier.size((42 + 2 * systemPillSideDp(sys)).dp, 36.dp).clip(RoundedCornerShape(18.dp)).background(Color.Black)) {
+                                PeekContent(sys, pillHeight = 36.dp, lensGap = 42.dp)
+                                Box(Modifier.align(androidx.compose.ui.Alignment.Center).size(12.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF1C1C2A)))
                             }
                         }
                         Box(Modifier.size(340.dp, 250.dp).clip(RoundedCornerShape(30.dp)).background(Color.Black).padding(14.dp)) {

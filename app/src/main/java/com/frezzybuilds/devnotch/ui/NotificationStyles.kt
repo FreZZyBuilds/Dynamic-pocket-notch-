@@ -121,36 +121,39 @@ fun NotificationAvatar(n: NotchNotification, size: Dp) {
 }
 
 /**
- * iOS kompakt: eine schmale Zeile unter der Kamera – Avatar mit App-Abzeichen, fetter Name,
- * Text als Lauftext und rechts „jetzt“. Tippen öffnet, Herunterziehen zum Antworten.
+ * iOS kompakt: flach wie auf dem iPhone. Das Symbol sitzt links über die ganze Höhe (neben der Kamera
+ * ist Platz), Name, Text und „jetzt“ beginnen knapp unter der Linse. Tippen öffnet, Herunterziehen
+ * zum Antworten.
  */
 @Composable
-fun CompactNotificationPeek(peek: Peek.Notification, pillHeight: Dp) {
+fun CompactNotificationPeek(peek: Peek.Notification, contentTop: Dp) {
     val n = peek.notification
     val now = rememberNow(ticking = false)
-    Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
-        Spacer(Modifier.height(pillHeight))
-        Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            NotificationAvatar(n, 32.dp)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(n.title, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                n.text?.let {
-                    Text(
-                        it.replace('\n', ' '),
-                        color = Color.White.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
-                        modifier = Modifier.fillMaxWidth().smoothMarquee(900, 60.dp)
-                    )
-                }
+    val avatar = 34.dp
+    Box(Modifier.fillMaxSize().padding(start = 16.dp, end = 18.dp)) {
+        Box(Modifier.align(Alignment.CenterStart)) { NotificationAvatar(n, avatar) }
+        Column(Modifier.fillMaxWidth().padding(start = avatar + 12.dp, top = contentTop)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    n.title, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (peek.more > 0) "+${peek.more}" else relativeTime(n.postTime, now),
+                    color = Color.White.copy(alpha = 0.5f),
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
-            Spacer(Modifier.width(8.dp))
-            Text(
-                if (peek.more > 0) "+${peek.more}" else relativeTime(n.postTime, now),
-                color = Color.White.copy(alpha = 0.5f),
-                style = MaterialTheme.typography.labelSmall
-            )
+            n.text?.let {
+                Text(
+                    it.replace('\n', ' '),
+                    color = Color.White.copy(alpha = 0.7f),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth().smoothMarquee(900, 60.dp)
+                )
+            }
         }
     }
 }
@@ -161,25 +164,27 @@ fun CompactNotificationPeek(peek: Peek.Notification, pillHeight: Dp) {
  * In der Kamerazeile zeichnet Android sonst Uhr und Symbole – daher am besten mit überdeckter Statusleiste.
  */
 @Composable
-fun ApertureNotificationPeek(peek: Peek.Notification, pillHeight: Dp, lensGap: Dp) {
+fun ApertureNotificationPeek(peek: Peek.Notification, pillHeight: Dp, lensGap: Dp, contentTop: Dp = pillHeight) {
     val n = peek.notification
     val now = rememberNow(ticking = false)
     // Name in App-Farbe, aufgehellt, damit er auf Schwarz leuchtet.
     val nameColor = n.accent?.let { androidx.compose.ui.graphics.lerp(Color(it), Color.White, 0.2f) } ?: Brand.Cyan
     val avatar = 30.dp
     val side = 12.dp
-    // Erste Zeile endet mittig in der Kamerazeile, die zweite direkt darunter.
-    val titleTop = pillHeight * 0.3f
+    // Erste Zeile auf Höhe der Linse, die zweite knapp darunter.
+    val titleTop = (pillHeight / 2 - 10.dp).coerceAtLeast(0.dp)
+    val titleHeight = 20.dp
+    val textTop = maxOf(contentTop - 2.dp, titleTop + titleHeight - 2.dp)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val half = (maxWidth - lensGap) / 2
         Box(Modifier.padding(start = side, top = titleTop).height(maxHeight - titleTop), contentAlignment = Alignment.CenterStart) {
             NotificationAvatar(n, avatar)
         }
         val textStart = side + avatar + 8.dp
-        Box(Modifier.padding(start = textStart, top = titleTop).width((half - textStart).coerceAtLeast(24.dp)).height(pillHeight - titleTop), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.padding(start = textStart, top = titleTop).width((half - textStart).coerceAtLeast(24.dp)).height(titleHeight), contentAlignment = Alignment.CenterStart) {
             Text(n.title, color = nameColor, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Box(Modifier.padding(start = half + lensGap, top = titleTop, end = side + 4.dp).fillMaxWidth().height(pillHeight - titleTop), contentAlignment = Alignment.CenterEnd) {
+        Box(Modifier.padding(start = half + lensGap, top = titleTop, end = side + 4.dp).fillMaxWidth().height(titleHeight), contentAlignment = Alignment.CenterEnd) {
             Text(
                 if (peek.more > 0) "+${peek.more}" else relativeTime(n.postTime, now),
                 color = Color.White.copy(alpha = 0.5f),
@@ -187,7 +192,7 @@ fun ApertureNotificationPeek(peek: Peek.Notification, pillHeight: Dp, lensGap: D
                 maxLines = 1
             )
         }
-        Box(Modifier.padding(start = textStart, top = pillHeight - 1.dp, end = side + 4.dp).fillMaxWidth()) {
+        Box(Modifier.padding(start = textStart, top = textTop, end = side + 4.dp).fillMaxWidth()) {
             Text(
                 (n.text ?: n.appLabel).replace('\n', ' '),
                 color = Color.White.copy(alpha = 0.85f),

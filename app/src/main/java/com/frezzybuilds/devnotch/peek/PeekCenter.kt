@@ -43,7 +43,7 @@ sealed interface Peek {
             // Kopfzeile (Titel + Lauftext) und immer die Aktionszeile („Öffnen“, ✕).
             com.frezzybuilds.devnotch.notify.NotificationStyle.CLASSIC -> 86
             // Eine schmale Zeile wie auf dem iPhone.
-            com.frezzybuilds.devnotch.notify.NotificationStyle.COMPACT -> 48
+            com.frezzybuilds.devnotch.notify.NotificationStyle.COMPACT -> 40
             // Karte mit Kopf, Text und Fußzeile („+N weitere“ oder Aktionen).
             com.frezzybuilds.devnotch.notify.NotificationStyle.GLASS -> 122
             // Name in der Kamerazeile, nur die Textzeile darunter.
@@ -70,6 +70,8 @@ sealed interface Peek {
         val tint: Long
     ) : Peek {
         override val durationMs = if (event == com.frezzybuilds.devnotch.system.SystemEvent.UNLOCK) 1_300L else 2_200L
+        // Wie beim iPhone: Symbol links, Text rechts der Kamera – die Pille wird nur breiter.
+        override val extraHeightDp: Int get() = 0
     }
 
     /** LocalSend: ein Gerät möchte Dateien senden – Annehmen oder Ablehnen (wie AirDrop). */

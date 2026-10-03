@@ -345,7 +345,6 @@ fun NotchContainer(
         PeekCenter.dismiss(current)
     }
     LaunchedEffect(activePeek) {
-        onPeekChange(activePeek?.extraHeightDp)
         val shown = activePeek ?: return@LaunchedEffect
         peekHaptic.performHapticFeedback(
             if (shown is Peek.TimerDone) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove
@@ -422,8 +421,20 @@ fun NotchContainer(
         else -> null
     }
     LaunchedEffect(windowWidthDp) { onPillWidthChange(windowWidthDp) }
+    // Einblendungen beginnen knapp unter der Kameralinse statt unter der ganzen Pille: Die Notch
+    // bleibt flacher, der Text sitzt direkt unter dem Punch-Hole.
+    val density = LocalDensity.current
+    val peekContentTop = layout.lens?.let { lens ->
+        with(density) { (pillHeight / 2 + lens.diameter.toDp() / 2 + 3.dp) }.coerceIn(pillHeight * 0.6f, pillHeight)
+    } ?: pillHeight
+    val peekTrimDp = (pillHeight - peekContentTop).value.roundToInt()
+    val peekExtraDp = activePeek?.let { (it.extraHeightDp - peekTrimDp).coerceAtLeast(0) }
+    LaunchedEffect(peekExtraDp) { onPeekChange(peekExtraDp) }
     val (collapsedWidth, collapsedHeight) = if (activePeek != null) {
-        ExpandedSize.peek(peekConfig.screenWidthDp, pillHeight.value, activePeek.extraHeightDp).let { (w, h) -> w.dp to h.dp }
+        val (w, h) = ExpandedSize.peek(peekConfig.screenWidthDp, pillHeight.value, peekExtraDp ?: 0)
+        // Systemereignis: nur so breit wie Symbol links + Text rechts der Kamera.
+        val width = if (activePeek is Peek.System) minOf(w, gapDp.value + 2 * systemPillSideDp(activePeek)) else w
+        width.dp to h.dp
     } else if (pillHasText) {
         widePillDp.dp to pillHeight
     } else {
@@ -449,7 +460,6 @@ fun NotchContainer(
         configuration.screenHeightDp,
         landscape = layout.landscape
     )
-    val density = LocalDensity.current
     val topInset = with(density) {
         if (layout.mode == NotchLayoutMode.NOTCH_TOP) layout.expandedTopInset.toDp() else 0.dp
     }
@@ -667,6 +677,7 @@ fun NotchContainer(
                             peek = activePeek,
                             pillHeight = pillHeight,
                             lensGap = lensGap(layout),
+                            contentTop = peekContentTop,
                             onSend = ::sendIntent,
                             onExpand = { setExpanded(true) },
                             onShowAll = {

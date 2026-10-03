@@ -71,6 +71,11 @@ fun PeekContent(
     pillHeight: Dp,
     lensGap: Dp,
     modifier: Modifier = Modifier,
+    /**
+     * Wo der Inhalt beginnt: knapp unter der Kameralinse (nicht erst unter der ganzen Pille) –
+     * so bleibt die Einblendung flach. Standard: unter der Pille.
+     */
+    contentTop: Dp = pillHeight,
     /** Benachrichtigung/Anruf: Intent auslösen (Öffnen, Aktion, Annehmen …). */
     onSend: (PendingIntent?) -> Unit = {},
     /** Benachrichtigung schließen. */
@@ -80,28 +85,32 @@ fun PeekContent(
     /** Alle Benachrichtigungen als Stapel zeigen („+N weitere“). */
     onShowAll: () -> Unit = onExpand
 ) {
+    if (peek is Peek.System) {
+        Box(modifier.fillMaxSize()) { SystemEventPill(peek, lensGap) }
+        return
+    }
     if (peek is Peek.Notification && peek.style == com.frezzybuilds.devnotch.notify.NotificationStyle.COMPACT) {
-        Box(modifier.fillMaxSize()) { CompactNotificationPeek(peek, pillHeight) }
+        Box(modifier.fillMaxSize()) { CompactNotificationPeek(peek, contentTop) }
         return
     }
     if (peek is Peek.Notification && peek.style == com.frezzybuilds.devnotch.notify.NotificationStyle.GLASS) {
-        Box(modifier.fillMaxSize()) { GlassNotificationPeek(peek, pillHeight, onSend, onExpand, onShowAll) }
+        Box(modifier.fillMaxSize()) { GlassNotificationPeek(peek, contentTop, onSend, onExpand, onShowAll) }
         return
     }
     if (peek is Peek.Notification && peek.style == com.frezzybuilds.devnotch.notify.NotificationStyle.APERTURE) {
-        Box(modifier.fillMaxSize()) { ApertureNotificationPeek(peek, pillHeight, lensGap) }
+        Box(modifier.fillMaxSize()) { ApertureNotificationPeek(peek, pillHeight, lensGap, contentTop) }
         return
     }
     if (peek is Peek.MusicPlayer) {
-        Box(modifier.fillMaxSize()) { MusicPlayerContent(pillHeight) }
+        Box(modifier.fillMaxSize()) { MusicPlayerContent(contentTop) }
         return
     }
     if (peek is Peek.NameDrop) {
-        Box(modifier.fillMaxSize()) { NameDropContent(pillHeight) }
+        Box(modifier.fillMaxSize()) { NameDropContent(contentTop) }
         return
     }
     if (peek is Peek.Payment) {
-        Box(modifier.fillMaxSize()) { PaymentContent(peek.merchant, peek.amount, pillHeight) }
+        Box(modifier.fillMaxSize()) { PaymentContent(peek.merchant, peek.amount, contentTop) }
         return
     }
     val spec = peekSpec(peek)
@@ -117,7 +126,7 @@ fun PeekContent(
         Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
             // Die Zeile mit der Kameralinse liegt in der Statusleiste: Dort zeichnet Android Uhr
             // und Symbole über jedes App-Fenster. Deshalb bleibt sie leer – alles beginnt darunter.
-            Spacer(Modifier.height(pillHeight))
+            Spacer(Modifier.height(contentTop))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 spec.leading()
                 Spacer(Modifier.width(10.dp))
@@ -642,4 +651,45 @@ private fun String.shortLabel(): String = when {
     Regex("(?i)stumm|mute").containsMatchIn(this) -> "Stumm"
     length > 14 -> take(13).trimEnd() + "…"
     else -> this
+}
+
+/** Platz je Seite der Linse für ein Systemereignis: genug für den Text rechts, symmetrisch links. */
+fun systemPillSideDp(peek: Peek.System): Int {
+    val text = peek.title + (peek.value?.let { " $it" } ?: "")
+    return (text.length * 7.6f + 30f).toInt().coerceIn(84, 150)
+}
+
+/**
+ * Systemereignis wie auf dem iPhone: nur die Pille wird breiter – links neben der Kamera das Symbol,
+ * rechts „Lautlos“, „Vibration“, „Akku schwach 20 %“ … Keine zusätzliche Höhe.
+ */
+@Composable
+private fun SystemEventPill(peek: Peek.System, lensGap: Dp) {
+    val tint = Color(peek.tint)
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val half = (maxWidth - lensGap) / 2
+        Box(Modifier.width(half).fillMaxHeight().padding(start = 12.dp), contentAlignment = Alignment.CenterStart) {
+            Box(Modifier.size(26.dp).clip(CircleShape).background(tint.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
+                Text(peek.symbol, color = tint, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+            }
+        }
+        Row(
+            Modifier.padding(start = half + lensGap).fillMaxHeight().fillMaxWidth().padding(end = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End
+        ) {
+            Text(
+                peek.title,
+                color = if (peek.value == null) tint else Color.White,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                modifier = Modifier.weight(1f, fill = false).smoothMarquee()
+            )
+            peek.value?.let {
+                Spacer(Modifier.width(5.dp))
+                Text(it, color = tint, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
+        }
+    }
 }
