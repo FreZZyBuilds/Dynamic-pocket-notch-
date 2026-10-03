@@ -439,12 +439,13 @@ fun NotchContainer(
     // Seitenpille: links nur das Symbol dicht an der Linse, rechts so viel Platz wie der Text braucht.
     // Die Pille ist dann unsymmetrisch und wird so verschoben, dass die Linse an ihrer Stelle bleibt.
     var sidePillShiftDp = 0f
+    val sidePillRightDp = activePeek?.takeIf { it.isSidePill }?.let { rememberSidePillSideDp(it) }
     val (collapsedWidth, collapsedHeight) = if (activePeek != null) {
         val (w, h) = ExpandedSize.peek(peekConfig.screenWidthDp, pillHeight.value, peekExtraDp ?: 0)
         val width = if (activePeek.isSidePill) {
             val left = SIDE_PILL_LEFT_DP.toFloat()
             // Rechts nie über das (um die Linse zentrierte) Fenster hinaus.
-            val right = minOf(sidePillSideDp(activePeek).toFloat(), w / 2 - gapDp.value / 2)
+            val right = minOf((sidePillRightDp ?: sidePillSideDp(activePeek)).toFloat(), w / 2 - gapDp.value / 2)
             sidePillShiftDp = (right - left) / 2
             gapDp.value + left + right
         } else {

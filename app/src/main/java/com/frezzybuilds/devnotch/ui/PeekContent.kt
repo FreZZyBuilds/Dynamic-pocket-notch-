@@ -577,16 +577,44 @@ val Peek.isSidePill: Boolean
 /** Linke Seite einer Seitenpille: nur das Symbol, dicht an der Kameralinse (dp). */
 const val SIDE_PILL_LEFT_DP = 44
 
-/** Rechte Seite der Linse: genug für den Inhalt (dp). */
+/** Abstand des Inhalts zur Linse bzw. zum rechten Rand (dp). */
+private const val SIDE_PILL_INNER_DP = 4
+private const val SIDE_PILL_END_DP = 14
+
+/** Schätzung ohne Textmessung (Tests, Vorschau): rechte Seite in dp. */
 fun sidePillSideDp(peek: Peek): Int = when (peek) {
     is Peek.System -> {
         val text = peek.title + (peek.value?.let { " $it" } ?: "")
-        (text.length * 7.6f + 30f).toInt().coerceIn(84, 150)
+        (text.length * 7.2f + SIDE_PILL_INNER_DP + SIDE_PILL_END_DP).toInt().coerceIn(56, 170)
     }
-    is Peek.Charging -> 92
-    is Peek.Volume -> 104
+    is Peek.Charging -> 84
+    is Peek.Volume -> 72 + SIDE_PILL_INNER_DP + SIDE_PILL_END_DP
     is Peek.TrackChanged -> 138
     else -> 120
+}
+
+/**
+ * Rechte Seite genau so breit wie ihr Inhalt (gemessen): Die Pille ist nicht länger als nötig,
+ * der Text beginnt direkt hinter der Kamera.
+ */
+@Composable
+fun rememberSidePillSideDp(peek: Peek): Int {
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+    val small = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    return remember(peek, style) {
+        fun width(text: String, s: androidx.compose.ui.text.TextStyle = style): Float =
+            with(density) { measurer.measure(text, s, maxLines = 1).size.width.toDp().value }
+        val content = when (peek) {
+            is Peek.System -> width(peek.title) + (peek.value?.let { 5f + width(it, style.copy(fontWeight = FontWeight.Bold)) } ?: 0f)
+            is Peek.Charging -> (peek.percent?.let { width("$it %", style.copy(fontWeight = FontWeight.Bold)) + 6f } ?: 0f) + 26f
+            is Peek.Volume -> 72f
+            is Peek.TrackChanged -> minOf(width(peek.title, small), 120f) + 8f + 15f
+            else -> 100f
+        }
+        (content + SIDE_PILL_INNER_DP + SIDE_PILL_END_DP + 1).toInt().coerceAtMost(190)
+    }
 }
 
 /**
@@ -615,10 +643,11 @@ private fun SidePillContent(peek: Peek, lensGap: Dp) {
                 else -> Unit
             }
         }
+        // Inhalt direkt hinter der Linse – kein Leerraum zwischen Kamera und Text.
         Row(
-            Modifier.padding(start = half + lensGap).fillMaxHeight().fillMaxWidth().padding(end = 14.dp),
+            Modifier.padding(start = half + lensGap + SIDE_PILL_INNER_DP.dp).fillMaxHeight().fillMaxWidth().padding(end = SIDE_PILL_END_DP.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.End
+            horizontalArrangement = Arrangement.Start
         ) {
             when (peek) {
                 is Peek.System -> {

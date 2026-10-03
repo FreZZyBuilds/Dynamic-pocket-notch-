@@ -122,10 +122,11 @@ class NotificationStylesTest {
                             Peek.Volume(0.6f, android.media.AudioManager.STREAM_MUSIC),
                             Peek.TrackChanged("Blinding Lights", "The Weeknd", null)
                         ).forEach { sys ->
-                            Box(Modifier.size((SIDE_PILL_LEFT_DP + 42 + sidePillSideDp(sys)).dp, 36.dp).clip(RoundedCornerShape(18.dp)).background(Color.Black)) {
-                                PeekContent(sys, pillHeight = 36.dp, lensGap = 42.dp)
+                            // Wie auf dem Gerät: Lücke = Linse (12 dp) + 6 dp je Seite.
+                            Box(Modifier.size((SIDE_PILL_LEFT_DP + 24 + rememberSidePillSideDp(sys)).dp, 36.dp).clip(RoundedCornerShape(18.dp)).background(Color.Black)) {
+                                PeekContent(sys, pillHeight = 36.dp, lensGap = 24.dp)
                                 // Linse: links schmal, rechts der Text.
-                                Box(Modifier.padding(start = (SIDE_PILL_LEFT_DP + 15).dp, top = 12.dp).size(12.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF1C1C2A)))
+                                Box(Modifier.padding(start = (SIDE_PILL_LEFT_DP + 6).dp, top = 12.dp).size(12.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF1C1C2A)))
                             }
                         }
                         Box(Modifier.size(340.dp, 250.dp).clip(RoundedCornerShape(30.dp)).background(Color.Black).padding(14.dp)) {
